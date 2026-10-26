@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0a09">
+<title>Muloqot Books</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prata&family=Manrope:wght@400;500;600;700;800&family=Literata:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+</head>
+<body>
+<div class="stage">
+  <div id="app" class="app" data-mt="dark">
+    <main id="screen" class="screen" tabindex="-1"></main>
+    <nav id="nav" class="nav" aria-label="Main" hidden></nav>
+    <div id="scrim" class="scrim" data-a="closeSheet"></div>
+    <div id="sheet" class="sheet" role="dialog" aria-modal="true"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.1 0 0 0 -.45"/></filter></svg>
+  </div>
+  <div class="aside"><b>Muloqot Books</b>Литературная платформа: Telegram Mini App. Данные хранятся локально на устройстве, бэкенда и публикации пока нет.<br><i>Demo data</i></div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,168 @@
+export const GENRES=['novel','detective','historical','adventure','drama','stories','modern'];
+
+export const AUTHORS=[
+ {id:'a1',name:'Ирина Вальцева',city:{ru:'Ташкент',uz:'Toshkent'},hair:'long',hairc:'#2b1b14',skin:'#d9b08c',glasses:0,pal:['#3a1d14','#a2431f'],followers:2480,
+  bio:{ru:'Прозаик из Ташкента. Пишет о старых дворах, семейных тайнах и людях, которые не умеют прощаться. Автор четырёх романов.',uz:'Toshkentlik nosir. Eski hovlilar, oilaviy sirlar va xayrlashishni bilmaydigan odamlar haqida yozadi. To‘rt roman muallifi.'}},
+ {id:'a2',name:'Dilorom Nazarova',city:{ru:'Фергана',uz:'Farg‘ona'},hair:'bun',hairc:'#1d1410',skin:'#cfa47e',glasses:0,pal:['#3a2a10','#b9812a'],followers:1930,
+  bio:{ru:'Бывшая школьная учительница из Ферганской долины. Её проза о сельской жизни нашла читателей на обоих языках.',uz:'Farg‘ona vodiysidagi sobiq maktab o‘qituvchisi. Qishloq hayoti haqidagi nasri keng kitobxonlar sevgisini qozongan.'}},
+ {id:'a3',name:'Марк Эльяшев',city:{ru:'Самарканд',uz:'Samarqand'},hair:'short',hairc:'#8d8a86',skin:'#d3ab88',glasses:1,pal:['#2a1f1a','#7d4a2c'],followers:1215,
+  bio:{ru:'Историк по образованию, писатель по призванию. Много лет собирал письма и дневники времён эвакуации.',uz:'Ma’lumoti tarixchi, qalbi yozuvchi. Ko‘p yillar evakuatsiya davri xatlari va kundaliklarini to‘pladi.'}},
+ {id:'a4',name:'Jasur Ro‘ziyev',city:{ru:'Нукус',uz:'Nukus'},hair:'short',hairc:'#1b130f',skin:'#c99d78',glasses:0,pal:['#35170f','#c45a24'],followers:870,
+  bio:{ru:'Автор приключенческих романов о пустыне и древних караванных путях. Много путешествует по Каракумам.',uz:'Cho‘l va qadimiy karvon yo‘llari haqidagi sarguzasht romanlar muallifi. Qoraqum bo‘ylab ko‘p sayohat qiladi.'}},
+ {id:'a5',name:'Анна Серкова',city:{ru:'Ташкент',uz:'Toshkent'},hair:'short',hairc:'#4a2a1c',skin:'#dcb894',glasses:0,pal:['#10181b','#2f5757'],followers:1560,
+  bio:{ru:'Пишет детективы, где разгадка прячется в предметах: книгах, ключах, старых фотографиях.',uz:'Yechimi buyumlarda — kitoblarda, kalitlarda, eski suratlarda yashiringan detektivlar yozadi.'}},
+ {id:'a6',name:'Sardor Mirzayev',city:{ru:'Самарканд',uz:'Samarqand'},hair:'cap',hairc:'#1a1714',skin:'#c99f7a',glasses:0,pal:['#162320','#3d6a5e'],followers:3120,
+  bio:{ru:'Рассказчик из Самарканда. Его маленькие истории о чайханах читают вслух на семейных вечерах.',uz:'Samarqandlik hikoyanavis. Choyxonalar haqidagi kichik hikoyalarini oilaviy davralarda ovoz chiqarib o‘qishadi.'}},
+ {id:'a7',name:'Тимур Алимов',city:{ru:'Мойнак',uz:'Mo‘ynoq'},hair:'short',hairc:'#2a1c12',skin:'#d2a981',glasses:0,pal:['#0f212a','#2f6672'],followers:690,
+  bio:{ru:'Писал для журналов о путешествиях, затем перешёл на прозу. Любит воду, ветер и долгие дороги.',uz:'Avval sayohat jurnallari uchun yozgan, keyin nasrga o‘tgan. Suv, shamol va uzoq yo‘llarni sevadi.'}},
+ {id:'a8',name:'Malika Yo‘ldosheva',city:{ru:'Бухара',uz:'Buxoro'},hair:'long',hairc:'#150f0d',skin:'#d6ab87',glasses:0,pal:['#2a1219','#8a3346'],followers:1040,
+  bio:{ru:'Драматург и прозаик. Её тихие истории о городе читаются как пьесы для одного голоса.',uz:'Dramaturg va nosir. Shahar haqidagi sokin hikoyalari yakkaxon spektakl kabi o‘qiladi.'}},
+ {id:'a9',name:'Олег Рябов',city:{ru:'Ташкент',uz:'Toshkent'},hair:'none',hairc:'#000',skin:'#d8b08c',glasses:1,pal:['#151b25','#46566d'],followers:540,
+  bio:{ru:'Бывший инженер-энергетик. Пишет о горных дорогах и людях, которые на них работают.',uz:'Sobiq energetik muhandis. Tog‘ yo‘llari va ularda ishlovchi odamlar haqida yozadi.'}},
+ {id:'a10',name:'Nodira Hamidova',city:{ru:'Коканд',uz:'Qo‘qon'},hair:'bun',hairc:'#241812',skin:'#d1a883',glasses:0,pal:['#241a14','#7a5240'],followers:2210,
+  bio:{ru:'Поэт, перешедший на роман. Её проза держится на паузах и на том, что остаётся несказанным.',uz:'She’rdan romanga o‘tgan ijodkor. Nasri sukunatlarga va aytilmay qolgan gaplarga tayanadi.'}},
+ {id:'a11',name:'Елена Ким',city:{ru:'Ташкент',uz:'Toshkent'},hair:'short',hairc:'#17100d',skin:'#e0bd9b',glasses:1,pal:['#201a12','#7e6330'],followers:1480,
+  bio:{ru:'Преподаватель литературы в Ташкенте. Пишет коротко, точно и о повседневном.',uz:'Toshkentda adabiyot o‘qituvchisi. Qisqa, aniq va kundalik hayot haqida yozadi.'}},
+ {id:'a12',name:'Bobur Qodirov',city:{ru:'Бухара',uz:'Buxoro'},hair:'short',hairc:'#1c130e',skin:'#cba17b',glasses:0,pal:['#102a2d','#2c6f73'],followers:760,
+  bio:{ru:'Историк Бухары, автор путевых новелл о Шёлковом пути.',uz:'Buxoro tarixchisi, Ipak yo‘li haqidagi sayohat novellalari muallifi.'}}
+];
+
+export const BOOKS=[
+ {id:'b1',a:'a1',title:'Дом на улице Тополей',lang:'ru',genre:'novel',rating:4.7,count:318,pages:342,year:2025,added:4,motif:'window',pal:['#2a1a14','#7a2e17','#e8742f','#140c09','#f0dfc6'],
+  desc:'Нина возвращается в родной дом на улице Тополей, чтобы продать его. В старом сундуке она находит письма незнакомой женщины и понимает, что семейная история, которую ей рассказывали, была неполной.',
+  chapters:[
+   {t:'Ключ под черепицей',p:[
+    'Ключ лежал там, где его оставляли всегда, под отколотой черепицей у калитки. Нина достала его двумя пальцами, как достают занозу, и долго не решалась вставить в замок. За семь лет двор не изменился: тот же виноград над навесом, тот же кран с зелёным налётом, из которого в детстве она пила, подставив ладони. Изменилась только тишина. Раньше в ней всегда кто-то гремел посудой.',
+    'В доме пахло пылью и сушёной айвой. Мать любила раскладывать её на газетах по подоконникам, и теперь жёлтые дольки лежали там же, почерневшие, похожие на старые монеты. Нина открыла окна одно за другим. Улица Тополей ответила привычным шумом: где-то стучали по железу, где-то звал внука старик, а над крышами тянулась тонкая полоска дыма от чьего-то мангала.',
+    'Покупатель приедет в пятницу. Агент сказал, что за такую землю в центре дадут хорошие деньги, если убрать «лишнее». Нина стояла посреди комнаты и пыталась понять, что здесь лишнее. Диван с протёртой обивкой? Часы, которые встали в три сорок? Она знала, что к пятнице придётся решить, и знала, что не решит.']},
+   {t:'Письма в сундуке',p:[
+    'Сундук стоял под кроватью, и Нина вспомнила, что в детстве ей запрещали его трогать. Крышка поддалась со скрипом. Сверху лежали скатерти, под ними отрез синего шёлка, а на самом дне, перевязанные бечёвкой, письма. Конверты были разные: серые, с почтовыми штемпелями Самарканда, и тонкие, авиапочтовые, с красно-синей каймой. Почерк везде был один.',
+    'Она села прямо на пол и развязала бечёвку. «Дорогая Зарема, — начиналось первое письмо, — пишу тебе из-за стола, на котором мы так и не успели отметить твой день рождения». Нина перечитала имя дважды. Её мать звали Галина. Зарема в этом доме не жила никогда, во всяком случае, никто о ней не говорил.',
+    'К вечеру она прочла десять писем и поняла, что держит в руках чужую жизнь, которая почему-то лежала в их доме тридцать лет. Во дворе зажёгся фонарь, и тень от винограда легла на стену узорной сеткой. Нина набрала номер агента, чтобы перенести встречу, и впервые за много дней почувствовала, что ей есть куда торопиться.']},
+   {t:'Сосед со второго двора',p:[
+    'Старик в тюбетейке стоял у калитки с эмалированной кастрюлей, накрытой полотенцем. «Плов, — сказал он вместо приветствия. — Галина всегда говорила, что ты приедешь, когда яблоки созреют. Яблони у вас в этом году ломятся». Нина хотела ответить, что приехала ненадолго, но слова застряли, как косточка.',
+    'Его звали Рустам-ака. Он поставил кастрюлю на стол, оглядел комнату и без спроса открыл окно, которое она не решалась открывать. «Про Зарему спрашивать будешь? — Он не смотрел на неё. — Спроси. Только сначала поешь. С такими вопросами на голодный желудок не ходят».',
+    'Они ели молча. Плов был жирный и пахучий, с мелкой морковью, и Нина вдруг поняла, что ничего не ела с утра. За окном темнело, и в темноте шелестели тополя, давшие улице имя. Рустам-ака вытер пальцы о полотенце и сказал: «Зарема была твоей тётей. И она не умерла, как ты думаешь».']}]},
+
+ {id:'b2',a:'a2',title:'Oltin kuz',lang:'uz',genre:'novel',rating:4.6,count:204,pages:288,year:2024,added:3,motif:'tree',pal:['#2b2411','#5c3a12','#e0952d','#1b140a','#f1dcaa'],
+  desc:'Maktab o‘qituvchisi Sabohat yana bir sentyabrni kutib oladi. Paxta dalasidan topilgan eski konvert esa uni otasi hech qachon gapirib bermagan yillarga qaytaradi.',
+  chapters:[
+   {t:'Birinchi sentyabr',p:[
+    'Sabohat maktab darvozasiga yetib kelganda, quyosh endigina tut daraxtining uchiga ilingan edi. Hovli supurilgan, gulzorga yangi suv sepilgan, devordagi eski shior esa yana o‘sha-o‘sha: «Ilm — najot». U sumkasini ko‘ksiga bosib, bir zum to‘xtadi. O‘n ikki yildan beri har sentyabrda shu joyda to‘xtardi, go‘yo darvoza uni yana bir bor imtihon qilishini kutardi.',
+    'Birinchi sinf o‘quvchilari ota-onalarining qo‘lidan mahkam ushlab turishardi. Kimdir yig‘lar, kimdir esa bo‘lajak do‘stlarini sinchkovlik bilan kuzatardi. Sabohat bolalarning yuzlariga qarab, qaysi biri birinchi bo‘lib qo‘l ko‘tarishini, qaysi biri esa butun yil indamay o‘tirishini taxmin qilar va odatda adashmasdi.',
+    'Qo‘ng‘iroq jaranglaganda hovli birdan jim bo‘ldi. Sabohat sinfga kirdi, doskaga bugungi sanani yozdi va o‘girilib, bolalarga jilmaydi. «Xo‘sh, — dedi u, — kim menga o‘z ismini aytib bera oladi?»']},
+   {t:'Dala chetidagi xat',p:[
+    'Oktyabr boshida ishlar avjiga chiqdi. Maktab ortidagi dala oppoq bo‘lib ochilgan, havoda quruq barg va tuproq hidi suzib yurardi. Sabohat tushlikdan keyin sinfni dalaga olib chiqdi. «Mana bu, — dedi u, — sizning kitoblaringizga ham kerak bo‘ladigan oq rang».',
+    'Orqa qatorda yuradigan Anvar ko‘p gapirmasdi. U daraxt soyasida yotgan tashlandiq konvertni topib oldi. Ustida eski manzil, ichida esa sarg‘aygan bir varaq bor edi. Anvar uni o‘qituvchisiga uzatdi, o‘zi esa nima uchundir qizarib ketdi.',
+    'Sabohat xatni o‘qib chiqqach, uzoq jim qoldi. Yozuv tanish edi. Shu yozuvni u o‘n yil oldin, otasining daftarlarida ko‘rgan edi. Shamol esa dalada oppoq tolalarni ko‘tarib, uzoqlarga olib ketardi.']}]},
+
+ {id:'b3',a:'a3',title:'Письма из Ташкента',lang:'ru',genre:'historical',rating:4.5,count:156,pages:410,year:2023,added:1,motif:'train',pal:['#241a14','#4a2d1e','#e2823a','#150e0a','#eed9bb'],
+  desc:'Осень 1942 года. Давид едет в эвакуацию в Ташкент и пишет письма тем, кого оставил. Роман в письмах о том, как чужой город становится домом.',
+  chapters:[{t:'Эшелон',p:[
+   'Эшелон остановился на рассвете, и Давид сначала решил, что они приехали. За вагонной щелью лежала жёлтая степь, и никакого города в ней не было. Только одинокая будка, женщина с бидоном и мальчик, который стоял на насыпи и смотрел на поезд так, будто тот привёз ему подарок.',
+   'Давид достал карандаш и огрызок открытки. «Мама, — написал он, — здесь много неба и мало воды. Говорят, до Ташкента ещё двое суток. Если письмо дойдёт, то знай: я ем и сплю, и меня никто не обижает». Он подумал и приписал: «Хлеб здесь пекут в печке, которая похожа на колодец».']}]},
+
+ {id:'b4',a:'a4',title:'Qum ostidagi shahar',lang:'uz',genre:'adventure',rating:4.4,count:97,pages:356,year:2026,added:12,motif:'caravan',pal:['#2a1510','#8a3516','#f08a3c','#190d09','#f5dfbf'],
+  desc:'Karvon yo‘ldan adashib, cho‘l o‘rtasidagi devor oldiga chiqadi. Hamid va Dilfuza ekspeditsiyasi xaritalarda yo‘q shaharga olib boradi.',
+  chapters:[{t:'Adashgan karvon',p:[
+   'Karvon uchinchi kuni yo‘ldan chiqib ketdi. Dastlab hech kim sezmadi: barxanlar bir-biriga o‘xshash, osmon esa yagona edi. Faqat kechqurun, yulduzlar yoqilganda, yo‘lboshchi Hamid o‘z kompasiga qarab, uzoq jim turdi. «Biz shimolga emas, — dedi u, — boshqa joyga ketayapmiz».',
+   'Tong otganda ular uzoqda nimadir ko‘rdilar. Qum ustida bir chiziq cho‘zilgan, go‘yo kimdir ufqqa devor qurib qo‘ygandek. Dilfuza otini to‘xtatdi va bir qadam oldinga yurdi. Devor bu yerda bo‘lmasligi kerak edi, chunki xaritada faqat qum ko‘rsatilgan.']}]},
+
+ {id:'b5',a:'a5',title:'Последний переплётчик',lang:'ru',genre:'detective',rating:4.6,count:121,pages:296,year:2026,added:11,motif:'books',pal:['#101418','#1d2a2e','#d8552a','#0a0d0f','#e9dcc3'],
+  desc:'Переплётчик Лазарь Вайс получает книгу без заказчика и находит в корешке странный тайник. Тихий детектив о том, что бумага помнит дольше людей.',
+  chapters:[
+   {t:'Заказ без подписи',p:[
+    'Мастерская Лазаря Вайса помещалась в подвале старого дома на Чиланзаре, и найти её можно было только по запаху: клей, кожа, табак. Он работал без спешки, склонив голову к столу, и когда колокольчик над дверью звякнул, не обернулся. «Закрыто, — сказал он. — Приходите после обеда». «Я не к вам, — ответил женский голос. — Я к книге».',
+    'Женщина положила на стол свёрток, обёрнутый в газету за прошлый вторник. Лазарь развернул его пинцетом, как разворачивают бинт. Внутри лежал томик в потёртом переплёте, и на форзаце чьей-то рукой было выведено одно слово: «Не открывать». Лазарь поднял глаза. «Кто вам это дал?» «Никто, — сказала женщина. — Я нашла его у себя в сумке».']},
+   {t:'Тайник в корешке',p:[
+    'К полуночи он разобрал переплёт. Старая бумага отходила неохотно, и под кожей корешка обнаружилась полоска ткани, сложенная вчетверо. Лазарь разгладил её под лампой. На ткани были вышиты цифры и три латинские буквы, расположенные так, словно это был не шифр, а адрес.',
+    'Он налил остывший чай и впервые за двадцать лет подумал, что его ремесло не только про то, чтобы сохранять чужие истории. Иногда оно про то, чтобы их находить. Утром он закрыл мастерскую, чего не делал никогда, и пошёл на вокзал.']}]},
+
+ {id:'b6',a:'a6',title:'Choyxona suhbatlari',lang:'uz',genre:'stories',rating:4.8,count:262,pages:188,year:2025,added:5,motif:'tea',pal:['#17201d','#2d4a42','#e07a2f','#0e1411','#efe1c2'],
+  desc:'Bir samarqand choyxonasida kechadigan qisqa hikoyalar to‘plami. Har bir mehmon o‘zi bilan bir hikoya olib keladi.',
+  chapters:[
+   {t:'Birinchi piyola',p:[
+    'Choyxona ertalab soat oltida ochiladi. Birinchi bo‘lib qariya Karim aka keladi, ayvonning o‘ng burchagidagi taxtga o‘tiradi va choynakni ko‘tarib, qopqog‘ini ochib ko‘radi. Undan keyin boshqalar. Ular ko‘pincha bir-biriga salom ham bermaydilar, chunki hamma hammani yaxshi biladi.',
+    'Bu yerda gap shoshilmay aytiladi. Narx haqida ham, ob-havo haqida ham, o‘tgan yilgi to‘y haqida ham. Kimdir gapni boshlaydi, boshqa birov davom ettiradi, uchinchisi esa piyolasini aylantirib turib, hammasiga o‘z chek-chegarasini qo‘yadi. Shu tariqa bir soatda butun mahalla yangiliklari gapirib bo‘linadi.']},
+   {t:'Kelgan mehmon',p:[
+    'O‘sha kuni choyxonaga begona odam kirdi. Yelkasida rangi o‘chgan ryukzak, qo‘lida xarita. U salom berdi, hamma bir zumga jim bo‘ldi. Karim aka esa surilib joy ochdi. «O‘tiring, — dedi u. — Yo‘lovchi uchun doim joy topiladi».',
+    'Mehmon o‘zini kitob yozuvchisi deb tanishtirdi. U shahar tarixini yig‘ayotgan ekan. Choyxonadagilar bir-biriga qarab oldi. Ularning har biri bu tarixning bir bo‘lagini bilardi, lekin hech biri uni butun holda aytib berolmasdi. Birinchi savolga esa hech kim shoshilmay javob bermadi.']}]},
+
+ {id:'b7',a:'a7',title:'Соль и ветер',lang:'ru',genre:'adventure',rating:4.3,count:88,pages:312,year:2024,added:2,motif:'river',pal:['#10202a','#27505a','#ec7a38','#0a141b','#eadfc8'],
+  desc:'Внук и дед отправляются на лодке к острову, где десятки лет назад было спрятано то, что изменит их семью.',
+  chapters:[{t:'Вдоль берега',p:[
+   'Лодка шла вдоль берега, где вода была цвета разбавленного молока. Тимур налегал на вёсла и считал про себя гребки, чтобы не думать о солнце, которое третий день не давало ни минуты передышки. Дед на корме спал, прикрыв лицо шляпой, и со стороны казалось, что лодкой правит не человек, а само течение.',
+   'К вечеру показался остров. Это была узкая полоска песка, на которой росли три ивы и торчала покосившаяся мачта без паруса. Дед проснулся, посмотрел на неё и сказал: «Здесь мой отец оставил то, что мы ищем. Правда, он обещал, что мачта будет прямее».']}]},
+
+ {id:'b8',a:'a8',title:'Ko‘k eshik',lang:'uz',genre:'drama',rating:4.5,count:64,pages:204,year:2026,added:10,motif:'door',pal:['#1c1416','#5a2230','#f08f45','#100a0c','#f1ddc3'],
+  desc:'Munisa har kuni ko‘k eshik yonidan o‘tadi, uning ortida hech kim yashamaydi. Bir kuni u yerdan kuy eshitiladi.',
+  chapters:[{t:'Ko‘cha oxiridagi eshik',p:[
+   'Ko‘cha oxirida ko‘k rangli eshik bor edi. Uni hamma ko‘rardi, lekin hech kim ochilganini ko‘rmagan. Munisa har kuni ishga ketayotib, uning yonidan o‘tar va har safar eshik tutqichidagi zang izlariga qarab, kimdir u yerda yashashini taxmin qilardi.',
+   'O‘sha kuni tutqich tozalangan edi. Munisa oyoq ostida mis suvi yaltiraganini ko‘rib, qadamini sekinlatdi. Eshik ortidan fortepiano tovushi eshitildi: bir nota, so‘ng yana bir nota, go‘yo kimdir yo‘qolgan kuyni qayta eslashga urinardi.']}]},
+
+ {id:'b9',a:'a9',title:'Перевал Камчик',lang:'ru',genre:'adventure',rating:4.2,count:73,pages:270,year:2023,added:0,motif:'mount',pal:['#151a22','#3a4658','#e8753a','#0c1017','#e8e2d6'],
+  desc:'Молодой инженер едет через высокогорный перевал налаживать электростанцию и узнаёт, чем живёт посёлок за хребтом.',
+  chapters:[{t:'Вторая передача',p:[
+   'Дорога на перевал начиналась там, где кончался асфальт. Грузовик, гружённый мешками с мукой, шёл на второй передаче, и водитель Серик каждые пять минут вытирал лоб рукавом. «Ты, главное, не смотри вниз, — сказал он пассажиру. — Вниз смотрят только туристы».',
+   'Облака лежали ниже дороги, как разлитое молоко. Пассажир, молодой инженер с чемоданом, сидел прямо и держался за ручку двери. Ему предстояло наладить электростанцию в посёлке за хребтом, и он до сих пор не понимал, почему никто в управлении не пожелал ему удачи.']}]},
+
+ {id:'b10',a:'a10',title:'Yuz yillik sukunat',lang:'uz',genre:'novel',rating:4.7,count:190,pages:322,year:2025,added:6,motif:'bird',pal:['#1d1713','#50362a','#d9622c','#110c09','#efe0c8'],
+  desc:'Sevara vafot etgan buvisining uyiga qaytadi. Soat tiqillashi orasida esa u yuz yillik oilaviy sukunatning sirlarini topadi.',
+  chapters:[{t:'Tiqillagan soat',p:[
+   'Buvimning uyida soat hech qachon to‘xtamasdi. Uni har kuni ertalab kalit bilan o‘rashar, kechqurun esa shisha ustidan changini artishardi. Sevara bolaligida bu soatni uyning yuragi deb o‘ylardi. Hozir esa, uyga qaytib kelganda, uning tiqillashi unga ayblovdek eshitilardi.',
+   'Buvisi o‘tgan bahorda vafot etgan edi. Soat esa hamon yurardi, go‘yo hech narsa o‘zgarmagandek. Sevara uning yoniga o‘tirdi, qo‘lini devorga qo‘ydi va tiqillashni sanay boshladi. Yuzga yetganda yig‘lab yubordi.']}]},
+
+ {id:'b11',a:'a11',title:'Мастерская часовщика',lang:'ru',genre:'modern',rating:4.6,count:240,pages:240,year:2024,added:7,motif:'clock',pal:['#171410','#403424','#d99a35','#0e0b08','#eadcbc'],
+  desc:'Часовщик Пётр Андреевич не чинит, а слушает. Но девочка с остановившимися часами заставляет его вспомнить, зачем он выбрал это ремесло.',
+  chapters:[{t:'Девочка с часами',p:[
+   'Каждое утро в девять Пётр Андреевич переворачивал табличку на двери и ровно минуту стоял, прислушиваясь. В мастерской жили сорок часов, и каждые шли по-своему: одни отставали на минуту, другие торопились, третьи, самые старые, вели счёт какому-то своему времени. Он давно перестал их выравнивать.',
+   'Девочка пришла в одиннадцать. Она держала в ладонях карманные часы, как держат птицу, и смотрела не на мастера, а на потолок, где висел маятник. «Они стоят, — сказала она. — Папа говорил, что их нельзя чинить. Но я хочу узнать, который час был тогда».']}]},
+
+ {id:'b12',a:'a12',title:'Ipak yo‘li hikoyalari',lang:'uz',genre:'historical',rating:4.4,count:51,pages:380,year:2026,added:9,motif:'ornament',pal:['#112326','#1f5156','#e58a33','#0a1517','#efe2c3'],
+  desc:'Yosh Said ustozi topshirig‘i bilan ipak o‘ramini Buxorodan Samarqandga yetkazadi. Yo‘l unga savdo, sadoqat va jasorat haqida saboq beradi.',
+  chapters:[{t:'Buxoro bozori',p:[
+   'Buxoro bozori tong otishidan oldin uyg‘onadi. Mato o‘ramlari aravalardan tushiriladi, ziravorlar xaltalarda qatorlashadi, savdogarlar esa bir-biriga chuqur ta’zim qilib, narxni yashirin shivirlashadi. Yosh Said bu shovqin ichida o‘zini yo‘qotib qo‘ymaslikka urinardi.',
+   'Ustozi unga kichkina ipak o‘ram uzatdi. «Bu Samarqandga ketadi, — dedi u. — Yo‘lda uni hech kimga ko‘rsatma, hech kim bilan gaplashma». Said o‘ramni ko‘ksiga bosdi va birinchi marta uzoq yo‘l oldida o‘zini ulg‘ayganday his qildi.']}]}
+];
+
+export const COLLECTIONS=[
+ {id:'c1',ids:['b1','b2','b10','b11'],t:{ru:'Осень в старых дворах',uz:'Eski hovlilar kuzi'},pal:['#3a1d14','#a2431f']},
+ {id:'c2',ids:['b1','b2','b5','b6','b7','b8'],t:{ru:'Читаем на двух языках',uz:'Ikki tilda o‘qiymiz'},pal:['#10282c','#2f6672']},
+ {id:'c3',ids:['b3','b4','b7','b9','b12'],t:{ru:'Дороги и перевалы',uz:'Yo‘llar va dovonlar'},pal:['#2a1f12','#8a5a22']},
+ {id:'c4',ids:['b8','b10','b11'],t:{ru:'Тихие драмы',uz:'Sokin dramalar'},pal:['#26141a','#7a3346']}
+];
+
+export const SEED_REVIEWS=[
+ {id:'r1',bookId:'b1',user:'Камола Р.',rating:5,date:{ru:'2 дня назад',uz:'2 kun oldin'},likes:24,insight:6,text:'Читала в одну ночь. Двор, виноград, запах айвы — всё как у моей бабушки. Финал третьей главы заставил перечитать абзац дважды.',replies:[{user:'Ирина Вальцева',text:'Спасибо, Камола. Рада, что двор показался знакомым.',author:1}]},
+ {id:'r2',bookId:'b6',user:'Doniyor',rating:5,date:{ru:'3 дня назад',uz:'3 kun oldin'},likes:40,insight:12,text:'Har bir hikoya bitta piyola choy kabi: sekin ichiladi va uzoq esda qoladi.',replies:[]},
+ {id:'r3',bookId:'b11',user:'Виктор',rating:5,date:{ru:'4 дня назад',uz:'4 kun oldin'},likes:27,insight:9,text:'Тихая книга про память и время. Сцена с девочкой и карманными часами — лучшая в этом году.',replies:[{user:'Лена',text:'Согласна, я там остановилась и просто сидела с книгой.'}]},
+ {id:'r4',bookId:'b2',user:'Gulnora',rating:5,date:{ru:'5 дней назад',uz:'5 kun oldin'},likes:31,insight:7,text:'Sabohat obrazi juda tirik. Maktab hovlisi, tut daraxti, sentyabr hidi — hammasi xuddi o‘zimning bolaligimdek.',replies:[]},
+ {id:'r5',bookId:'b5',user:'Лена',rating:5,date:{ru:'неделю назад',uz:'1 hafta oldin'},likes:18,insight:4,text:'Редкий детектив, в котором тишина важнее погони. Мастерская Лазаря как отдельный персонаж.',replies:[]},
+ {id:'r6',bookId:'b10',user:'Shahnoza',rating:4,date:{ru:'неделю назад',uz:'1 hafta oldin'},likes:15,insight:3,text:'Soat obrazi kuchli. Oxirgi sahifalarda yig‘lamaslikning iloji bo‘lmadi.',replies:[]},
+ {id:'r7',bookId:'b1',user:'Артём',rating:4,date:{ru:'неделю назад',uz:'1 hafta oldin'},likes:9,insight:1,text:'Начало медленное, зато потом не оторваться. Хотелось бы больше про Зарему.',replies:[]},
+ {id:'r8',bookId:'b4',user:'Sherzod',rating:4,date:{ru:'2 недели назад',uz:'2 hafta oldin'},likes:8,insight:2,text:'Sarguzasht ruhi bor. Devor topilgan sahna ancha qiziqarli, davomini kutaman.',replies:[]},
+ {id:'r9',bookId:'b9',user:'Павел',rating:4,date:{ru:'2 недели назад',uz:'2 hafta oldin'},likes:6,insight:1,text:'Дорога написана так, что хочется держаться за ручку двери. Герои живые.',replies:[]},
+ {id:'r10',bookId:'b3',user:'Роза',rating:5,date:{ru:'3 недели назад',uz:'3 hafta oldin'},likes:12,insight:5,text:'Письма, которые читаются как дневник. Рекомендую всем, кто интересуется историей эвакуации.',replies:[]}
+];
+
+export const SEED_THREADS=[
+ {id:'t1',bookId:'b1',title:'Кто такая Зарема?',user:'Артём',text:'Мои версии: сестра матери или подруга. А вы как думаете?',comments:[
+   {user:'Камола Р.',text:'Скорее тётя: Рустам-ака почти прямо об этом говорит, но не договаривает.',replies:[{user:'Артём',text:'Тогда почему мать молчала тридцать лет?'}]},
+   {user:'Лена',text:'Ставлю на семейную ссору.',replies:[]}]},
+ {id:'t2',bookId:'b2',title:'Sabohat va konvert',user:'Gulnora',text:'Konvertdagi xat kimniki bo‘lishi mumkin?',comments:[
+   {user:'Doniyor',text:'Menimcha, otasiniki. Yozuv tanish deyilgan-ku.',replies:[]}]},
+ {id:'t3',bookId:'b6',title:'Choyxona sahnalari',user:'Doniyor',text:'Sizning mahallangizda ham shunday choyxona bormi?',comments:[
+   {user:'Shahnoza',text:'Bor, va Karim akaga o‘xshagan qariya ham bor.',replies:[]}]},
+ {id:'t4',bookId:null,title:'Что читаете этой осенью?',user:'Лена',text:'Посоветуйте книгу, которую можно читать неспешно, с чаем.',comments:[
+   {user:'Виктор',text:'«Мастерская часовщика». Лучше под дождь.',replies:[]}]}
+];
+
+export const WEEKLY={bookId:'b1',q:{ru:'Что, по-вашему, скрывал сундук в «Доме на улице Тополей», кроме писем?',uz:'«Дом на улице Тополей» romanida sandiq xatlardan boshqa nimani yashirgan deb o‘ylaysiz?'}};
+
+export const SEED_QUOTES=[
+ {id:'q1',bookId:'b1',text:'Изменилась только тишина. Раньше в ней всегда кто-то гремел посудой.',likes:48},
+ {id:'q2',bookId:'b6',text:'Yo‘lovchi uchun doim joy topiladi.',likes:73},
+ {id:'q3',bookId:'b9',text:'Вниз смотрят только туристы.',likes:35},
+ {id:'q4',bookId:'b11',text:'Я хочу узнать, который час был тогда.',likes:61},
+ {id:'q5',bookId:'b10',text:'Soat esa hamon yurardi, go‘yo hech narsa o‘zgarmagandek.',likes:44}
+];
