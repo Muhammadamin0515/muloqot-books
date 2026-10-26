@@ -41,3 +41,4 @@ export function share(text){
   const u='https://t.me/share/url?url='+encodeURIComponent(link||' ')+'&text='+encodeURIComponent(text);
   try{w.openTelegramLink(u);return true}catch(e){return false}
 }
+export const initData=()=>inTg?w.initData||'':'';
