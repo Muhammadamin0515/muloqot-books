@@ -12,9 +12,9 @@ const book=id=>BOOKS.find(b=>b.id===id);
 const author=id=>AUTHORS.find(a=>a.id===id);
 
 /* ---------- state ---------- */
-const DEFAULT=()=>({onboarded:false,lang:'ru',theme:'dark',name:'Алишер',
-  progress:{b1:{ch:1,p:.35,ts:2},b5:{ch:0,p:.5,ts:1}},finished:['b11'],saved:['b3','b8','b12'],
-  bookmarks:[{id:'bm1',bookId:'b1',ch:0,para:1,snip:'В доме пахло пылью и сушёной айвой.'}],
+const DEFAULT=()=>({onboarded:false,lang:'ru',theme:'dark',name:'Читатель',
+  progress:{},finished:[],saved:[],
+  bookmarks:[],
   ratings:{},reviews:clone(SEED_REVIEWS),threads:clone(SEED_THREADS),reacts:{},follows:[],days:[],
   myQuotes:[],qLikes:{},reader:{size:19,lh:1.7,theme:'dark',font:'serif'},
   notif:{chapters:true,replies:true,reminder:false,authors:true},goal:20,
