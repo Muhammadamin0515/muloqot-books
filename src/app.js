@@ -5,7 +5,8 @@ import * as tg from './telegram.js';
 import {api,net} from './api.js';
 import {initAdmin} from './admin.js';
 import {initDonate} from './donate.js';
-import {docxToText} from './docx.js';
+import {initStudio} from './studio.js';
+import {initAchievements} from './achievements.js';
 
 const KEY='muloqot.proto.v1';
 const $=(s,el=document)=>el.querySelector(s);
@@ -469,87 +470,6 @@ ACT.rTheme=el=>{S.reader.theme=el.dataset.v;applyReader()};
 ACT.rFont=el=>{S.reader.font=el.dataset.v;applyReader()};
 
 /* =====================================================================
-   AUTHOR STUDIO
-   ===================================================================== */
-const ST={mode:'home',step:0,title:'',author:'',lang:'ru',genre:'novel',desc:'',tags:'',cover:null,coverName:'',fileName:'',fileSize:'',body:'',err:null,sending:false,sent:false};MODEL.st=ST;
-const AD={list:null},AUT={data:null};
-MODEL.aut={title:'',desc:''};
-const loadAuthor=()=>{if(!net.online)return;api('/api/author/stats').then(d=>{AUT.data=d;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
-function authorBlock(){
-  const d=AUT.data;if(!d||!d.books.length)return '';
-  const max=Math.max(1,...d.series.map(x=>x.v));
-  return `<div class="sec"><div class="sec-h"><h2>${tr('Мои книги','Mening kitoblarim')}</h2></div>
-  ${d.series.length?`<div class="card" style="margin-bottom:12px"><div class="lbl" style="margin-bottom:12px">${tr('Просмотры за 14 дней','14 kunlik ko‘rishlar')}</div><div class="bars">${d.series.map(x=>`<div><i style="height:${Math.max(6,x.v/max*100)}%"></i><small>${x.v}</small><em>${esc(x.day.slice(8))}</em></div>`).join('')}</div></div>`:''}
-  ${d.books.map(b=>`<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(b.title)}</b>${b.hidden?`<span class="tag">${tr('скрыта','yashirin')}</span>`:''}</div>
-    <div class="stat3" style="margin:12px 0"><div><b>${b.views}</b><small>${tr('Просмотры','Ko‘rishlar')}</small></div><div><b>${b.reads}</b><small>${tr('Начали читать','O‘qiy boshladi')}</small></div><div><b>${b.finishes}</b><small>${tr('Дочитали','Tugatdi')}</small></div></div>
-    <p class="mute" style="font-size:12.5px;margin-bottom:10px">⭐ ${b.rating} (${b.count}) · ${tr('отзывов','sharhlar')}: ${b.reviews} · ${tr('глав','bob')}: ${b.chapters}</p>
-    <div class="row" style="gap:8px"><button class="btn sm" data-a="openBook" data-id="${esc(b.id)}">${tr('Открыть','Ochish')}</button><button class="btn sm ghost" data-a="autEdit" data-id="${esc(b.id)}">${tr('Править','Tahrirlash')}</button>${b.pending?`<span class="status m">${tr('Новый текст на проверке','Yangi matn tekshiruvda')}</span>`:`<button class="btn sm ghost" data-a="autUpdate" data-id="${esc(b.id)}">${tr('Заменить текст','Matnni almashtirish')}</button>`}</div></div>`).join('')}</div>`;
-}
-ACT.autEdit=el=>{const b=book(el.dataset.id);MODEL.aut.title=b.title;MODEL.aut.desc=b.desc;
-  openSheet(`<h2>${tr('Правка книги','Kitobni tahrirlash')}</h2><div class="field"><label for="auT">${t('f_title')}</label><input id="auT" class="in" data-m="aut:title" value="${esc(b.title)}"></div><div class="field"><label for="auD">${t('f_desc')}</label><textarea id="auD" class="in" data-m="aut:desc" style="min-height:130px">${esc(b.desc)}</textarea></div><button class="btn block" data-a="autSave" data-id="${esc(b.id)}">${tr('Сохранить','Saqlash')}</button>`)};
-const UPD={id:null,body:'',fileName:'',busy:false};
-MODEL.aut.note='';
-const updSheet=()=>`<h2>${tr('Заменить текст книги','Kitob matnini almashtirish')}</h2><p class="mute" style="font-size:13px;margin-bottom:14px">${tr('Новый текст пройдёт проверку модератором. До одобрения читатели видят прежнюю версию, оценки и отзывы сохранятся.','Yangi matn moderator tekshiruvidan o‘tadi. Tasdiqlanguncha o‘quvchilar eski versiyani ko‘radi, baho va sharhlar saqlanadi.')}</p>
-  <label class="drop" for="updFile">${ico('file',26)}<div class="grow"><b>${UPD.fileName?esc(UPD.fileName):t('up_file')}</b><div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">${UPD.fileName?Math.round(UPD.body.length/1000)+tr('k знаков','k belgi'):'.txt · .md · .docx'}</div></div>${ico('upload',22)}</label><input id="updFile" type="file" accept=".txt,.md,.docx,text/plain" data-chg="updFile" style="position:absolute;opacity:0;width:1px;height:1px">
-  <div class="field" style="margin-top:16px"><label for="updNote">${tr('Что изменилось (необязательно)','Nima o‘zgardi (ixtiyoriy)')}</label><textarea id="updNote" class="in" data-m="aut:note" style="min-height:80px" placeholder="${tr('Например: исправлены опечатки, добавлена глава 5','Masalan: xatolar tuzatildi, 5-bob qo‘shildi')}">${esc(MODEL.aut.note)}</textarea></div>
-  <button class="btn block" data-a="updSend" ${UPD.body.length<500||UPD.busy?'disabled':''}>${tr('Отправить на проверку','Tekshiruvga yuborish')}</button>`;
-ACT.autUpdate=el=>{UPD.id=el.dataset.id;UPD.body='';UPD.fileName='';UPD.busy=false;MODEL.aut.note='';openSheet(updSheet())};
-CHG.updFile=el=>{const f=el.files&&el.files[0];if(!f)return;
-  if(f.size>1100*1024){toast(tr('Файл больше 1 МБ','Fayl 1 MB dan katta'));return}
-  const done=txt=>{UPD.body=txt;UPD.fileName=f.name;setSheet(updSheet())};
-  if(/\.docx$/i.test(f.name)){f.arrayBuffer().then(docxToText).then(txt=>{if(txt.trim().length<50)throw 0;done(txt)}).catch(()=>toast(tr('Не удалось прочитать .docx. Сохраните как .txt.','.docx o‘qilmadi. .txt sifatida saqlang.')));return}
-  const fr=new FileReader();fr.onload=()=>done(String(fr.result));fr.readAsText(f)};
-ACT.updSend=()=>{if(UPD.busy||UPD.body.length<500)return;UPD.busy=true;setSheet(updSheet());
-  api(`/api/author/books/${UPD.id}/update`,'POST',{body:UPD.body,fileName:UPD.fileName,note:MODEL.aut.note}).then(()=>{closeSheet();toast(tr('Отправлено на проверку','Tekshiruvga yuborildi'));loadAuthor();api('/api/bootstrap').then(d=>{S.subs=d.subs;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})})
-   .catch(e=>{UPD.busy=false;setSheet(updSheet());toast(e.detail==='pending'?tr('Предыдущий текст ещё на проверке','Oldingi matn hali tekshiruvda'):tr('Не удалось отправить','Yuborib bo‘lmadi'))})};
-ACT.autSave=el=>{closeSheet();bg(api(`/api/author/books/${el.dataset.id}/edit`,'POST',{title:MODEL.aut.title,desc:MODEL.aut.desc}).then(async()=>{toast(tr('Сохранено','Saqlandi'));await loadBoot();loadAuthor()}))};
-const subLabel={draft:'status_draft',moderation:'status_mod',approved:'status_ok',rejected:'status_no'};
-const draftBook=()=>({id:'draft',title:ST.title.trim()||t('f_title'),authorName:ST.author.trim()||S.name,motif:'ornament',pal:['#2a1a14','#7a2e17','#e8742f','#140c09','#f0dfc6'],img:ST.cover});
-SCREENS.studio=()=>{
-  let body='';
-  if(ST.mode==='home'){
-    body=`<div class="sec" style="margin-top:8px"><div class="sec-h"><h2>${t('my_subs')}</h2></div>${S.subs.length?`<div class="list">${S.subs.map(s=>`<div class="li"><div class="grow"><b>${s.update?'↻ ':''}${esc(s.title)}</b>${s.update?`<div class="mute" style="font-size:12px">${tr('Обновление текста','Matn yangilanishi')}</div>`:''}${s.status==='rejected'&&s.note?`<div class="mute" style="font-size:12px">${esc(s.note)}</div>`:''}</div><span class="status ${s.status==='moderation'||s.status==='approved'?'m':''}">${t(subLabel[s.status]||'status_draft')}</span></div>`).join('')}</div>`:''}</div>
-    <button class="btn block" style="margin-top:20px" data-a="stNew">${ico('plus',18)} ${t('add_title')}</button>${authorBlock()}`;
-  }else{
-    const steps=[t('st1'),t('st2'),t('st3'),t('st4')];
-    let inner='';
-    if(ST.step===0)inner=`<div class="field"><label for="stTitle">${t('f_title')}</label><input id="stTitle" class="in" data-m="st:title" value="${esc(ST.title)}" autocomplete="off"></div>
-     <div class="field"><label for="stAuthor">${t('f_author')}</label><input id="stAuthor" class="in" data-m="st:author" value="${esc(ST.author||S.name)}" autocomplete="off"></div>
-     <div class="row" style="gap:12px;align-items:flex-start"><div class="field grow"><label for="stLang">${t('f_lang')}</label><select id="stLang" class="in" data-chg="stLang"><option value="ru" ${ST.lang==='ru'?'selected':''}>Русский</option><option value="uz" ${ST.lang==='uz'?'selected':''}>Oʻzbekcha</option></select></div>
-     <div class="field grow"><label for="stGenre">${t('f_genre')}</label><select id="stGenre" class="in" data-chg="stGenre">${GENRES.map(g=>`<option value="${g}" ${ST.genre===g?'selected':''}>${gl(g)}</option>`).join('')}</select></div></div>
-     <div class="field"><label for="stDesc">${t('f_desc')}</label><textarea id="stDesc" class="in" data-m="st:desc" placeholder="${t('f_desc_ph')}">${esc(ST.desc)}</textarea></div>
-     <div class="field"><label for="stTags">${t('f_tags')}</label><input id="stTags" class="in" data-m="st:tags" value="${esc(ST.tags)}" autocomplete="off"></div>${ST.err?`<p class="err">${esc(ST.err)}</p>`:''}`;
-    if(ST.step===1)inner=`<div class="field"><span class="lbl">${t('up_cover')}</span><label class="drop" for="stCover"><div style="width:54px;flex:none">${cover(draftBook(),'sm')}</div><div class="grow"><b>${ST.coverName?esc(ST.coverName):t('up_cover')}</b><div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">${t('cover_auto')}</div></div>${ico('upload',22)}</label><input id="stCover" class="vh" type="file" accept="image/*" data-chg="stCover" style="position:absolute;opacity:0;width:1px;height:1px"></div>
-     <div class="field"><span class="lbl">${t('up_file')}</span><label class="drop" for="stFile">${ico('file',26)}<div class="grow"><b>${ST.fileName?esc(ST.fileName):t('up_file')}</b><div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">${ST.fileName?esc(ST.fileSize):'.txt · .md · .docx'}</div></div>${ico('upload',22)}</label><input id="stFile" type="file" accept=".txt,.md,.docx,text/plain" data-chg="stFile" style="position:absolute;opacity:0;width:1px;height:1px"><p class="mute" style="font-size:12px;margin-top:2px">${t('file_demo')}</p>${ST.err?`<p class="err">${esc(ST.err)}</p>`:''}</div>`;
-    if(ST.step===2){const d=draftBook();inner=`<div class="card" style="text-align:center"><div style="width:130px;margin:6px auto 16px">${cover(d)}</div><h2 class="display" style="font-size:22px">${esc(d.title)}</h2><div style="color:var(--acc-t);font-weight:700;font-size:13.5px;margin:6px 0 12px">${esc(d.authorName)}</div><div class="facts"><span class="tag acc">${ST.lang.toUpperCase()}</span><span class="tag">${gl(ST.genre)}</span></div><p class="syn" style="text-align:left;margin-top:16px;font-size:14.5px">${esc(ST.desc.trim()||'—')}</p></div><button class="btn block ghost" style="margin-top:14px" data-a="stPage">${ico('text',18)} ${t('preview_page')}</button>`}
-    if(ST.step===3){
-      if(ST.sent)inner=`<div class="empty" style="padding-top:10px"><div class="ring" style="border-style:solid;border-color:var(--acc);color:var(--acc-t)">${ico('check',30)}</div><b>${t('sent')}</b><span>${t('sent_d')}</span></div><div class="stages"><div class="on"><span class="dot">${ico('check',14)}</span>${t('s_received')}</div><div><span class="dot"></span>${t('s_review')}</div><div><span class="dot"></span>${t('s_decision')}</div></div><button class="btn block" data-a="stNew">${t('new_book')}</button><button class="btn block ghost" style="margin-top:10px" data-a="stHome">${t('my_subs')}</button>`;
-      else inner=`<div class="card"><div class="row" style="gap:14px"><div style="width:64px;flex:none">${cover(draftBook(),'sm')}</div><div class="grow"><b>${esc(draftBook().title)}</b><div class="mute" style="font-size:12.5px">${esc(draftBook().authorName)} · ${ST.lang.toUpperCase()} · ${gl(ST.genre)}</div>${ST.fileName?`<div class="mute" style="font-size:12px;margin-top:6px">${ico('file',13)} ${esc(ST.fileName)}</div>`:''}</div></div></div>
-       ${ST.sending?`<div style="margin:22px 0"><div class="bar"><i id="stBar" style="width:0%;transition:width .25s"></i></div><p class="mute" style="font-size:13px;margin-top:10px">${t('sending')}</p></div>`:`<p class="mute" style="font-size:13px;margin:16px 0">${t('demo_banner')}</p><button class="btn block" data-a="stSubmit">${t('submit_mod')}</button>`}`}
-    const nav=(ST.step===3&&(ST.sent||ST.sending))?'':`<div class="row" style="gap:10px;margin-top:24px">${ST.step>0?`<button class="btn ghost" data-a="stPrev">${t('back')}</button>`:`<button class="btn ghost" data-a="stHome">${t('cancel')}</button>`}${ST.step<3?`<button class="btn grow" data-a="stNext">${t('next')}</button>`:''}</div>`;
-    body=`<div class="steps" aria-label="${steps[ST.step]}">${steps.map((s,i)=>`<i class="${i<=ST.step?'on':''}"></i>`).join('')}</div><div class="eyebrow" style="margin-bottom:16px">${ST.step+1} / 4 · ${steps[ST.step]}</div>${inner}${nav}`;
-  }
-  return `<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="${t('back')}">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">${t('studio')}</h2></div></header>
-  <div class="px"><div class="demo-banner">${ico('info',18)}<span>${t('demo_banner')}</span></div>${body}</div>`;
-};
-ACT.stNew=()=>{Object.assign(ST,{mode:'form',step:0,title:'',author:S.name,lang:'ru',genre:'novel',desc:'',tags:'',cover:null,coverName:'',fileName:'',fileSize:'',body:'',err:null,sending:false,sent:false});refresh();$('#screen').scrollTop=0};
-ACT.stHome=()=>{ST.mode='home';ST.sending=false;ST.sent=false;refresh()};
-ACT.stPrev=()=>{ST.step=Math.max(0,ST.step-1);ST.err=null;refresh();$('#screen').scrollTop=0};
-ACT.stNext=()=>{if(ST.step===0){if(ST.title.trim().length<2){ST.err=t('err_title');refresh();return}if(ST.desc.trim().length<20){ST.err=t('err_desc');refresh();return}}if(ST.step===1&&net.online&&ST.body.trim().length<500){ST.err=t('err_file');refresh();return}ST.err=null;ST.step=Math.min(3,ST.step+1);refresh();$('#screen').scrollTop=0};
-CHG.stLang=el=>{ST.lang=el.value};CHG.stGenre=el=>{ST.genre=el.value};
-CHG.stCover=el=>{const f=el.files&&el.files[0];if(!f)return;if(f.size>600*1024){toast(tr('Обложка больше 600 КБ','Muqova 600 KB dan katta'));return}const fr=new FileReader();fr.onload=()=>{ST.cover=fr.result;ST.coverName=f.name;refresh()};fr.readAsDataURL(f)};
-CHG.stFile=el=>{const f=el.files&&el.files[0];if(!f)return;if(f.size>1100*1024){toast(tr('Файл больше 1 МБ','Fayl 1 MB dan katta'));return}
-  const done=txt=>{ST.body=txt;ST.fileName=f.name;ST.fileSize=(f.size/1024).toFixed(0)+' KB';refresh()};
-  if(/\.docx$/i.test(f.name)){f.arrayBuffer().then(docxToText).then(txt=>{if(txt.trim().length<50)throw 0;done(txt)}).catch(()=>toast(tr('Не удалось прочитать .docx. Сохраните как .txt и загрузите снова.','.docx o‘qilmadi. .txt sifatida saqlab, qayta yuklang.')));return}
-  const fr=new FileReader();fr.onload=()=>done(String(fr.result));fr.readAsText(f)};
-ACT.stPage=()=>{const d=draftBook();openSheet(`<h2>${t('preview_page')}</h2><div class="reader" style="background:transparent;height:auto;--rs:18px;--rlh:1.7"><div class="chhead"><span class="eyebrow">${t('chapter')} 1</span><h2>${esc(d.title)}</h2></div><p class="rp" style="font-family:var(--read)">${esc(ST.desc.trim()||'—')}</p></div>`)};
-const subDone=sub=>{ST.sending=false;ST.sent=true;S.subs.unshift(sub);save();if(NAV.cur.name==='studio')refresh()};
-ACT.stSubmit=()=>{ST.sending=true;refresh();
-  if(net.online){const bar=()=>$('#stBar');setTimeout(()=>{const b=bar();if(b)b.style.width='70%'},30);
-    api('/api/submissions','POST',{title:ST.title,author:ST.author,lang:ST.lang,genre:ST.genre,desc:ST.desc,tags:ST.tags,cover:ST.cover,fileName:ST.fileName,body:ST.body}).then(x=>subDone(x.sub)).catch(()=>{ST.sending=false;toast(t('err_send'));if(NAV.cur.name==='studio')refresh()});return}
-  let v=0;const iv=setInterval(()=>{v+=14;const bar=$('#stBar');if(bar)bar.style.width=Math.min(100,v)+'%';if(v>=100){clearInterval(iv);setTimeout(()=>subDone({id:'s'+Date.now(),title:ST.title.trim(),status:'moderation'}),300)}},220)};
-
-/* =====================================================================
    PROFILE & SETTINGS
    ===================================================================== */
 const PROF={open:{}};
@@ -579,6 +499,7 @@ SCREENS.profile=()=>{
     ${admin?`<button class="alert" data-a="openAdmin"><span class="aico" style="background:var(--acc);color:#fff">${ico('spark',20)}</span><div class="grow"><b>Админ-панель</b><div class="mute" style="font-size:12.5px;font-weight:500">Статистика, модерация, рассылка, чат</div></div>${ico('chev',18)}</button>`:''}
     <div class="list">
       ${rowBtn('openStudio','pen',t('open_studio'),t('studio_desc'))}
+      ${net.online?rowBtn('openAch','star',tr('Достижения','Yutuqlar'),tr('Награды читателя и автора','O‘quvchi va muallif mukofotlari')):''}
       ${net.online&&S.donateOn?rowBtn('openDonate','heart',tr('Поддержать проект','Loyihani qo‘llab-quvvatlash'),S.me&&S.me.patron?tr('⭐ Вы меценат, спасибо!','⭐ Siz homiysiz, rahmat!'):tr('Новые книги и развитие платформы','Yangi kitoblar va platforma rivoji')):''}
       ${net.online?rowBtn('openSupport','chat',tr('Поддержка','Yordam'),tr('Написать администратору','Administratorga yozish'),S.me&&S.me.supportUnread?`<span class="badge">${S.me.supportUnread}</span>`:''):''}
     </div></div>
@@ -607,7 +528,6 @@ ACT.pRTheme=el=>{S.reader.theme=el.dataset.v;save();refresh()};
 ACT.setGoal=el=>{S.goal=+el.dataset.v;save();refresh()};
 CHG.pSize=el=>{S.reader.size=+el.value;save();refresh()};
 ACT.toggleN=el=>{const k=el.dataset.k;S.notif[k]=!S.notif[k];save();el.classList.toggle('on',S.notif[k]);el.setAttribute('aria-checked',S.notif[k])};
-ACT.openStudio=()=>{ST.mode='home';ST.sent=false;ST.sending=false;go('studio');loadAuthor();if(net.online)api('/api/bootstrap').then(d=>{S.subs=d.subs;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
 ACT.showOnb=()=>{OB.i=0;go('onboarding')};
 ACT.resetAsk=()=>openSheet(`<h2>${t('reset_ask')}</h2><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">${t('cancel')}</button><button class="btn grow" data-a="resetDo">${t('reset_yes')}</button></div>`);
 ACT.resetDo=()=>{const lang=S.lang;try{localStorage.removeItem(KEY)}catch(e){}S=DEFAULT();S.lang=lang;S.onboarded=true;Object.keys(LOADED).forEach(k=>delete LOADED[k]);resetCat();closeSheet();toast(t('reset_done'));refresh();
@@ -644,6 +564,13 @@ try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e
 /* ---------- boot ---------- */
 const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
+const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
+initAchievements(ctx2);
+initStudio(ctx2);
+/* things that can unlock an achievement ask the server to re-check shortly after they happen */
+['toggleSave','revSubmit','follow','rQuote','rFinish'].forEach(n=>{const f=ACT[n];if(f)ACT[n]=function(){const r=f.apply(this,arguments);ctx2.checkAch();return r}});
+['cNew','cReply','topicNew'].forEach(n=>{const f=FORMS[n];if(f)FORMS[n]=function(){const r=f.apply(this,arguments);ctx2.checkAch();return r}});
+ctx2.checkAch(6000);
 if(stale)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Сессия устарела','Seans eskirgan')}</b><span>${tr('Закройте приложение и откройте его заново.','Ilovani yoping va qayta oching.')}</span><button class="btn" data-a="tgClose">${tr('Закрыть','Yopish')}</button></div>`;
 else if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Доступ ограничен','Kirish cheklangan')}</b><span>${tr('Ваш аккаунт заблокирован администратором.','Akkauntingiz administrator tomonidan bloklangan.')}</span></div>`;
 else{

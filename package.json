@@ -17,5 +17,8 @@
   "devDependencies": {
     "vite": "^6.0.0",
     "wrangler": "^4.153.0"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
   }
 }

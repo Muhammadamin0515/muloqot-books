@@ -14,6 +14,7 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS book_seen(user_id TEXT,book_id TEXT,day TEXT,type TEXT,PRIMARY KEY(user_id,book_id,day,type))',
   'CREATE TABLE IF NOT EXISTS book_versions(id INTEGER PRIMARY KEY AUTOINCREMENT,book_id TEXT,created INTEGER,data TEXT)',
   'CREATE INDEX IF NOT EXISTS idx_versions_book ON book_versions(book_id)',
+  'CREATE TABLE IF NOT EXISTS achievements(user_id TEXT,key TEXT,ts INTEGER,seen INTEGER DEFAULT 0,PRIMARY KEY(user_id,key))',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];
 const ALTERS=[
@@ -25,7 +26,8 @@ const ALTERS=[
   'ALTER TABLE threads ADD COLUMN hidden INTEGER DEFAULT 0',
   'ALTER TABLE comments ADD COLUMN hidden INTEGER DEFAULT 0',
   'ALTER TABLE users ADD COLUMN reminded TEXT',
-  'ALTER TABLE submissions ADD COLUMN update_book_id TEXT'
+  'ALTER TABLE submissions ADD COLUMN update_book_id TEXT',
+  'ALTER TABLE submissions ADD COLUMN style INTEGER'
 ];
 let ready;
 export const ensureSchema=env=>ready||(ready=(async()=>{

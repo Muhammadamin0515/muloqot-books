@@ -1,5 +1,6 @@
 import {parseManuscript} from './parse.js';
 import {ensureSchema} from './schema.js';
+import {COVER_STYLES} from './covers.js';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
 const clip=(s,n)=>String(s??'').trim().slice(0,n);
@@ -49,7 +50,7 @@ async function setupBot(env){
   return r.every(x=>x&&x.ok);
 }
 /** Bot message to a Telegram user (their id is the private chat id). No-op without BOT_TOKEN or for dev users. */
-const notify=(c,userId,text,o={})=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...(o.silent?{disable_notification:true}:{}),...(o.button===false?{}:openBtn(c.env))}))};
+const notify=(c,userId,text,o={})=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...(o.silent?{disable_notification:true}:{}),...(o.button===false?{}:openBtn(c.env,{open:o.open||''}))}))};
 
 /* ---------- D1 helpers ---------- */
 const stmt=(c,sql,...a)=>c.env.DB.prepare(sql).bind(...a.map(x=>x===undefined?null:x));
@@ -119,7 +120,7 @@ route('GET','/api/bootstrap',async c=>{
   const uid=c.user.id;
   const [books,authors,fol,meta,sub,usr,my1,my2]=await batch(c,[
     stmt(c,'SELECT * FROM books WHERE hidden=0 OR hidden IS NULL'),stmt(c,'SELECT * FROM authors'),stmt(c,'SELECT author_id,COUNT(*) n FROM follows GROUP BY author_id'),
-    stmt(c,'SELECT key,value FROM meta'),stmt(c,'SELECT * FROM submissions WHERE user_id=? ORDER BY created DESC',uid),
+    stmt(c,'SELECT key,value FROM meta'),stmt(c,"SELECT * FROM submissions WHERE user_id=? AND status<>'withdrawn' ORDER BY created DESC",uid),
     stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid)]);
   const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)]));
   const sup=await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid);
@@ -219,21 +220,54 @@ route('POST','/api/quotes',async c=>{
   return json({quote:(await loadQuotes(c,id))[0]});
 });
 
+const MAX_TEXT_BYTES=1_400_000,MAX_COVER_CHARS=450_000;
+const byteLen=t=>new TextEncoder().encode(t).length;
 route('POST','/api/submissions',async c=>{
-  const b=c.body,title=clip(b.title,120),desc=clip(b.desc,3000),body=String(b.body||'').slice(0,1_200_000);
-  if(title.length<2||desc.length<20)return bad();
+  const b=c.body,title=clip(b.title,120),desc=clip(b.desc,1500),body=String(b.body||'');
+  if(title.length<2)return bad(400,'title');
+  if(desc.length<20)return bad(400,'desc');
+  if(b.rights!==true)return bad(400,'rights');
   if(body.trim().length<500)return bad(400,'manuscript');
-  const cover=typeof b.cover==='string'&&b.cover.startsWith('data:image/')&&b.cover.length<900_000?b.cover:null;
+  if(byteLen(body)>MAX_TEXT_BYTES)return bad(413,'toolarge');
+  if(!parseManuscript(body).length)return bad(400,'manuscript');
+  let cover=null;
+  if(typeof b.cover==='string'&&b.cover){
+    if(!/^data:image\/(jpeg|png|webp);base64,/.test(b.cover))return bad(400,'coverformat');
+    if(b.cover.length>MAX_COVER_CHARS)return bad(413,'coverlarge');
+    cover=b.cover;
+  }
+  const style=Number.isInteger(b.style)&&b.style>=0&&b.style<COVER_STYLES.length?b.style:null;
   const id='s'+id8();
-  await run(c,'INSERT INTO submissions(id,user_id,title,author_name,lang,genre,description,tags,cover,file_name,body,status,note,book_id,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,c.user.id,title,clip(b.author,60)||c.user.name,b.lang==='uz'?'uz':'ru',GENRES.includes(b.genre)?b.genre:'novel',desc,clip(b.tags,200),cover,clip(b.fileName,120),body,'moderation','',null,Date.now());
+  await run(c,'INSERT INTO submissions(id,user_id,title,author_name,lang,genre,description,tags,cover,file_name,body,status,note,book_id,created,style) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,c.user.id,title,clip(b.author,60)||c.user.name,b.lang==='uz'?'uz':'ru',GENRES.includes(b.genre)?b.genre:'novel',desc,'',cover,clip(b.fileName,120),body,'moderation','',null,Date.now(),style);
   await notifyAdmins(c,'submissions',`Новая заявка на модерацию: «${title}»`);
   return json({sub:subOut(await get(c,'SELECT * FROM submissions WHERE id=?',id))});
 });
+/* The author's own submission, with the manuscript, so a rejected one can be fixed and sent again. */
+route('GET','/api/submissions/:id',async(c,id)=>{
+  const s=await get(c,'SELECT * FROM submissions WHERE id=? AND user_id=?',id,c.user.id);if(!s)return bad(404);
+  return json({id:s.id,title:s.title,author:s.author_name,lang:s.lang,genre:s.genre,desc:s.description,cover:s.cover,style:s.style,fileName:s.file_name,body:s.body,status:s.status,note:s.note||''});
+});
+route('POST','/api/submissions/:id/withdraw',async(c,id)=>{
+  const s=await get(c,"SELECT id FROM submissions WHERE id=? AND user_id=? AND status='moderation'",id,c.user.id);if(!s)return bad(404);
+  await run(c,"UPDATE submissions SET status='withdrawn' WHERE id=?",id);return json({ok:true});
+});
+route('POST','/api/author/profile',async c=>{
+  const a=await get(c,'SELECT * FROM authors WHERE user_id=?',c.user.id);if(!a)return bad(404,'noauthor');
+  const d=P(a.data);
+  d.city={ru:clip(c.body.cityRu,60),uz:clip(c.body.cityUz,60)||clip(c.body.cityRu,60)};
+  d.bio={ru:clip(c.body.bioRu,600),uz:clip(c.body.bioUz,600)||clip(c.body.bioRu,600)};
+  await run(c,'UPDATE authors SET data=? WHERE id=?',J(d),a.id);return json({ok:true});
+});
+route('GET','/api/author/profile',async c=>{
+  const a=await get(c,'SELECT data FROM authors WHERE user_id=?',c.user.id);if(!a)return json({author:null});
+  const d=P(a.data);return json({author:{name:d.name,cityRu:d.city?.ru||'',cityUz:d.city?.uz||'',bioRu:d.bio?.ru||'',bioUz:d.bio?.uz||''}});
+});
 route('GET','/api/admin/submissions',async c=>{
-  const rows=await all(c,"SELECT id,title,status,note,book_id,author_name,lang,genre,description,LENGTH(body) chars,SUBSTR(body,1,900) preview,user_id,update_book_id FROM submissions WHERE status='moderation' ORDER BY created");
+  const rows=await all(c,"SELECT id,title,status,note,book_id,author_name,lang,genre,description,LENGTH(body) chars,SUBSTR(body,1,900) preview,user_id,update_book_id,cover,style FROM submissions WHERE status='moderation' ORDER BY created");
   const out=[];
   for(const s of rows){
-    const o={...subOut(s),author:s.author_name,lang:s.lang,genre:s.genre,desc:s.description,chars:s.chars,preview:s.preview,userId:s.user_id};
+    const o={...subOut(s),author:s.author_name,lang:s.lang,genre:s.genre,desc:s.description,chars:s.chars,preview:s.preview,userId:s.user_id,cover:s.cover||null,style:s.style};
+    if(!s.update_book_id)o.chapters=parseManuscript((await get(c,'SELECT body FROM submissions WHERE id=?',s.id)).body).length;
     if(s.update_book_id){const b=await get(c,'SELECT data FROM books WHERE id=?',s.update_book_id);
       if(b){const d=P(b.data);o.update={bookTitle:d.title,oldChapters:d.chapters.length,oldChars:d.chapters.reduce((n,x)=>n+x.p.join('').length,0),newChapters:parseManuscript((await get(c,'SELECT body FROM submissions WHERE id=?',s.id)).body).length,note:s.description}}}
     out.push(o);
@@ -263,13 +297,11 @@ route('POST','/api/admin/submissions/:id/approve',async(c,id)=>{
     await run(c,'INSERT INTO authors VALUES(?,?,?,?)',aid,J({id:aid,name:s.author_name,city:{ru:'',uz:''},hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal,bio:{ru:'',uz:''}}),0,s.user_id);
     a={id:aid}}
   const bid='b'+id8(),chars=chapters.reduce((n,x)=>n+x.p.join('').length,0);
-  const motifs=['window','tree','train','caravan','books','tea','river','door','mount','bird','clock','ornament'];
-  const pals=[['#2a1a14','#7a2e17','#e8742f','#140c09','#f0dfc6'],['#101418','#1d2a2e','#d8552a','#0a0d0f','#e9dcc3'],['#17201d','#2d4a42','#e07a2f','#0e1411','#efe1c2'],['#1c1416','#5a2230','#f08f45','#100a0c','#f1ddc3']];
-  const h=[...s.id].reduce((x,ch)=>x+ch.charCodeAt(0),0);
+  const h=[...s.id].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[Number.isInteger(s.style)&&s.style>=0&&s.style<COVER_STYLES.length?s.style:h%COVER_STYLES.length];
   const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
-  const book={id:bid,a:a.id,title:s.title,lang:s.lang,genre:s.genre,rating:4,count:0,pages:Math.max(1,Math.round(chars/1800)),year:new Date().getFullYear(),added,motif:motifs[h%motifs.length],pal:pals[h%pals.length],desc:s.description,chapters,...(s.cover?{img:s.cover}:{})};
+  const book={id:bid,a:a.id,title:s.title,lang:s.lang,genre:s.genre,rating:4,count:0,pages:Math.max(1,Math.round(chars/1800)),year:new Date().getFullYear(),added,motif:st.motif,pal:st.pal,desc:s.description,chapters,...(s.cover?{img:s.cover}:{})};
   await batch(c,[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added),stmt(c,"UPDATE submissions SET status='approved',book_id=? WHERE id=?",bid,id)]);
-  notify(c,s.user_id,`Книга «${s.title}» опубликована в каталоге!`);
+  notify(c,s.user_id,`Ваша книга «${s.title}» опубликована в каталоге. Поздравляем!`,{open:'book_'+bid});
   for(const f of await all(c,'SELECT f.user_id,u.state FROM follows f JOIN users u ON u.id=f.user_id WHERE f.author_id=?',a.id))
     if(P(f.state||'{}').notif?.authors!==false)notify(c,f.user_id,`Новая книга автора ${s.author_name}: «${s.title}»`);
   return json({bookId:bid});
@@ -560,6 +592,66 @@ route('POST','/api/author/books/:id/update',async(c,id)=>{
   await notifyAdmins(c,'submissions',`Обновление текста книги «${b.title}» ждёт проверки`);
   return json({ok:true});
 });
+/* ---------- achievements (computed from facts, unlocks are remembered) ---------- */
+const ACH=[
+  ['r_open','reader','lib',1,'opened','Первая страница','Birinchi sahifa','Откройте любую книгу','Istalgan kitobni oching'],
+  ['r_fin1','reader','check',1,'finished','Дочитано','Tugatildi','Дочитайте первую книгу до конца','Birinchi kitobni oxirigacha o‘qing'],
+  ['r_fin3','reader','check',3,'finished','Книголюб','Kitobsevar','Дочитайте 3 книги','3 ta kitobni tugating'],
+  ['r_fin10','reader','check',10,'finished','Библиофил','Bibliofil','Дочитайте 10 книг','10 ta kitobni tugating'],
+  ['r_str3','reader','flame',3,'streak','Три дня подряд','Ketma-ket 3 kun','Читайте 3 дня подряд','3 kun ketma-ket o‘qing'],
+  ['r_str7','reader','flame',7,'streak','Неделя чтения','O‘qish haftasi','Читайте 7 дней подряд','7 kun ketma-ket o‘qing'],
+  ['r_str30','reader','flame',30,'streak','Месяц с книгой','Kitob bilan bir oy','Читайте 30 дней подряд','30 kun ketma-ket o‘qing'],
+  ['r_rev1','reader','star',1,'reviews','Первый отзыв','Birinchi sharh','Напишите отзыв о книге','Kitob haqida sharh yozing'],
+  ['r_rev5','reader','star',5,'reviews','Критик','Tanqidchi','Напишите 5 отзывов','5 ta sharh yozing'],
+  ['r_save5','reader','bookmark',5,'saved','Своя полка','O‘z javonim','Сохраните 5 книг в библиотеку','Kutubxonaga 5 ta kitob saqlang'],
+  ['r_quote3','reader','quote',3,'quotes','Любитель цитат','Iqtiboslar sevuvchi','Сохраните 3 цитаты','3 ta iqtibos saqlang'],
+  ['r_lang','reader','globe',2,'langs','Два языка','Ikki til','Дочитайте книги на русском и узбекском','Rus va o‘zbek tilidagi kitoblarni tugating'],
+  ['r_talk','reader','chat',3,'talk','В разговоре','Suhbatda','Напишите 3 комментария или темы','3 ta izoh yoki mavzu yozing'],
+  ['r_follow','reader','user',3,'follows','Подписчик','Obunachi','Подпишитесь на 3 авторов','3 ta muallifga obuna bo‘ling'],
+  ['r_patron','reader','heart',1,'patron','Меценат','Homiy','Поддержите проект','Loyihani qo‘llab-quvvatlang'],
+  ['a_debut','author','pen',1,'books','Дебют','Debyut','Опубликуйте первую книгу','Birinchi kitobingizni nashr eting'],
+  ['a_writer','author','pen',3,'books','Писатель','Yozuvchi','Опубликуйте 3 книги','3 ta kitob nashr eting'],
+  ['a_v100','author','spark',100,'views','Сотня просмотров','100 ko‘rish','Наберите 100 просмотров','100 ta ko‘rish to‘plang'],
+  ['a_v1000','author','spark',1000,'views','Тысяча просмотров','1000 ko‘rish','Наберите 1000 просмотров','1000 ta ko‘rish to‘plang'],
+  ['a_read10','author','clock',10,'reads','Первые читатели','Birinchi o‘quvchilar','10 человек начали читать ваши книги','10 kishi kitoblaringizni o‘qiy boshladi'],
+  ['a_fin10','author','check',10,'finishes','Дочитали до конца','Oxirigacha o‘qidi','10 человек дочитали ваши книги','10 kishi kitoblaringizni tugatdi'],
+  ['a_loved','author','star',5,'loved','Любимец читателей','O‘quvchilar sevimlisi','Получите 5 оценок со средним не ниже 4,5','O‘rtacha 4,5 dan past bo‘lmagan 5 ta baho oling'],
+  ['a_rev10','author','chat',10,'ownreviews','Вас услышали','Siz eshitildingiz','10 отзывов на ваши книги','Kitoblaringizga 10 ta sharh'],
+  ['a_update','author','pen',1,'updates','Работа над ошибками','Xatolar ustida ishlash','Обновите текст опубликованной книги','Nashr etilgan kitob matnini yangilang']
+];
+const bestStreak=days=>{const d=[...new Set(days||[])].sort();let best=0,run=0,prev=null;for(const x of d){const t=Date.parse(x+'T00:00:00Z');run=prev!==null&&t-prev===864e5?run+1:1;prev=t;if(run>best)best=run}return best};
+async function achFacts(c,uid){
+  const own="FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?1";
+  const [u,rv,th,cm,don,fol,bk,my,st,rt,orv,up]=await batch(c,[
+    stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT COUNT(*) n FROM reviews WHERE user_id=?',uid),stmt(c,'SELECT COUNT(*) n FROM threads WHERE user_id=?',uid),stmt(c,'SELECT COUNT(*) n FROM comments WHERE user_id=?',uid),
+    stmt(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),stmt(c,'SELECT COUNT(*) n FROM follows WHERE user_id=?',uid),
+    stmt(c,"SELECT id,json_extract(data,'$.lang') l FROM books"),
+    stmt(c,`SELECT COUNT(*) n ${own}`,uid),
+    stmt(c,"SELECT COALESCE(SUM(s.views),0) v,COALESCE(SUM(s.reads),0) r,COALESCE(SUM(s.finishes),0) f FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
+    stmt(c,"SELECT COUNT(*) n,COALESCE(AVG(r.value),0) avg FROM ratings r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
+    stmt(c,"SELECT COUNT(*) n FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
+    stmt(c,"SELECT COUNT(*) n FROM submissions WHERE user_id=? AND status='approved' AND update_book_id IS NOT NULL",uid)]);
+  const state=P(u[0]?.state||'{}'),lang=Object.fromEntries(bk.map(b=>[b.id,b.l]));
+  const fin=state.finished||[];
+  const ratings=rt[0];
+  return{opened:Object.keys(state.progress||{}).length,finished:fin.length,streak:bestStreak(state.days),reviews:rv[0].n,saved:(state.saved||[]).length,quotes:(state.myQuotes||[]).length,
+    langs:new Set(fin.map(id=>lang[id]).filter(Boolean)).size,talk:th[0].n+cm[0].n,follows:fol[0].n,patron:don[0].s>0?1:0,
+    books:my[0].n,views:st[0].v,reads:st[0].r,finishes:st[0].f,loved:ratings.avg>=4.5?ratings.n:Math.min(ratings.n,4),ownreviews:orv[0].n,updates:up[0].n};
+}
+const achOut=(d,facts,row,isNew)=>({id:d[0],group:d[1],icon:d[2],target:d[3],current:Math.min(facts[d[4]]||0,d[3]),unlocked:(facts[d[4]]||0)>=d[3],ts:row?.ts||null,isNew:!!isNew,title:{ru:d[5],uz:d[6]},desc:{ru:d[7],uz:d[8]}});
+/* mode=check returns only newly unlocked achievements (for the toast); the default returns the full list for the screen. */
+route('GET','/api/achievements',async c=>{
+  const check=new URL(c.request.url).searchParams.get('mode')==='check',uid=c.user.id;
+  const facts=await achFacts(c,uid),have=new Map((await all(c,'SELECT key,ts,seen FROM achievements WHERE user_id=?',uid)).map(r=>[r.key,r])),now=Date.now(),list=[];
+  for(const d of ACH){
+    const got=(facts[d[4]]||0)>=d[3];let row=have.get(d[0]);
+    if(got&&!row){await run(c,'INSERT OR IGNORE INTO achievements(user_id,key,ts,seen) VALUES(?,?,?,0)',uid,d[0],now);row={ts:now,seen:0}}
+    list.push(achOut(d,facts,row,row&&!row.seen));
+  }
+  await run(c,'UPDATE achievements SET seen=1 WHERE user_id=? AND seen=0',uid);
+  return json(check?{fresh:list.filter(a=>a.isNew)}:{list,total:list.length,unlocked:list.filter(a=>a.unlocked).length});
+});
+
 /* ---------- inline search (@bot query in any chat) ---------- */
 const fold=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,'').replace(/ё/g,'е');
 const hesc=t=>String(t||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
