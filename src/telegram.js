@@ -49,3 +49,14 @@ export const close=()=>{if(inTg)try{w.close()}catch(e){}};
 /* Rich "share a prepared card" flow (Mini Apps 8.0+). Returns false when the client cannot do it, so callers can fall back to a plain link. */
 export const canShareMessage=()=>!!(inTg&&w.shareMessage&&(!w.isVersionAtLeast||w.isVersionAtLeast('8.0')));
 export function shareMessage(id,cb){if(!canShareMessage())return false;try{w.shareMessage(id,cb);return true}catch(e){return false}}
+
+/* Full-screen reading: hides Telegram's own header on clients that support it (Mini Apps 8.0+); older clients just keep the expanded view. */
+export function fullscreen(on){
+  if(!inTg)return false;
+  try{
+    if(w.isVersionAtLeast&&!w.isVersionAtLeast('8.0'))return false;
+    if(on&&w.requestFullscreen){w.requestFullscreen();return true}
+    if(!on&&w.exitFullscreen&&w.isFullscreen){w.exitFullscreen();return true}
+  }catch(e){}
+  return false;
+}

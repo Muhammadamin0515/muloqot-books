@@ -24,7 +24,7 @@ const DEFAULT=()=>({onboarded:false,lang:'ru',theme:'dark',name:'Читател�
   progress:{},finished:[],saved:[],
   bookmarks:[],
   ratings:{},reviews:clone(SEED_REVIEWS),threads:clone(SEED_THREADS),reacts:{},follows:[],days:[],
-  myQuotes:[],qLikes:{},reader:{size:19,lh:1.7,theme:'dark',font:'serif'},
+  myQuotes:[],qLikes:{},reader:{size:19,lh:1.7,theme:'dark',family:'literata',align:'left',margin:'m',full:false},
   notif:{chapters:true,replies:true,reminder:false,authors:true},goal:20,
   subs:[],outbox:{p:{},b:{}}});
 let S;
@@ -70,7 +70,7 @@ const MODEL={};const ONINPUT={};const CHG={};const FORMS={};const ACT={};const S
 const TABS=['home','catalog','library','community','profile'];
 const NAV={cur:null,stack:[],tab:'home'};
 const OB={i:0};
-function leave(){const sc=$('#screen');if(NAV.cur&&sc)NAV.cur.scroll=sc.scrollTop}
+function leave(){const sc=$('#screen');if(NAV.cur&&sc)NAV.cur.scroll=sc.scrollTop;if(NAV.cur&&NAV.cur.name==='reader'&&S.reader.full)tg.fullscreen(false)}
 function go(name,p={}){leave();if(TABS.includes(name)){NAV.stack=[];NAV.tab=name}else NAV.stack.push(NAV.cur);NAV.cur={name,p};render(true)}
 function replace(name,p={}){NAV.cur={name,p};render(true)}
 function back(){if(!NAV.stack.length){go('home');return}NAV.cur=NAV.stack.pop();render(true)}
@@ -567,11 +567,21 @@ function endCard(b,last){
 }
 const redrawEnd=()=>{const el=$('.rend');if(el&&R.id&&NAV.cur.name==='reader'){const b=book(R.id);el.outerHTML=endCard(b,R.ch===b.chapters.length-1)}};
 const softRefresh=()=>NAV.cur.name==='reader'?redrawEnd():refresh();
+/* ---------- reader appearance ---------- */
+const RTHEMES=[['dark',['Тёмная','Qorong‘i'],'#0c0a09','#f3ece1'],['black',['Чёрная','Qora'],'#000','#cfc9bf'],['gray',['Серая','Kulrang'],'#2b2d31','#d6d6d9'],['white',['Белая','Oq'],'#fff','#111'],['light',['Светлая','Yorug‘'],'#f5f2ec','#1e1913'],
+  ['sepia',['Сепия','Sepiya'],'#f4ecd8','#5b4636'],['paper',['Бумага','Qog‘oz'],'#eee2c6','#3a2d20'],['parchment',['Старая бумага','Eski qog‘oz'],'#e6d3a2','#33220f','var(--paper)'],['cardboard',['Картон','Karton'],'#c4a67c','#241709','var(--paper)'],['green',['Зелёная','Yashil'],'#d3e8d3','#1f3a2a']];
+const rThemeName=k=>{const t0=RTHEMES.find(x=>x[0]===k);return t0?tr(t0[1][0],t0[1][1]):k};
+/* Open-licence (OFL) fonts with Cyrillic; Google Fonts loads each one only when it is used */
+const RFONTS=[['literata','Literata',"'Literata',Georgia,serif"],['ptserif','PT Serif',"'PT Serif',Georgia,serif"],['lora','Lora',"'Lora',Georgia,serif"],['merri','Merriweather',"'Merriweather',Georgia,serif"],['garamond','EB Garamond',"'EB Garamond',Georgia,serif"],['ptsans','PT Sans',"'PT Sans',system-ui,sans-serif"],['manrope','Manrope','var(--ui)']];
+const rFamily=rs=>(RFONTS.find(f=>f[0]===rs.family)||RFONTS.find(f=>f[0]===(rs.font==='sans'?'ptsans':'literata')))[2];
+const RMARGIN={s:'16px',m:'26px',l:'42px'};
+const rVars=rs=>`--rs:${rs.size}px;--rlh:${rs.lh};--rf:${rFamily(rs)};--ralign:${rs.align==='justify'?'justify':'left'};--rpad:${RMARGIN[rs.margin]||RMARGIN.m}`;
 SCREENS.reader=({id})=>{
   const b=book(id),ch=b.chapters[R.ch],rs=S.reader,last=R.ch===b.chapters.length-1;
   const paras=ch.p.map((tx,i)=>`<p class="rp${bmFind(id,R.ch,i)?' bm':''}" data-i="${i}" data-a="rSel">${esc(tx)}</p>`).join('');
-  return `<div class="reader" data-mt="${rs.theme}" style="--rs:${rs.size}px;--rlh:${rs.lh};--rf:${rs.font==='sans'?'var(--ui)':'var(--read)'}">
+  return `<div class="reader${rs.full?' full':''}" data-mt="${rs.theme}" style="${rVars(rs)}">
   <header class="rhead px"><button class="iconbtn" data-a="toBook" aria-label="${t('to_book')}">${ico('back')}</button><div class="ttl"><b>${esc(b.title)}</b><small>${t('chapter')} ${R.ch+1} · ${esc(ch.t)}</small></div><button id="bmBtn" class="iconbtn" data-a="rBm" aria-label="${t('bm_added')}">${ico('bookmark',21)}</button>${b.chapters.length>1&&!b.chapters.every(c=>c.s)?`<button class="iconbtn" data-a="rToc" aria-label="${t('toc')}">${ico('list',21)}</button>`:''}<button class="iconbtn" data-a="rSet" aria-label="${t('text_settings')}">${ico('text',22)}</button></header>
+  <div class="rfloat"><button id="bmBtn2" class="iconbtn" data-a="rBm" aria-label="${t('bm_added')}">${ico('bookmark',21)}</button><button class="iconbtn" data-a="rSet" aria-label="${t('text_settings')}">${ico('text',22)}</button><button class="iconbtn" data-a="rFull" aria-label="${tr('Выйти из полного экрана','To‘liq ekrandan chiqish')}">${ico('x',20)}</button></div>
   <div class="rwrap"><div id="rbody"><div class="chhead"><span class="eyebrow">${t('chapter')} ${R.ch+1} / ${b.chapters.length}</span><h2>${esc(ch.t)}</h2></div>${paras}${endCard(b,last)}</div>
   ${R.fresh?`<div id="rload" class="rload" aria-label="${t('opening')}"><div class="sk" style="height:14px;width:36%"></div><div class="sk" style="height:34px;width:78%;margin-bottom:12px"></div>${Array.from({length:9},(_,i)=>`<div class="sk" style="height:12px;width:${i%4===3?'60%':'100%'}"></div>`).join('')}</div>`:''}
   <div id="qbar" class="qbar" hidden><button data-a="rQuote">${ico('quote',16)} ${t('save_quote')}</button><button data-a="rCopy">${ico('share',16)} ${t('copy')}</button></div></div>
@@ -579,6 +589,7 @@ SCREENS.reader=({id})=>{
 };
 AFTER.reader=()=>{
   const body=$('#rbody');if(!body)return;
+  if(S.reader.full)tg.fullscreen(true);
   const max=body.scrollHeight-body.clientHeight;
   if(R.startPara!=null){const p=body.querySelector(`.rp[data-i="${R.startPara}"]`);if(p)body.scrollTop=Math.max(0,p.offsetTop-32)}
   else if(R.startP>0)body.scrollTop=R.startP*max;
@@ -590,7 +601,7 @@ AFTER.reader=()=>{
 let rraf=0;
 function onRScroll(){if(rraf)return;rraf=requestAnimationFrame(()=>{rraf=0;const body=$('#rbody');if(!body||NAV.cur.name!=='reader')return;const max=body.scrollHeight-body.clientHeight;const p=max>0?Math.min(1,body.scrollTop/max):1;setProgress(R.id,R.ch,p,curPara());const v=pctRaw(R.id);const bar=$('#rbar'),pc=$('#rpc');if(bar)bar.style.width=v+'%';if(pc)pc.textContent=pctLabel(v);updateBm()})}
 function curPara(){const body=$('#rbody');if(!body)return 0;const top=body.getBoundingClientRect().top;const ps=$$('.rp',body);for(const p of ps){if(p.getBoundingClientRect().bottom>top+60)return +p.dataset.i}return Math.max(0,ps.length-1)}
-function updateBm(){const b=$('#bmBtn');if(b)b.classList.toggle('on',!!bmFind(R.id,R.ch,curPara()))}
+function updateBm(){const on=!!bmFind(R.id,R.ch,curPara());['#bmBtn','#bmBtn2'].forEach(q=>{const b=$(q);if(b)b.classList.toggle('on',on)})}
 function markBm(){$$('#rbody .rp').forEach(p=>p.classList.toggle('bm',!!bmFind(R.id,R.ch,+p.dataset.i)));updateBm()}
 ACT.rBm=()=>{const i=curPara(),ex=bmFind(R.id,R.ch,i);
   if(ex){S.bookmarks=S.bookmarks.filter(x=>x!==ex);queueBookmark(ex.id,'del');toast(t('bm_removed'))}
@@ -614,15 +625,27 @@ ACT.rCh=el=>{closeSheet();gotoChapter(+el.dataset.i)};
 ACT.toBook=()=>{const id=R.id;BK.tab='about';BK.syn=false;const top=NAV.stack[NAV.stack.length-1];if(top&&top.name==='book'&&top.p.id===id){back();return}replace('book',{id})};
 ACT.rFinish=()=>{track(R.id,'finish');if(!S.finished.includes(R.id))S.finished.push(R.id);save();toast(t('finished_toast'));redrawEnd();if(!hasMyReview(R.id))ACT.openReview({dataset:{id:R.id}})};
 ACT.rToc=()=>{const b=book(R.id);openSheet(`<h2>${t('toc')}</h2><div class="toc">${b.chapters.map((c,i)=>`<button class="${i===R.ch?'on':''}" data-a="rCh" data-i="${i}"><small>${i+1}</small><span>${esc(c.t)}</span></button>`).join('')}</div>`)};
-function setHtml(){const rs=S.reader;const seg=(arr,cur,act)=>`<div class="seg">${arr.map(([k,n])=>`<button class="${String(cur)===String(k)?'on':''}" data-a="${act}" data-v="${k}">${n}</button>`).join('')}</div>`;
-  return `<div class="rset"><h2>${t('text_settings')}</h2><h3>${t('font_size')}</h3><div class="stepper"><button data-a="rSize" data-d="-1" aria-label="A−">A−</button><div class="v" aria-live="polite">${rs.size}</div><button data-a="rSize" data-d="1" aria-label="A+">A+</button></div>
-  <h3>${t('line_height')}</h3>${seg([[1.5,t('lh_tight')],[1.7,t('lh_normal')],[1.95,t('lh_airy')]],rs.lh,'rLh')}<h3>${t('theme')}</h3>${seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],rs.theme,'rTheme')}<h3>${t('font')}</h3>${seg([['serif',t('f_serif')],['sans',t('f_sans')]],rs.font,'rFont')}</div>`}
-function applyReader(){const rd=$('.reader'),rs=S.reader;if(rd){rd.dataset.mt=rs.theme;rd.style.setProperty('--rs',rs.size+'px');rd.style.setProperty('--rlh',rs.lh);rd.style.setProperty('--rf',rs.font==='sans'?'var(--ui)':'var(--read)')}setSheet(setHtml());save()}
+function setHtml(){
+  const rs=S.reader,seg=(arr,cur,act)=>`<div class="seg">${arr.map(([k,n])=>`<button class="${String(cur)===String(k)?'on':''}" data-a="${act}" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const fam=(RFONTS.find(f=>f[0]===rs.family)||RFONTS[0])[0];
+  return `<div class="rset"><h2>${t('text_settings')}</h2>
+  <h3>${t('theme')}</h3><div class="rthemes">${RTHEMES.map(([k,n,bg,fg,img])=>`<button class="rt ${rs.theme===k?'on':''}" data-a="rTheme" data-v="${k}" aria-pressed="${rs.theme===k}" style="--sb:${bg};--sf:${fg};${img?`--si:${img}`:''}"><span>Аа</span>${tr(n[0],n[1])}</button>`).join('')}</div>
+  <h3>${t('font')}</h3><div class="rfonts">${RFONTS.map(([k,n,css])=>`<button class="${fam===k?'on':''}" data-a="rFont" data-v="${k}" style="font-family:${css}">${n}</button>`).join('')}</div>
+  <h3>${t('font_size')}</h3><div class="stepper"><button data-a="rSize" data-d="-1" aria-label="A−">A−</button><div class="v" aria-live="polite">${rs.size}</div><button data-a="rSize" data-d="1" aria-label="A+">A+</button></div>
+  <h3>${t('line_height')}</h3>${seg([[1.5,t('lh_tight')],[1.7,t('lh_normal')],[1.95,t('lh_airy')]],rs.lh,'rLh')}
+  <h3>${tr('Поля','Chekkalar')}</h3>${seg([['s',tr('Узкие','Tor')],['m',tr('Обычные','Oddiy')],['l',tr('Широкие','Keng')]],rs.margin||'m','rMargin')}
+  <h3>${tr('Выравнивание','Tekislash')}</h3>${seg([['left',tr('По левому краю','Chap')],['justify',tr('По ширине','Kenglik')]],rs.align||'left','rAlign')}
+  <button class="tgl" data-a="rFull"><span>${tr('Читать во весь экран','To‘liq ekranda o‘qish')}</span><span class="tag ${rs.full?'acc':''}">${rs.full?tr('вкл','yoq'):tr('выкл','o‘ch')}</span></button></div>`}
+function applyReader(){const rd=$('.reader'),rs=S.reader;if(rd){rd.dataset.mt=rs.theme;rd.style.cssText=rVars(rs);rd.classList.toggle('full',!!rs.full)}setSheet(setHtml());save()}
 ACT.rSet=()=>openSheet(setHtml());
 ACT.rSize=el=>{S.reader.size=Math.max(15,Math.min(28,S.reader.size+ +el.dataset.d));applyReader()};
 ACT.rLh=el=>{S.reader.lh=+el.dataset.v;applyReader()};
 ACT.rTheme=el=>{S.reader.theme=el.dataset.v;applyReader()};
-ACT.rFont=el=>{S.reader.font=el.dataset.v;applyReader()};
+ACT.rFont=el=>{S.reader.family=el.dataset.v;applyReader()};
+ACT.rMargin=el=>{S.reader.margin=el.dataset.v;applyReader()};
+ACT.rAlign=el=>{S.reader.align=el.dataset.v;applyReader()};
+/* Full screen: hides the header and buttons (a small floating bar stays), and asks Telegram to hide its own header where supported. */
+ACT.rFull=()=>{S.reader.full=!S.reader.full;tg.fullscreen(S.reader.full);closeSheet();applyReader();closeSheet()};
 
 /* =====================================================================
    PROFILE & SETTINGS
@@ -639,7 +662,7 @@ SCREENS.profile=()=>{
   const grp=(id,title,sub,body)=>`<details class="dgroup" data-pg="${id}" ${PROF.open[id]?'open':''}><summary><b>${title}</b><span>${sub}</span></summary><div class="dbody">${body}</div></details>`;
   const rowBtn=(act,ic,title,sub,extra='')=>`<button class="li" data-a="${act}"><span class="aico">${ico(ic,20)}</span><div class="grow"><b>${title}</b><div class="mute" style="font-size:12.5px">${sub}</div></div>${extra}${ico('chev',18)}</button>`;
   const admin=S.me&&S.me.admin;
-  const nOn=Object.keys(S.notif).filter(k=>S.notif[k]).length,themeName={dark:t('t_dark'),light:t('t_light'),paper:t('t_paper')};
+  const nOn=Object.keys(S.notif).filter(k=>S.notif[k]).length,themeName={dark:t('t_dark'),light:t('t_light'),paper:t('t_paper'),black:rThemeName('black')};
   const field=(label,body)=>`<div class="field" style="margin-bottom:18px"><label>${label}</label>${body}</div>`;
   const streakN=streak();
   return `<header class="topbar px"><h2 class="display" style="font-size:26px">${t('profile')}</h2></header>
@@ -661,10 +684,10 @@ SCREENS.profile=()=>{
   <div class="sec"><div class="sec-h"><h2>${tr('Настройки','Sozlamalar')}</h2></div>
     ${grp('look',tr('Внешний вид','Tashqi ko‘rinish'),`${S.lang==='ru'?'Русский':'Oʻzbekcha'} · ${themeName[S.theme]}`,
       field(t('ui_lang'),seg([['ru','Русский'],['uz','Oʻzbekcha']],S.lang,'setLang'))+field(t('app_theme'),seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.theme,'setTheme')))}
-    ${grp('read',t('read_prefs'),`${tr('Шрифт','Shrift')} ${S.reader.size} · ${themeName[S.reader.theme]} · ${S.goal} ${t('min')}`,
+    ${grp('read',t('read_prefs'),`${tr('Шрифт','Shrift')} ${S.reader.size} · ${rThemeName(S.reader.theme)} · ${S.goal} ${t('min')}`,
       field(`${t('font_size')}: <b class="mono">${S.reader.size}</b>`,`<input type="range" min="15" max="28" value="${S.reader.size}" data-chg="pSize" aria-label="${t('font_size')}" style="width:100%;accent-color:var(--acc)">`)
       +field(t('line_height'),seg([[1.5,t('lh_tight')],[1.7,t('lh_normal')],[1.95,t('lh_airy')]],S.reader.lh,'pLh'))
-      +field(t('theme'),seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.reader.theme,'pRTheme'))
+      +field(t('theme'),`<select class="in" data-chg="pRTheme" aria-label="${t('theme')}">${RTHEMES.map(([k,n])=>`<option value="${k}" ${S.reader.theme===k?'selected':''}>${tr(n[0],n[1])}</option>`).join('')}</select><p class="mute" style="font-size:12px;margin-top:6px">${tr('Шрифт, поля и полный экран — кнопка Аа в читалке.','Shrift, chekka va to‘liq ekran — o‘qish ekranidagi Aa tugmasi.')}</p>`)
       +field(t('day_goal'),seg([[10,'10 '+t('min')],[20,'20 '+t('min')],[30,'30 '+t('min')]],S.goal,'setGoal')))}
     ${grp('notif',t('notifs'),`${tr('включено','yoqilgan')}: ${nOn} ${tr('из','/')} ${Object.keys(S.notif).length}`,
       `<div class="list" style="margin-bottom:14px">${sw('chapters',t('n_chapters'))}${sw('replies',t('n_replies'))}${sw('reminder',t('n_reminder'))}${sw('authors',t('n_authors'))}</div><p class="hint" style="margin-top:0">${tr('Все уведомления можно также настроить в боте командой /notifications.','Bildirishnomalarni botda /notifications buyrug‘i bilan ham sozlash mumkin.')}</p>`)}
@@ -679,7 +702,7 @@ SCREENS.profile=()=>{
 ACT.setLang=el=>{S.lang=el.dataset.v;save();refresh()};
 ACT.setTheme=el=>{S.theme=el.dataset.v;save();refresh()};
 ACT.pLh=el=>{S.reader.lh=+el.dataset.v;save();refresh()};
-ACT.pRTheme=el=>{S.reader.theme=el.dataset.v;save();refresh()};
+CHG.pRTheme=el=>{S.reader.theme=el.value;save();refresh()};
 ACT.setGoal=el=>{S.goal=+el.dataset.v;save();refresh()};
 CHG.pSize=el=>{S.reader.size=+el.value;save();refresh()};
 ACT.toggleN=el=>{const k=el.dataset.k;S.notif[k]=!S.notif[k];save();el.classList.toggle('on',S.notif[k]);el.setAttribute('aria-checked',S.notif[k])};
