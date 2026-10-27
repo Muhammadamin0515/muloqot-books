@@ -479,14 +479,18 @@ async function reminders(env,ctx){
   }
 }
 
+/** A token pasted into the dashboard often carries a trailing space or newline; normalise it once. */
+const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKEN||'').trim().replace(/^bot/i,''),WEBHOOK_SECRET:String(env.WEBHOOK_SECRET||'').trim()});
 export default {
-  async fetch(request,env,ctx){
+  async fetch(request,env0,ctx){
+    const env=clean(env0);
     const {pathname,origin}=new URL(request.url);ORIGIN=origin;
+    if(pathname==='/api/health'){const t=env.BOT_TOKEN;return json({bot:!!t,botId:t.split(':')[0]||null,format:/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(t),db:!!env.DB,admins:csv(env.ADMIN_IDS).length})}
     try{
       if(pathname==='/telegram/webhook'&&request.method==='POST')return await handleWebhook(request,env,ctx);
       if(pathname.startsWith('/api/'))return await handleApi(request,env,ctx);
     }catch(e){console.error(e);return json({error:'server',...(pathname.startsWith('/api/admin/')?{detail:String(e.message||e).slice(0,200)}:{})},500)}
     return env.ASSETS.fetch(request);
   },
-  scheduled(event,env,ctx){ctx.waitUntil(reminders(env,ctx))}
+  scheduled(event,env,ctx){ctx.waitUntil(reminders(clean(env),ctx))}
 };
