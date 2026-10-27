@@ -1,0 +1,74 @@
+# Manual import of the RusLit collection into the deployed app (no computer needed).
+# Needs the repository secret IMPORT_TOKEN (the same value as the Worker secret IMPORT_TOKEN in Cloudflare).
+name: Импорт RusLit
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "Что сделать"
+        type: choice
+        default: check
+        options:
+          - check          # только проверка: ничего не меняется
+          - import         # загрузить 373 книги черновиками
+          - verify         # сверить загруженное с источником
+          - publish        # опубликовать список допуска (нужно подтверждение ниже)
+          - all            # import + verify + publish (нужно подтверждение)
+      target:
+        description: "Адрес приложения"
+        default: "https://muloqot-books.muhammadaminfayziev.workers.dev"
+      confirm:
+        description: "Для publish/all впишите: ПУБЛИКОВАТЬ"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Проверка секрета и подтверждения
+        env:
+          IMPORT_TOKEN: ${{ secrets.IMPORT_TOKEN }}
+          STEP: ${{ inputs.step }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ -z "$IMPORT_TOKEN" ]; then echo "::error::Нет секрета IMPORT_TOKEN в GitHub (Settings → Secrets and variables → Actions)"; exit 1; fi
+          if { [ "$STEP" = publish ] || [ "$STEP" = all ]; } && [ "$CONFIRM" != "ПУБЛИКОВАТЬ" ]; then echo "::error::Для publish/all в поле confirm нужно написать ПУБЛИКОВАТЬ"; exit 1; fi
+      - name: Исходники RusLit (зафиксированный коммит)
+        run: node scripts/ruslit.mjs fetch --dest "$RUNNER_TEMP/ruslit-src" --commit 4509680428729da225a73a22008133660f92bb7e
+      - name: Доступность приложения
+        run: |
+          curl -fsS "${{ inputs.target }}/api/health" | tee /dev/stderr | grep -q '"db":true'
+      - name: Проверка без изменений (dry-run)
+        if: inputs.step == 'check'
+        env: { IMPORT_TOKEN: "${{ secrets.IMPORT_TOKEN }}" }
+        run: node scripts/ruslit.mjs import --source "$RUNNER_TEMP/ruslit-src" --target "${{ inputs.target }}" --allow-remote --drop-notes --dry-run
+      - name: Импорт черновиков
+        if: inputs.step == 'import' || inputs.step == 'all'
+        env: { IMPORT_TOKEN: "${{ secrets.IMPORT_TOKEN }}" }
+        run: node scripts/ruslit.mjs import --source "$RUNNER_TEMP/ruslit-src" --target "${{ inputs.target }}" --allow-remote --drop-notes --resume
+      - name: Сверка
+        if: inputs.step == 'verify' || inputs.step == 'all'
+        env: { IMPORT_TOKEN: "${{ secrets.IMPORT_TOKEN }}" }
+        run: node scripts/ruslit.mjs verify --source "$RUNNER_TEMP/ruslit-src" --target "${{ inputs.target }}" --allow-remote --drop-notes
+      - name: Публикация списка допуска
+        if: (inputs.step == 'publish' || inputs.step == 'all') && inputs.confirm == 'ПУБЛИКОВАТЬ'
+        env: { IMPORT_TOKEN: "${{ secrets.IMPORT_TOKEN }}" }
+        run: node scripts/ruslit.mjs publish --target "${{ inputs.target }}" --allow-remote --allowlist data/ruslit/allowlist.json
+      - name: Отчёты
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruslit-reports
+          path: .ruslit/reports/
+          if-no-files-found: ignore
