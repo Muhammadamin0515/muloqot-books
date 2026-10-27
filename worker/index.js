@@ -492,8 +492,15 @@ route('POST','/api/admin/welcome',async c=>{
   const save=async(key,val)=>{if(val)await run(c,"INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",key,J(key==='applink'?val:{text:val}));else await run(c,'DELETE FROM meta WHERE key=?',key)};
   if(c.body.text!==undefined)await save('welcome',clip(c.body.text,3500));
   if(c.body.textUz!==undefined)await save('welcomeUz',clip(c.body.textUz,3500));
-  if(c.body.appLink!==undefined){const link=clip(c.body.appLink,200);await save('applink',/^https:\/\/t\.me\/[\w]+(\/[\w]+)?$/.test(link)?link:'')}
-  return json({ok:true});
+  let appLink;
+  if(c.body.appLink!==undefined){
+    /* forgive small slips: missing https://, a trailing slash, ?startapp=… parameters */
+    let link=clip(c.body.appLink,200).replace(/[?#].*$/,'').replace(/\/+$/,'');
+    if(/^(www\.)?t\.me\//i.test(link))link='https://'+link.replace(/^www\./i,'');
+    if(link&&!/^https:\/\/t\.me\/[\w]+(\/[\w]+)?$/i.test(link))return bad(400,'badlink');
+    await save('applink',link);appLink=link;
+  }
+  return json({ok:true,appLink});
 },true);
 route('POST','/api/admin/donate-settings',async c=>{
   const b=c.body,cur=await getDonateSettings(c);

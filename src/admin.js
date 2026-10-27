@@ -211,8 +211,9 @@ export function initAdmin(x){
   }
   CHG.wqBook=el=>{M.wq_book=el.value};
   ACT.wlcSave=()=>bg(api('/api/admin/welcome','POST',{text:M.welcome,textUz:M.welcomeUz}).then(()=>toast('Приветствие сохранено')));
-  ACT.linkSave=()=>{const v=M.appLink.trim();if(v&&!/^https:\/\/t\.me\/\w+(\/\w+)?$/.test(v)){toast('Ссылка должна выглядеть так: https://t.me/имя_бота/имя_приложения');return}
-    bg(api('/api/admin/welcome','POST',{appLink:v}).then(()=>{M.appLinkSaved=v;toast(v?'Ссылка сохранена':'Ссылка удалена');x.refresh()}))};
+  ACT.linkSave=()=>{const v=M.appLink.trim();
+    api('/api/admin/welcome','POST',{appLink:v}).then(r=>{M.appLink=r.appLink||'';M.appLinkSaved=M.appLink;x.S.appLink=M.appLink;toast(M.appLink?'Ссылка сохранена':'Ссылка удалена');x.refresh()})
+     .catch(e=>toast(e.detail==='badlink'?'Неверный формат. Нужно: https://t.me/имя_бота/имя_приложения':'Не удалось сохранить, попробуйте ещё раз'))};
   ACT.wqSave=()=>bg(api('/api/admin/weekly','POST',{bookId:M.wq_book,ru:M.wq_ru,uz:M.wq_uz}).then(async()=>{await loadBoot();toast('Вопрос недели обновлён')}));
   ACT.bHide=el=>bg(api(`/api/admin/books/${el.dataset.id}/hide`,'POST',{on:el.dataset.on==='1'}).then(async()=>{await loadBoot();toast('Готово');reload('content')}));
   ACT.bDel=el=>confirmSheet('Удалить книгу вместе с отзывами?','bDelGo',el.dataset.id,'Удалить');
