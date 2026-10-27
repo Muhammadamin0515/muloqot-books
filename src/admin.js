@@ -1,11 +1,11 @@
 /* Admin panel + support chat. Wired into the app through initAdmin(ctx); all data comes from /api/admin/*. */
 export function initAdmin(x){
   const {SCREENS,ACT,CHG,FORMS,AFTER,MODEL,go,api,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr}=x;
-  const M=MODEL.adm={bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',welcome:'',welcomeUz:'',appLink:''};
+  const M=MODEL.adm={bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',welcome:'',welcomeUz:'',appLink:''};
   const A={tab:'overview',fresh:{},stats:null,bc:null,run:null,subs:null,inbox:null,users:null,adbooks:null,chat:{uid:null,name:'',msgs:[]},sup:{msgs:[]},col:null,editId:null};
   const here=n=>NAV.cur.name===n;
   const bg=p=>p.catch(()=>toast('Ошибка запроса'));
-  const T=[['overview','Обзор'],['broadcast','Рассылка'],['moderation','Модерация'],['chat','Чат'],['users','Люди'],['content','Контент']];
+  const T=[['overview','Обзор'],['broadcast','Рассылка'],['moderation','Модерация'],['reports','Жалобы'],['chat','Чат'],['users','Люди'],['content','Контент']];
   const ago=ms=>{if(!ms)return 'никогда';const m=Math.floor((Date.now()-ms)/6e4);if(m<2)return 'сейчас';if(m<60)return m+' мин назад';const h=Math.floor(m/60);if(h<24)return h+' ч назад';return Math.floor(h/24)+' дн. назад'};
   const hm=ms=>new Date(ms).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const loading=()=>`<div class="sk" style="height:90px;border-radius:16px;margin-bottom:12px"></div><div class="sk" style="height:90px;border-radius:16px"></div>`;
@@ -18,11 +18,12 @@ export function initAdmin(x){
     overview:()=>load('stats',()=>api('/api/admin/stats')),
     broadcast:()=>Promise.all([load('bc',()=>api('/api/admin/broadcasts')),A.stats?0:load('stats',()=>api('/api/admin/stats'))]),
     moderation:()=>load('subs',()=>api('/api/admin/submissions')),
+    reports:()=>load('reps',()=>api('/api/admin/reports')).then(()=>{if(A.reps)M.stopwords=A.reps.stopwords.join(', ')}),
     chat:()=>load('inbox',()=>api('/api/admin/support')),
     users:()=>load('users',()=>api('/api/admin/users?q='+encodeURIComponent(M.uq))),
     content:()=>{api('/api/admin/welcome').then(w=>{M.welcome=w.text;M.welcomeUz=w.textUz;M.appLink=w.appLink;if(here('admin')&&A.tab==='content')x.refresh()}).catch(()=>{});M.wq_book=WEEKLY.bookId;M.wq_ru=WEEKLY.q.ru||'';M.wq_uz=WEEKLY.q.uz||'';return load('adbooks',()=>api('/api/admin/books'))}
   };
-  const bodies={overview:tabOverview,broadcast:tabBroadcast,moderation:tabModeration,chat:tabChat,users:tabUsers,content:tabContent};
+  const bodies={overview:tabOverview,broadcast:tabBroadcast,moderation:tabModeration,reports:tabReports,chat:tabChat,users:tabUsers,content:tabContent};
   AFTER.admin=()=>{
     if(!A.fresh.stats){A.fresh.stats=true;api('/api/admin/stats').then(s=>{A.stats=s;if(here('admin'))x.refresh()}).catch(()=>{})}
     if(!A.fresh[A.tab]){A.fresh[A.tab]=true;loaders[A.tab]()}
@@ -32,7 +33,7 @@ export function initAdmin(x){
   /* ---------- screen ---------- */
   SCREENS.admin=()=>{
     const s=A.stats||{};
-    const tabs=T.map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${n}${k==='moderation'?badge(s.pending):k==='chat'?badge(s.supportUnread):''}</button>`).join('');
+    const tabs=T.map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${n}${k==='moderation'?badge(s.pending):k==='reports'?badge(s.reports):k==='chat'?badge(s.supportUnread):''}</button>`).join('');
     const body=bodies[A.tab]();
     return `<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">Админ-панель</h2></div></header>
     <div class="hs px" style="margin-top:4px">${tabs}</div><div class="px" style="margin-top:18px">${body}</div>`;
@@ -45,7 +46,7 @@ export function initAdmin(x){
     const s=A.stats;if(!s)return loading();
     const cards=[[s.users,'Пользователей'],[s.new24,'Новых за сутки'],[s.new7,'Новых за неделю'],[s.active24,'Активны за сутки'],[s.active7,'Активны за неделю'],[s.reachable,'Доступны боту'],[s.books,'Книг'],[s.reviews,'Отзывов'],[s.threads,'Обсуждений']];
     const max=Math.max(1,...s.signups.map(d=>d.n));
-    const alerts=[s.pending?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="moderation"><div class="grow"><b>Заявок на проверке: ${s.pending}</b></div>${ico('chev',18)}</button>`:'',s.supportUnread?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="chat"><div class="grow"><b>Непрочитанных диалогов: ${s.supportUnread}</b></div>${ico('chev',18)}</button>`:''].join('');
+    const alerts=[s.pending?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="moderation"><div class="grow"><b>Заявок на проверке: ${s.pending}</b></div>${ico('chev',18)}</button>`:'',s.reports?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="reports"><div class="grow"><b>Жалоб на проверке: ${s.reports}</b></div>${ico('chev',18)}</button>`:'',s.supportUnread?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="chat"><div class="grow"><b>Непрочитанных диалогов: ${s.supportUnread}</b></div>${ico('chev',18)}</button>`:''].join('');
     return `${alerts}<div class="stat3" style="grid-template-columns:repeat(3,1fr)">${cards.map(([n,l])=>`<div><b>${n}</b><small>${l}</small></div>`).join('')}</div>
     <div class="card" style="margin-top:16px"><div class="lbl" style="margin-bottom:12px">Новые пользователи за 14 дней</div>${s.signups.length?`<div class="bars">${s.signups.map(d=>`<div><i style="height:${Math.max(6,d.n/max*100)}%"></i><small>${d.n}</small><em>${esc(d.d.slice(8))}</em></div>`).join('')}</div>`:'<p class="mute">Пока нет данных</p>'}</div>
     ${s.errors&&s.errors.length?`<div class="demo-banner" style="margin-top:14px;flex-direction:column"><b>Часть данных не загрузилась</b>${s.errors.map(e=>`<span>${esc(e)}</span>`).join('')}</div>`:''}
@@ -85,6 +86,25 @@ export function initAdmin(x){
   ACT.subApprove=el=>{el.disabled=true;bg(api(`/api/admin/submissions/${el.dataset.id}/approve`,'POST',{}).then(async()=>{toast('Книга опубликована');await loadBoot();A.fresh.stats=false;reload('moderation')}))};
   ACT.subReject=el=>{M.rejNote='';openSheet(`<h2>Отклонить заявку</h2><div class="field"><label for="rejNote">Причина (увидит автор)</label><textarea id="rejNote" class="in" data-m="adm:rejNote" placeholder="Например: слишком короткий текст"></textarea></div><button class="btn block" data-a="subRejectGo" data-id="${esc(el.dataset.id)}">Отклонить</button>`)};
   ACT.subRejectGo=el=>{closeSheet();bg(api(`/api/admin/submissions/${el.dataset.id}/reject`,'POST',{note:M.rejNote}).then(()=>{toast('Заявка отклонена');A.fresh.stats=false;reload('moderation')}))};
+
+
+  /* ---------- reports ---------- */
+  const KIND={review:'Отзыв',thread:'Тема',comment:'Комментарий'},WHY={spam:'Спам',abuse:'Оскорбления',inappropriate:'Неприемлемое',other:'Другое'};
+  function tabReports(){
+    const r=A.reps;if(!r)return loading();
+    const list=r.list.length?r.list.map(g=>`<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px"><b style="font-size:14px">${KIND[g.kind]} · жалоб: ${g.count}</b>${g.hidden?'<span class="tag">скрыто</span>':''}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${Object.entries(g.reasons).map(([k,n])=>`<span class="tag">${WHY[k]||k}: ${n}</span>`).join('')}</div>
+      ${g.gone?'<p class="mute">Контент уже удалён</p>':`<p class="mute" style="font-size:12px;margin-bottom:4px">Автор: ${esc(g.author||'—')}</p><p style="font-size:14px;margin-bottom:12px;white-space:pre-wrap">${esc(g.text)}</p>`}
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-a="repKeep" data-id="${esc(g.kind+'|'+g.target)}">Оставить</button>${g.gone?'':`<button class="btn sm ghost" data-a="repDel" data-id="${esc(g.kind+'|'+g.target)}">Удалить</button><button class="btn sm ghost" data-a="repBan" data-id="${esc(g.kind+'|'+g.target)}">Удалить и заблокировать автора</button>`}</div></div>`).join(''):empty('check','Жалоб нет','Если читатели пожалуются на отзыв, тему или комментарий, они появятся здесь. После трёх жалоб контент скрывается автоматически.');
+    return `${list}<div class="sec"><div class="sec-h"><h2>Стоп-слова</h2></div><div class="card"><p class="hint" style="margin:0 0 10px">Сообщения с этими словами не публикуются. Перечислите через запятую. Ссылки и повторы одного и того же сообщения блокируются автоматически, чаще 6 сообщений в минуту писать нельзя.</p><textarea id="stw" class="in" data-m="adm:stopwords" style="min-height:90px" placeholder="слово1, слово2">${esc(M.stopwords)}</textarea><button class="btn block" style="margin-top:12px" data-a="stwSave">Сохранить</button></div></div>`;
+  }
+  const resolve=(id,action,msg)=>{const [kind,target]=id.split('|');bg(api('/api/admin/reports/resolve','POST',{kind,target,action}).then(async()=>{toast(msg);A.fresh.stats=false;await x.loadBoot();reload('reports')}))};
+  ACT.repKeep=el=>resolve(el.dataset.id,'keep','Оставлено');
+  ACT.repDel=el=>confirmSheet('Удалить этот контент?','repDelGo',el.dataset.id,'Удалить');
+  ACT.repDelGo=el=>{closeSheet();resolve(el.dataset.id,'delete','Удалено')};
+  ACT.repBan=el=>confirmSheet('Удалить контент и заблокировать автора?','repBanGo',el.dataset.id,'Удалить и заблокировать');
+  ACT.repBanGo=el=>{closeSheet();resolve(el.dataset.id,'ban','Удалено, автор заблокирован')};
+  ACT.stwSave=()=>bg(api('/api/admin/stopwords','POST',{list:M.stopwords.split(/[,\n]/)}).then(()=>toast('Сохранено')));
 
   /* ---------- chat (shared view) ---------- */
   const bubbles=msgs=>msgs.length?msgs.map(m=>`<div class="bubble ${m.mine?'me':'them'}">${esc(m.text)}<small>${hm(m.at)}</small></div>`).join(''):'<p class="mute" style="text-align:center;margin:30px 0">Сообщений пока нет</p>';

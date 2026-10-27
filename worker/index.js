@@ -35,8 +35,8 @@ const DEFAULT_WELCOME={
   uz:'📚 Muloqot Books’ga xush kelibsiz!\n\nKitoblar, ilhom va yangi kashfiyotlar dunyosi.\n\n✨ Bu yerda siz:\n📖 Kitoblarni to‘liq topib o‘qiysiz\n🌍 Rus va o‘zbek adabiyotini kashf etasiz\n⭐ Kitoblarni baholab, sharh qoldirasiz\n💬 Boshqa o‘quvchilar bilan hikoyalarni muhokama qilasiz\n❤️ Sevimli kitoblaringizni saqlab, to‘xtagan joyingizdan davom etasiz\n\nHar bir kitob — yangi dunyo. O‘z hikoyangizni toping!\n\n👇 «Ilovani ochish» tugmasini bosing va o‘qishni boshlang.'};
 const getWelcome=async(c,lang='ru')=>{const r=await get(c,"SELECT value FROM meta WHERE key=?",lang==='uz'?'welcomeUz':'welcome');return r?P(r.value).text:DEFAULT_WELCOME[lang]};
 const COMMANDS={
-  ru:[['start','Начать'],['library','Моя библиотека'],['donate','Поддержать проект'],['support','Написать в поддержку'],['help','Помощь']],
-  uz:[['start','Boshlash'],['library','Kutubxonam'],['donate','Loyihani qo‘llab-quvvatlash'],['support','Yordam'],['help','Ma’lumot']]};
+  ru:[['start','Начать'],['library','Моя библиотека'],['donate','Поддержать проект'],['support','Написать в поддержку'],['notifications','Уведомления'],['help','Помощь']],
+  uz:[['start','Boshlash'],['library','Kutubxonam'],['donate','Loyihani qo‘llab-quvvatlash'],['support','Yordam'],['notifications','Bildirishnomalar'],['help','Ma’lumot']]};
 /** Registers the command list, the "Читать" menu button and the Uzbek description. Idempotent. */
 async function setupBot(env){
   const base=baseUrl(env),cmd=l=>COMMANDS[l].map(([command,description])=>({command,description}));
@@ -74,7 +74,7 @@ const ratingAgg=async c=>{const o={};(await all(c,'SELECT book_id,COUNT(*) n,SUM
 const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id=?',id);if(!row)return null;const a=await get(c,'SELECT COUNT(*) n,COALESCE(SUM(value),0) s FROM ratings WHERE book_id=?',id);return bookOut(row,{[id]:a})};
 
 async function loadReviews(c,onlyId){
-  const w=onlyId?' WHERE id=?':'',args=onlyId?[onlyId]:[];
+  const w=onlyId?' WHERE id=?':' WHERE hidden=0 OR hidden IS NULL',args=onlyId?[onlyId]:[];
   const patronMin=(await getDonateSettings(c)).patronMin;
   const [rv,rp,rc,mine,pat]=await batch(c,[
     stmt(c,`SELECT * FROM reviews${w} ORDER BY created DESC LIMIT 200`,...args),
@@ -90,11 +90,11 @@ async function loadReviews(c,onlyId){
       replies:rp.filter(x=>x.review_id===r.id).map(x=>({user:x.user_name,text:x.text,...(x.is_author?{author:1}:{})}))}});
 }
 async function loadThreads(c,onlyId){
-  const w=onlyId?' WHERE id=?':'',args=onlyId?[onlyId]:[];
-  const [th,cs]=await batch(c,[stmt(c,`SELECT * FROM threads${w} ORDER BY created DESC LIMIT 100`,...args),stmt(c,onlyId?'SELECT * FROM comments WHERE thread_id=? ORDER BY id':'SELECT * FROM comments ORDER BY id',...args)]);
+  const w=onlyId?' WHERE id=?':' WHERE hidden=0 OR hidden IS NULL',args=onlyId?[onlyId]:[];
+  const [th,cs]=await batch(c,[stmt(c,`SELECT * FROM threads${w} ORDER BY created DESC LIMIT 100`,...args),stmt(c,onlyId?'SELECT * FROM comments WHERE thread_id=? AND (hidden=0 OR hidden IS NULL) ORDER BY id':'SELECT * FROM comments WHERE hidden=0 OR hidden IS NULL ORDER BY id',...args)]);
   return th.map(t=>{const mine=cs.filter(x=>x.thread_id===t.id);
-    return{id:t.id,bookId:t.book_id,title:t.title,user:t.user_name,text:t.text,
-      comments:mine.filter(x=>!x.parent_id).map(x=>({id:x.id,user:x.user_name,text:x.text,replies:mine.filter(y=>y.parent_id===x.id).map(y=>({user:y.user_name,text:y.text}))}))}});
+    return{id:t.id,bookId:t.book_id,title:t.title,user:t.user_name,text:t.text,mine:t.user_id===c.user.id,
+      comments:mine.filter(x=>!x.parent_id).map(x=>({id:x.id,user:x.user_name,text:x.text,mine:x.user_id===c.user.id,replies:mine.filter(y=>y.parent_id===x.id).map(y=>({user:y.user_name,text:y.text}))}))}});
 }
 async function loadQuotes(c,onlyId){
   const [qs,rc,mine]=await batch(c,[
@@ -136,6 +136,24 @@ route('PUT','/api/state',async c=>{
   if(txt.length>300_000)return bad(413,'too large');
   await run(c,'UPDATE users SET state=? WHERE id=?',txt,c.user.id);return json({ok:true});
 });
+/* ---------- spam protection ---------- */
+const URL_RE=/(https?:\/\/|www\.|t\.me\/|[a-z0-9-]+\.(com|ru|uz|org|net|me|io|xyz)\b)/i;
+const getStopwords=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='stopwords'");return r?P(r.value):[]};
+/** Returns an error response when a post looks like spam; admins are exempt. */
+async function guardPost(c,text){
+  if(c.user.admin)return null;
+  const now=Date.now();
+  await run(c,'INSERT INTO actions VALUES(?,?)',c.user.id,now);
+  if(Math.random()<0.05)await run(c,'DELETE FROM actions WHERE ts<?',now-36e5);
+  const a=await get(c,'SELECT SUM(CASE WHEN ts>? THEN 1 ELSE 0 END) m,COUNT(*) h FROM actions WHERE user_id=? AND ts>?',now-6e4,c.user.id,now-36e5);
+  if(a.m>6||a.h>60)return bad(429,'rate');
+  if(URL_RE.test(text))return bad(422,'links');
+  const low=text.toLowerCase();
+  if((await getStopwords(c)).some(w=>w&&low.includes(w)))return bad(422,'stopword');
+  const dup=await get(c,'SELECT 1 x FROM reviews WHERE user_id=?1 AND text=?2 AND created>?3 UNION ALL SELECT 1 FROM comments WHERE user_id=?1 AND text=?2 AND created>?3 UNION ALL SELECT 1 FROM review_replies WHERE user_id=?1 AND text=?2 AND created>?3 LIMIT 1',c.user.id,text,now-6e5);
+  if(dup)return bad(422,'duplicate');
+  return null;
+}
 const upsertRating=(c,bookId,v)=>run(c,'INSERT INTO ratings VALUES(?,?,?) ON CONFLICT(user_id,book_id) DO UPDATE SET value=excluded.value',c.user.id,bookId,v);
 route('POST','/api/books/:id/rate',async(c,id)=>{
   if(!await get(c,'SELECT 1 x FROM books WHERE id=?',id))return bad(404);
@@ -150,6 +168,7 @@ route('POST','/api/authors/:id/follow',async(c,id)=>{
 route('POST','/api/reviews',async c=>{
   const {bookId,rating}=c.body,text=clip(c.body.text,2000);
   if(!await get(c,'SELECT 1 x FROM books WHERE id=?',bookId)||!(rating>=1&&rating<=5)||text.length<10)return bad();
+  const g1=await guardPost(c,text);if(g1)return g1;
   const id='u'+id8();
   await run(c,'INSERT INTO reviews(id,book_id,user_id,user_name,rating,text,created) VALUES(?,?,?,?,?,?,?)',id,bookId,c.user.id,c.user.name,Math.round(rating),text,Date.now());
   await upsertRating(c,bookId,Math.round(rating));const b=await bookById(c,bookId);
@@ -163,6 +182,7 @@ route('POST','/api/reviews/:id/react',async(c,id)=>{
 });
 route('POST','/api/reviews/:id/replies',async(c,id)=>{
   const r=await get(c,'SELECT * FROM reviews WHERE id=?',id),text=clip(c.body.text,1000);if(!r||!text)return bad();
+  const g2=await guardPost(c,text);if(g2)return g2;
   const owner=await get(c,"SELECT a.user_id FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE b.id=?",r.book_id);
   await run(c,'INSERT INTO review_replies(review_id,user_id,user_name,text,is_author,created) VALUES(?,?,?,?,?,?)',id,c.user.id,c.user.name,text,owner?.user_id===c.user.id?1:0,Date.now());
   if(r.user_id&&r.user_id!==c.user.id){const u=await get(c,'SELECT state FROM users WHERE id=?',r.user_id);const n=P(u?.state||'{}').notif;if(!n||n.replies!==false)notify(c,r.user_id,`${c.user.name} ответил(а) на ваш отзыв: «${text.slice(0,120)}»`)}
@@ -170,12 +190,14 @@ route('POST','/api/reviews/:id/replies',async(c,id)=>{
 });
 route('POST','/api/threads',async c=>{
   const title=clip(c.body.title,200);if(!title)return bad();
+  const g3=await guardPost(c,title);if(g3)return g3;
   const bookId=c.body.bookId&&await get(c,'SELECT 1 x FROM books WHERE id=?',c.body.bookId)?c.body.bookId:null;
   const id='t'+id8();await run(c,'INSERT INTO threads VALUES(?,?,?,?,?,?,?)',id,bookId,c.user.id,c.user.name,title,'',Date.now());
   return json({thread:(await loadThreads(c,id))[0]});
 });
 route('POST','/api/threads/:id/comments',async(c,id)=>{
   const t=await get(c,'SELECT * FROM threads WHERE id=?',id),text=clip(c.body.text,1000);if(!t||!text)return bad();
+  const g4=await guardPost(c,text);if(g4)return g4;
   let parent=null;
   if(c.body.parentId){const p=await get(c,'SELECT * FROM comments WHERE id=? AND thread_id=? AND parent_id IS NULL',c.body.parentId,id);if(!p)return bad();parent=p.id;
     if(p.user_id&&p.user_id!==c.user.id)notify(c,p.user_id,`${c.user.name} ответил(а) на ваш комментарий в «${t.title}»`)}
@@ -253,6 +275,7 @@ route('GET','/api/admin/stats',async c=>{
     ['books','SELECT COUNT(*) n FROM books WHERE hidden=0 OR hidden IS NULL'],['hidden','SELECT COUNT(*) n FROM books WHERE hidden=1'],
     ['reviews','SELECT COUNT(*) n FROM reviews'],['threads','SELECT COUNT(*) n FROM threads'],['comments','SELECT COUNT(*) n FROM comments'],
     ['pending',"SELECT COUNT(*) n FROM submissions WHERE status='moderation'"],
+    ['reports',"SELECT COUNT(*) n FROM (SELECT 1 FROM reports WHERE status='open' GROUP BY kind,target)"],
     ['supportUnread','SELECT COUNT(DISTINCT user_id) n FROM support_messages WHERE from_admin=0 AND read=0'],
     ['reachable',"SELECT COUNT(*) n FROM users WHERE blocked=0 AND banned=0 AND id GLOB '[0-9]*'"]];
   const out={signups:[],errors:[]};
@@ -414,7 +437,7 @@ route('GET','/api/admin/donations',async c=>{
 route('POST','/api/admin/webhook/setup',async c=>{
   if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
   const url=new URL(c.request.url).origin+'/telegram/webhook';
-  const r=await tgJson(c.env,'setWebhook',{url,secret_token:await webhookSecret(c.env),allowed_updates:['message','pre_checkout_query'],drop_pending_updates:false});
+  const r=await tgJson(c.env,'setWebhook',{url,secret_token:await webhookSecret(c.env),allowed_updates:['message','pre_checkout_query','callback_query'],drop_pending_updates:false});
   const bot=await setupBot(c.env);
   return json({ok:!!r?.ok,description:r?.description||'',url,bot});
 },true);
@@ -457,6 +480,46 @@ route('POST','/api/admin/donate-settings',async c=>{
   await run(c,"INSERT INTO meta VALUES('donate',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(next));return json({ok:true});
 },true);
 
+/* ---------- reports ---------- */
+const REPORT_KINDS={review:['reviews','text'],thread:['threads','title'],comment:['comments','text']};
+route('POST','/api/reports',async c=>{
+  const kind=c.body.kind,k=REPORT_KINDS[kind],target=String(c.body.targetId||'');
+  if(!k||!target)return bad();
+  const row=await get(c,`SELECT user_id,${k[1]} txt FROM ${k[0]} WHERE id=?`,target);if(!row)return bad(404);
+  if(row.user_id===c.user.id)return bad(400,'own');
+  const reason=['spam','abuse','inappropriate','other'].includes(c.body.reason)?c.body.reason:'other';
+  const ins=await run(c,'INSERT OR IGNORE INTO reports(kind,target,user_id,reason,created) VALUES(?,?,?,?,?)',kind,target,c.user.id,reason,Date.now());
+  const n=(await get(c,"SELECT COUNT(*) n FROM reports WHERE kind=? AND target=? AND status='open'",kind,target)).n;
+  if(ins.meta.changes&&n===1)await notifyAdmins(c,`⚠️ Новая жалоба (${{review:'отзыв',thread:'тема',comment:'комментарий'}[kind]}): «${clip(row.txt,120)}». Админ-панель → Жалобы.`);
+  if(n>=3)await run(c,`UPDATE ${k[0]} SET hidden=1 WHERE id=?`,target);
+  return json({ok:true});
+});
+route('GET','/api/admin/reports',async c=>{
+  const rs=await all(c,"SELECT kind,target,reason,COUNT(*) n FROM reports WHERE status='open' GROUP BY kind,target,reason ORDER BY MAX(created) DESC LIMIT 60");
+  const groups=new Map();rs.forEach(r=>{const key=r.kind+':'+r.target;const g=groups.get(key)||{kind:r.kind,target:r.target,count:0,reasons:{}};g.count+=r.n;g.reasons[r.reason]=r.n;groups.set(key,g)});
+  const out=[];
+  for(const g of [...groups.values()].slice(0,40)){const k=REPORT_KINDS[g.kind];
+    const row=await get(c,`SELECT user_id,user_name,${k[1]} txt,hidden FROM ${k[0]} WHERE id=?`,g.target);
+    out.push({...g,text:row?.txt||'',author:row?.user_name||'',authorId:row?.user_id||'',hidden:!!row?.hidden,gone:!row})}
+  return json({list:out,stopwords:await getStopwords(c)});
+},true);
+route('POST','/api/admin/reports/resolve',async c=>{
+  const {kind,target,action}=c.body,k=REPORT_KINDS[kind];if(!k)return bad();
+  const row=await get(c,`SELECT user_id FROM ${k[0]} WHERE id=?`,target);
+  if(action==='delete'||action==='ban'){
+    if(kind==='review')await batch(c,[stmt(c,'DELETE FROM reviews WHERE id=?',target),stmt(c,'DELETE FROM review_replies WHERE review_id=?',target)]);
+    else if(kind==='thread')await batch(c,[stmt(c,'DELETE FROM threads WHERE id=?',target),stmt(c,'DELETE FROM comments WHERE thread_id=?',target)]);
+    else await run(c,'DELETE FROM comments WHERE id=? OR parent_id=?',target,target);
+    if(action==='ban'&&row?.user_id&&!csv(c.env.ADMIN_IDS).includes(row.user_id))await run(c,'UPDATE users SET banned=1 WHERE id=?',row.user_id);
+  }else await run(c,`UPDATE ${k[0]} SET hidden=0 WHERE id=?`,target);
+  await run(c,"UPDATE reports SET status='resolved' WHERE kind=? AND target=?",kind,target);
+  return json({ok:true});
+},true);
+route('POST','/api/admin/stopwords',async c=>{
+  const list=[...new Set((Array.isArray(c.body.list)?c.body.list:[]).map(w=>clip(w,40).toLowerCase()).filter(Boolean))].slice(0,200);
+  await run(c,"INSERT INTO meta VALUES('stopwords',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(list));return json({ok:true});
+},true);
+
 /* ---------- entry points ---------- */
 async function handleApi(request,env,ctx){
   const c={env,ctx,request,body:{}};
@@ -481,6 +544,20 @@ async function handleApi(request,env,ctx){
   return bad(404,'not found');
 }
 
+/* ---------- notification preferences (bot) ---------- */
+const NOTIF_DEFAULT={chapters:true,replies:true,reminder:false,authors:true};
+const NOTIF_LABELS={ru:{replies:'Ответы на мои отзывы',reminder:'Напоминание о чтении',authors:'Книги подписанных авторов',chapters:'Новости и новые книги'},uz:{replies:'Sharhlarimga javoblar',reminder:'O‘qish eslatmasi',authors:'Obuna mualliflarining kitoblari',chapters:'Yangiliklar va yangi kitoblar'}};
+const getNotif=async(c,uid)=>{const u=await get(c,'SELECT state FROM users WHERE id=?',uid);const st=P(u?.state||'{}');return{st,notif:{...NOTIF_DEFAULT,...(st.notif||{})}}};
+const saveNotif=(c,uid,st,notif)=>run(c,'UPDATE users SET state=? WHERE id=?',J({...st,notif}),uid);
+const notifKeyboard=(notif,lang)=>({inline_keyboard:Object.keys(NOTIF_DEFAULT).map(k=>[{text:`${notif[k]?'✅':'⬜️'} ${NOTIF_LABELS[lang][k]}`,callback_data:'n:'+k}])});
+const notifText=lang=>lang==='uz'?'Qaysi bildirishnomalarni olmoqchisiz? Bosib yoqing yoki o‘chiring.':'Какие уведомления вы хотите получать? Нажмите, чтобы включить или выключить.';
+async function onCallback(c,q){
+  const env=c.env,uid=String(q.from.id),lang=(q.from.language_code||'').startsWith('uz')?'uz':'ru',m=q.data||'';
+  if(!m.startsWith('n:')||!(m.slice(2) in NOTIF_DEFAULT)||!q.message)return void await tgApi(env,'answerCallbackQuery',{callback_query_id:q.id});
+  const {st,notif}=await getNotif(c,uid);notif[m.slice(2)]=!notif[m.slice(2)];await saveNotif(c,uid,st,notif);
+  await Promise.all([tgApi(env,'editMessageReplyMarkup',{chat_id:q.message.chat.id,message_id:q.message.message_id,reply_markup:notifKeyboard(notif,lang)}),tgApi(env,'answerCallbackQuery',{callback_query_id:q.id,text:lang==='uz'?'Saqlandi':'Сохранено'})]);
+}
+
 /** Private chat with the bot: commands, plus any plain text becomes a support message for the admins. */
 async function onBotMessage(c,m){
   const env=c.env,uz=(m.from?.language_code||'').startsWith('uz'),lang=uz?'uz':'ru',chat=m.chat.id,uid=String(m.from.id);
@@ -490,8 +567,10 @@ async function onBotMessage(c,m){
   if((await get(c,'SELECT banned FROM users WHERE id=?',uid))?.banned)return;
   const text=m.text.trim(),cmd=text.startsWith('/')?text.split(/[\s@]/)[0].toLowerCase():'';
   const send=(t,open)=>tgApi(env,'sendMessage',{chat_id:chat,text:t,...openBtn(env,{lang,open})});
-  const help=()=>send(T('Что я умею:\n/library — продолжить чтение\n/donate — поддержать проект\n/support — написать в поддержку\n\nЛюбое обычное сообщение попадёт к администратору, ответ придёт сюда.','Men nimalar qila olaman:\n/library — o‘qishni davom ettirish\n/donate — loyihani qo‘llab-quvvatlash\n/support — yordamga yozish\n\nIstalgan oddiy xabar administratorga yetadi, javob shu yerga keladi.'));
+  const help=()=>send(T('Что я умею:\n/library — продолжить чтение\n/donate — поддержать проект\n/support — написать в поддержку\n/notifications — настроить уведомления\n/stop — отключить все уведомления\n\nЛюбое обычное сообщение попадёт к администратору, ответ придёт сюда.','Men nimalar qila olaman:\n/library — o‘qishni davom ettirish\n/donate — loyihani qo‘llab-quvvatlash\n/support — yordamga yozish\n/notifications — bildirishnomalarni sozlash\n/stop — barcha bildirishnomalarni o‘chirish\n\nIstalgan oddiy xabar administratorga yetadi, javob shu yerga keladi.'));
   if(cmd==='/start')return void await send(await getWelcome(c,lang));
+  if(cmd==='/notifications'){const {notif}=await getNotif(c,uid);return void await tgApi(env,'sendMessage',{chat_id:chat,text:notifText(lang),reply_markup:notifKeyboard(notif,lang)})}
+  if(cmd==='/stop'){const {st,notif}=await getNotif(c,uid);Object.keys(notif).forEach(k=>notif[k]=false);await saveNotif(c,uid,st,notif);return void await send(T('Уведомления отключены. Включить снова: /notifications','Bildirishnomalar o‘chirildi. Qayta yoqish: /notifications'))}
   if(cmd==='/library')return void await send(T('Ваша библиотека и прогресс чтения:','Kutubxonangiz va o‘qish jarayoni:'),'library');
   if(cmd==='/donate')return void await send(T('Поддержите развитие Muloqot Books 💛','Muloqot Books rivojiga hissa qo‘shing 💛'),'donate');
   if(cmd==='/support')return void await send(T('Напишите ваш вопрос одним сообщением прямо сюда. Ответ придёт в этот чат.','Savolingizni shu yerga yozing. Javob shu chatga keladi.'));
@@ -513,15 +592,26 @@ async function handleWebhook(request,env,ctx){
     await tgApi(env,'answerPreCheckoutQuery',d&&d.status==='pending'?{pre_checkout_query_id:q.id,ok:true}:{pre_checkout_query_id:q.id,ok:false,error_message:'Платёж не найден или уже оплачен'});
   }else if(u.message?.successful_payment){
     await onPaid(c,u.message.successful_payment,u.message.from?.id);
-  }else if(u.message?.text&&u.message.chat?.type==='private')await onBotMessage(c,u.message);
+  }else if(u.callback_query)await onCallback(c,u.callback_query);
+  else if(u.message?.text&&u.message.chat?.type==='private')await onBotMessage(c,u.message);
   return new Response('ok');
 }
 
-/** Daily 19:00 Tashkent (14:00 UTC): remind readers who have not opened a book today. */
+/** Reading reminders: the cron fires every 5 minutes from 19:00 Tashkent; each run handles a small batch (subrequest-safe) and marks users as reminded for the day. */
 async function reminders(env,ctx){
-  const c={env,ctx};const today=new Date(Date.now()+5*36e5).toISOString().slice(0,10);
-  for(const u of await all(c,"SELECT id,state FROM users WHERE state LIKE '%\"reminder\":true%'")){
-    const s=P(u.state||'{}');if(s.notif?.reminder&&!(s.days||[]).includes(today))notify(c,u.id,'Время почитать 📖 Сегодня вы ещё не открывали книгу.');
+  const c={env,ctx},today=new Date(Date.now()+5*36e5).toISOString().slice(0,10);
+  await ensureSchema(env);
+  const users=await all(c,"SELECT id,state FROM users WHERE state LIKE '%\"reminder\":true%' AND (reminded IS NULL OR reminded<>?) AND banned=0 AND blocked=0 LIMIT 18",today);
+  if(!users.length)return;
+  const titles=Object.fromEntries((await all(c,"SELECT id,json_extract(data,'$.title') t FROM books WHERE hidden=0 OR hidden IS NULL")).map(b=>[b.id,b.t]));
+  for(const u of users){
+    const s=P(u.state||'{}'),uz=s.lang==='uz';
+    if(s.notif?.reminder&&!(s.days||[]).includes(today)){
+      const cur=Object.entries(s.progress||{}).filter(([id])=>titles[id]&&!(s.finished||[]).includes(id)).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))[0];
+      const text=cur?(uz?`Siz «${titles[cur[0]]}» kitobida ${cur[1].ch+1}-bobda to‘xtagansiz. Davom ettiramizmi? 📖`:`Вы остановились на «${titles[cur[0]]}», глава ${cur[1].ch+1}. Продолжим? 📖`):(uz?'O‘qish vaqti 📖 Bugun hali kitob ochmadingiz.':'Время почитать 📖 Сегодня вы ещё не открывали книгу.');
+      await tgApi(env,'sendMessage',{chat_id:u.id,text,...openBtn(env,{lang:uz?'uz':'ru',open:cur?'read_'+cur[0]:'library'})});
+    }
+    await run(c,'UPDATE users SET reminded=? WHERE id=?',today,u.id);
   }
 }
 

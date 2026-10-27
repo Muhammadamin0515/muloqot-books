@@ -27,7 +27,10 @@ const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','
 const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);return o};
 let saveT,syncT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250);
   if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>api('/api/state','PUT',persistable()).catch(()=>{}),1200)}}
-const bg=(p)=>p.catch(()=>toast(tr('Нет связи с сервером','Server bilan aloqa yo‘q')));
+const ERR={rate:['Слишком часто. Подождите минуту.','Juda tez-tez. Bir daqiqa kuting.'],links:['Ссылки в сообщениях запрещены.','Xabarlarda havolalar taqiqlangan.'],duplicate:['Такое сообщение уже отправлено.','Bunday xabar allaqachon yuborilgan.'],stopword:['Сообщение содержит запрещённые слова.','Xabarda taqiqlangan so‘zlar bor.'],banned:['Ваш аккаунт заблокирован.','Akkauntingiz bloklangan.']};
+const errMsg=e=>{const m=ERR[e&&e.detail];return m?tr(m[0],m[1]):tr('Нет связи с сервером','Server bilan aloqa yo‘q')};
+/* A rejected post (spam guard, limits) is rolled back by reloading the server state. */
+const bg=(p)=>p.catch(e=>{toast(errMsg(e));if(e&&[400,422,429].includes(e.status))loadBoot().then(()=>refresh()).catch(()=>{})});
 load();
 if(!S.onboarded){const u=tg.user();if(u){if(u.first_name)S.name=u.first_name.slice(0,24);if(tg.langCode()==='uz')S.lang='uz'}}
 
@@ -188,12 +191,12 @@ function reviewCard(r,showBook){
   return `<article class="rev" id="rev_${r.id}"><div class="rev-h">${avatar(r.user)}<div class="grow"><b>${esc(r.user)}${r.patron?' <span class="tag acc" style="margin-left:4px">⭐</span>':''}</b><small>${esc(L(r.date))}</small></div>${stars(r.rating)}${S.me&&S.me.admin?`<button class="iconbtn flat" data-a="admDelReview" data-id="${r.id}" aria-label="Удалить" style="width:34px;height:34px">${ico('trash',16)}</button>`:''}</div>
   ${showBook&&b?`<button class="revbook" data-a="openBook" data-id="${b.id}">${cover(b,'xs')}<span>${esc(b.title)}</span></button>`:''}
   <p class="tx">${esc(r.text)}</p>
-  <div class="rev-f"><button class="react ${rc.heart?'on':''}" data-a="react" data-id="${r.id}" data-k="heart" aria-pressed="${!!rc.heart}">${ico('heart',16)} ${rcnt(r,'likes',rc.heart)}</button><button class="react ${rc.insight?'on':''}" data-a="react" data-id="${r.id}" data-k="insight" aria-pressed="${!!rc.insight}">${ico('spark',16)} ${rcnt(r,'insight',rc.insight)}</button><button class="react" data-a="toggleReply" data-id="${r.id}">${ico('reply',16)} ${t('reply')}</button></div>
+  <div class="rev-f"><button class="react ${rc.heart?'on':''}" data-a="react" data-id="${r.id}" data-k="heart" aria-pressed="${!!rc.heart}">${ico('heart',16)} ${rcnt(r,'likes',rc.heart)}</button><button class="react ${rc.insight?'on':''}" data-a="react" data-id="${r.id}" data-k="insight" aria-pressed="${!!rc.insight}">${ico('spark',16)} ${rcnt(r,'insight',rc.insight)}</button><button class="react" data-a="toggleReply" data-id="${r.id}">${ico('reply',16)} ${t('reply')}</button>${net.online&&!r.mine?`<button class="react" data-a="report" data-k="review" data-id="${r.id}" aria-label="${tr('Пожаловаться','Shikoyat')}">${ico('flag',15)}</button>`:''}</div>
   ${r.replies.length?`<div class="replies">${r.replies.map(x=>`<div class="r"><b>${esc(x.user)}</b>${x.author?` <span class="tag acc">${t('author_label')}</span>`:''}<p>${esc(x.text)}</p></div>`).join('')}</div>`:''}
   <form class="replybox" id="rb_${r.id}" data-f="reviewReply" data-id="${r.id}" hidden><input class="in" name="t" placeholder="${t('write_ph')}" aria-label="${t('reply')}" autocomplete="off"><button class="iconbtn" aria-label="${t('send')}" style="background:var(--acc);color:#fff;border:0">${ico('send',18)}</button></form></article>`;
 }
 function threadBody(th){
-  return `<div class="cmt">${th.comments.map((c,i)=>`<div class="c">${avatar(c.user,1)} <b style="margin-left:6px">${esc(c.user)}</b>${S.me&&S.me.admin&&c.id?`<button class="link" style="float:right" data-a="admDelComment" data-t="${th.id}" data-id="${c.id}" aria-label="Удалить">${ico('trash',13)}</button>`:''}<p>${esc(c.text)}</p>
+  return `<div class="cmt">${th.comments.map((c,i)=>`<div class="c">${avatar(c.user,1)} <b style="margin-left:6px">${esc(c.user)}</b>${net.online&&c.id&&!c.mine?`<button class="link" style="float:right" data-a="report" data-k="comment" data-id="${c.id}" aria-label="${tr('Пожаловаться','Shikoyat')}">${ico('flag',13)}</button>`:''}${S.me&&S.me.admin&&c.id?`<button class="link" style="float:right" data-a="admDelComment" data-t="${th.id}" data-id="${c.id}" aria-label="Удалить">${ico('trash',13)}</button>`:''}<p>${esc(c.text)}</p>
   ${c.replies.length?`<div class="replies">${c.replies.map(x=>`<div class="r"><b>${esc(x.user)}</b><p>${esc(x.text)}</p></div>`).join('')}</div>`:''}
   <button class="link acc" data-a="toggleCReply" data-t="${th.id}" data-c="${i}">${ico('reply',13)} ${t('reply')}</button>
   <form class="replybox" id="cr_${th.id}_${i}" data-f="cReply" data-t="${th.id}" data-c="${i}" hidden><input class="in" name="t" placeholder="${t('write_ph')}" aria-label="${t('reply')}" autocomplete="off"><button class="iconbtn" aria-label="${t('send')}" style="background:var(--acc);color:#fff;border:0">${ico('send',18)}</button></form></div>`).join('')}
@@ -202,7 +205,7 @@ function threadBody(th){
 const CM={tab:'reviews',qv:'all',open:{t1:true}};
 function threadCard(th){
   const b=th.bookId?book(th.bookId):null,open=!!CM.open[th.id],n=th.comments.reduce((s,c)=>s+1+c.replies.length,0);
-  return `<article class="thread"><button class="th" data-a="toggleThread" data-id="${th.id}" aria-expanded="${open}"><div class="row" style="margin-bottom:8px;flex-wrap:wrap">${avatar(th.user,1)}<span class="mute" style="font-size:12.5px">${esc(th.user)}</span>${b?`<span class="tag acc">${esc(b.title)}</span>`:''}</div><h3>${esc(th.title)}</h3>${th.text?`<p class="mute" style="margin-top:6px;font-size:14px">${esc(th.text)}</p>`:''}<div class="meta">${ico('chat',14)} ${n} ${t('replies')}</div></button>${S.me&&S.me.admin?`<button class="link" data-a="admDelThread" data-id="${th.id}">${ico('trash',13)} Удалить тему</button>`:''}${open?threadBody(th):''}</article>`;
+  return `<article class="thread"><button class="th" data-a="toggleThread" data-id="${th.id}" aria-expanded="${open}"><div class="row" style="margin-bottom:8px;flex-wrap:wrap">${avatar(th.user,1)}<span class="mute" style="font-size:12.5px">${esc(th.user)}</span>${b?`<span class="tag acc">${esc(b.title)}</span>`:''}</div><h3>${esc(th.title)}</h3>${th.text?`<p class="mute" style="margin-top:6px;font-size:14px">${esc(th.text)}</p>`:''}<div class="meta">${ico('chat',14)} ${n} ${t('replies')}</div></button>${net.online&&!th.mine?`<button class="link" data-a="report" data-k="thread" data-id="${th.id}">${ico('flag',13)} ${tr('Пожаловаться','Shikoyat')}</button>`:''}${S.me&&S.me.admin?`<button class="link" data-a="admDelThread" data-id="${th.id}">${ico('trash',13)} Удалить тему</button>`:''}${open?threadBody(th):''}</article>`;
 }
 const topicForm=bid=>`<form class="replybox" data-f="topicNew" data-book="${bid||''}" style="margin:0 0 6px"><input class="in" name="t" placeholder="${t('topic_ph')}" aria-label="${t('new_topic')}" autocomplete="off"><button class="btn sm" style="height:42px">${t('post')}</button></form>`;
 SCREENS.book=({id})=>{
@@ -241,6 +244,9 @@ ACT.shareBook=el=>{const b=book(el.dataset.id);{const txt=`${b.title} — ${auth
    ===================================================================== */
 ACT.react=el=>{const id=el.dataset.id,k=el.dataset.k;const rc=S.reacts[id]=S.reacts[id]||{};rc[k]=!rc[k];save();const r=S.reviews.find(x=>x.id===id);const fk=k==='heart'?'likes':'insight';el.classList.toggle('on',rc[k]);el.setAttribute('aria-pressed',!!rc[k]);el.lastChild.textContent=' '+rcnt(r,fk,rc[k]);
   if(net.online)bg(api(`/api/reviews/${id}/react`,'POST',{kind:k,on:!!rc[k]}).then(x=>{r.likes=x.likes;r.insight=x.insight;el.lastChild.textContent=' '+r[fk]}))};
+const REASONS=[['spam','Спам или реклама','Spam yoki reklama'],['abuse','Оскорбления','Haqorat'],['inappropriate','Неприемлемое содержание','Nomaqbul mazmun'],['other','Другое','Boshqa']];
+ACT.report=el=>openSheet(`<h2>${tr('На что жалоба?','Shikoyat sababi?')}</h2><div class="list">${REASONS.map(([k,ru,uz])=>`<button class="li" data-a="reportGo" data-k="${el.dataset.k}" data-id="${esc(el.dataset.id)}" data-r="${k}"><span class="grow">${tr(ru,uz)}</span>${ico('chev',16)}</button>`).join('')}</div>`);
+ACT.reportGo=el=>{closeSheet();bg(api('/api/reports','POST',{kind:el.dataset.k,targetId:el.dataset.id,reason:el.dataset.r}).then(()=>toast(tr('Спасибо, жалоба отправлена','Rahmat, shikoyat yuborildi'))))};
 ACT.toggleReply=el=>{const f=$('#rb_'+el.dataset.id);f.hidden=!f.hidden;if(!f.hidden)f.querySelector('input').focus()};
 ACT.toggleThread=el=>{const id=el.dataset.id;CM.open[id]=!CM.open[id];refresh()};
 ACT.toggleCReply=el=>{const f=$(`#cr_${el.dataset.t}_${el.dataset.c}`);f.hidden=!f.hidden;if(!f.hidden)f.querySelector('input').focus()};
@@ -549,11 +555,12 @@ else if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120
 else{
   /* Deep links: ?open=library|donate|support|catalog|profile (bot buttons) or startapp=book_<id> (shared books) */
   const dl=new URLSearchParams(location.search).get('open')||tg.startParam()||'';
-  const target=/^book_/.test(dl)&&book(dl.slice(5))?'book':{library:'library',donate:'donate',support:'support',catalog:'catalog',profile:'profile'}[dl]||'';
+  const target=/^book_/.test(dl)&&book(dl.slice(5))?'book':/^read_/.test(dl)&&book(dl.slice(5))?'read':{library:'library',donate:'donate',support:'support',catalog:'catalog',profile:'profile'}[dl]||'';
   if(target&&!S.onboarded){S.onboarded=true;save()}
   NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
   render(true);
   if(target==='book')ACT.openBook({dataset:{id:dl.slice(5)}});
+  else if(target==='read')ACT.read({dataset:{id:dl.slice(5)}});
   else if(target==='donate')ACT.openDonate();
   else if(target==='support')ACT.openSupport();
   else if(target)go(target);
