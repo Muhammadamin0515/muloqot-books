@@ -28,9 +28,26 @@ const tgJson=async(env,method,body)=>{const r=await tgApi(env,method,body);retur
 /** Derived from the bot token, so no extra secret has to be configured. */
 const webhookSecret=async env=>hex(await hmac(new TextEncoder().encode(env.BOT_TOKEN||''),new TextEncoder().encode('muloqot-webhook'))).slice(0,48);
 let ORIGIN='';
-const openBtn=env=>{const url=env.WEBAPP_URL||ORIGIN;return url?{reply_markup:{inline_keyboard:[[{text:'📖 Открыть приложение',web_app:{url}}]]}}:{}};
-const DEFAULT_WELCOME='📚 Добро пожаловать в Muloqot Books!\n\nТвой мир книг, вдохновения и новых открытий.\n\n✨ Здесь ты сможешь:\n📖 Находить и читать книги целиком\n🌍 Открывать литературу на русском и узбекском\n⭐ Оценивать книги и делиться отзывами\n💬 Обсуждать истории с другими читателями\n❤️ Сохранять любимые книги и продолжать чтение с того места, где остановился\n\nКаждая книга — это новый мир. Найди свою историю!\n\n👇 Нажми «Открыть приложение» и начни читать.';
-const getWelcome=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='welcome'");return r?P(r.value).text:DEFAULT_WELCOME};
+const baseUrl=env=>(env.WEBAPP_URL||ORIGIN||'').replace(/\/$/,'');
+const openBtn=(env,{lang='ru',open=''}={})=>{const b=baseUrl(env);return b?{reply_markup:{inline_keyboard:[[{text:lang==='uz'?'📖 Ilovani ochish':'📖 Открыть приложение',web_app:{url:open?`${b}/?open=${open}`:b}}]]}}:{}};
+const DEFAULT_WELCOME={
+  ru:'📚 Добро пожаловать в Muloqot Books!\n\nТвой мир книг, вдохновения и новых открытий.\n\n✨ Здесь ты сможешь:\n📖 Находить и читать книги целиком\n🌍 Открывать литературу на русском и узбекском\n⭐ Оценивать книги и делиться отзывами\n💬 Обсуждать истории с другими читателями\n❤️ Сохранять любимые книги и продолжать чтение с того места, где остановился\n\nКаждая книга — это новый мир. Найди свою историю!\n\n👇 Нажми «Открыть приложение» и начни читать.',
+  uz:'📚 Muloqot Books’ga xush kelibsiz!\n\nKitoblar, ilhom va yangi kashfiyotlar dunyosi.\n\n✨ Bu yerda siz:\n📖 Kitoblarni to‘liq topib o‘qiysiz\n🌍 Rus va o‘zbek adabiyotini kashf etasiz\n⭐ Kitoblarni baholab, sharh qoldirasiz\n💬 Boshqa o‘quvchilar bilan hikoyalarni muhokama qilasiz\n❤️ Sevimli kitoblaringizni saqlab, to‘xtagan joyingizdan davom etasiz\n\nHar bir kitob — yangi dunyo. O‘z hikoyangizni toping!\n\n👇 «Ilovani ochish» tugmasini bosing va o‘qishni boshlang.'};
+const getWelcome=async(c,lang='ru')=>{const r=await get(c,"SELECT value FROM meta WHERE key=?",lang==='uz'?'welcomeUz':'welcome');return r?P(r.value).text:DEFAULT_WELCOME[lang]};
+const COMMANDS={
+  ru:[['start','Начать'],['library','Моя библиотека'],['donate','Поддержать проект'],['support','Написать в поддержку'],['help','Помощь']],
+  uz:[['start','Boshlash'],['library','Kutubxonam'],['donate','Loyihani qo‘llab-quvvatlash'],['support','Yordam'],['help','Ma’lumot']]};
+/** Registers the command list, the "Читать" menu button and the Uzbek description. Idempotent. */
+async function setupBot(env){
+  const base=baseUrl(env),cmd=l=>COMMANDS[l].map(([command,description])=>({command,description}));
+  const r=await Promise.all([
+    tgJson(env,'setMyCommands',{commands:cmd('ru')}),
+    tgJson(env,'setMyCommands',{commands:cmd('uz'),language_code:'uz'}),
+    base?tgJson(env,'setChatMenuButton',{menu_button:{type:'web_app',text:'📖 Читать',web_app:{url:base}}}):{ok:true},
+    tgJson(env,'setMyDescription',{description:'Muloqot Books — rus va o‘zbek tilidagi kitoblar: o‘qing, baholang, muhokama qiling. «Ilovani ochish» tugmasini bosing.',language_code:'uz'}),
+    tgJson(env,'setMyShortDescription',{short_description:'Rus va o‘zbek tilidagi kitoblar: o‘qing, baholang, muhokama qiling.',language_code:'uz'})]);
+  return r.every(x=>x&&x.ok);
+}
 /** Bot message to a Telegram user (their id is the private chat id). No-op without BOT_TOKEN or for dev users. */
 const notify=(c,userId,text)=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...openBtn(c.env)}))};
 
@@ -101,7 +118,7 @@ route('GET','/api/bootstrap',async c=>{
   const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)]));
   const sup=await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid);
   const don=await get(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),ds=await getDonateSettings(c),goals=await goalRows(c);
-  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n,donated:don.s,patron:don.s>=ds.patronMin},donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,
+  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n,donated:don.s,patron:don.s>=ds.patronMin},donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,appLink:m.applink||'',
     books:books.map(b=>bookOut(b,agg)),
     authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(fol.find(f=>f.author_id===a.id)?.n||0)})),
     collections:m.collections,weekly:m.weekly,quotes:await loadQuotes(c),reviews:await loadReviews(c),threads:await loadThreads(c),
@@ -391,7 +408,8 @@ route('POST','/api/admin/webhook/setup',async c=>{
   if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
   const url=new URL(c.request.url).origin+'/telegram/webhook';
   const r=await tgJson(c.env,'setWebhook',{url,secret_token:await webhookSecret(c.env),allowed_updates:['message','pre_checkout_query'],drop_pending_updates:false});
-  return json({ok:!!r?.ok,description:r?.description||'',url});
+  const bot=await setupBot(c.env);
+  return json({ok:!!r?.ok,description:r?.description||'',url,bot});
 },true);
 route('POST','/api/admin/donations/:id/refund',async(c,id)=>{
   const d=await get(c,"SELECT * FROM donations WHERE id=? AND status='paid' AND source='stars'",id);if(!d||!d.charge_id)return bad(404);
@@ -413,11 +431,14 @@ route('POST','/api/admin/goals',async c=>{
   return json({ok:true});
 },true);
 route('POST','/api/admin/goals/:id/delete',async(c,id)=>{await run(c,'DELETE FROM goals WHERE id=?',id);await run(c,'UPDATE donations SET goal_id=NULL WHERE goal_id=?',id);return json({ok:true})},true);
-route('GET','/api/admin/welcome',async c=>json({text:await getWelcome(c),isDefault:!await get(c,"SELECT 1 x FROM meta WHERE key='welcome'")}),true);
+route('GET','/api/admin/welcome',async c=>{
+  const al=await get(c,"SELECT value FROM meta WHERE key='applink'");
+  return json({text:await getWelcome(c,'ru'),textUz:await getWelcome(c,'uz'),appLink:al?P(al.value):''});
+},true);
 route('POST','/api/admin/welcome',async c=>{
-  const text=clip(c.body.text,3500);
-  if(!text)await run(c,"DELETE FROM meta WHERE key='welcome'");
-  else await run(c,"INSERT INTO meta VALUES('welcome',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J({text}));
+  const save=async(key,val)=>{if(val)await run(c,"INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",key,J(key==='applink'?val:{text:val}));else await run(c,'DELETE FROM meta WHERE key=?',key)};
+  await save('welcome',clip(c.body.text,3500));await save('welcomeUz',clip(c.body.textUz,3500));
+  const link=clip(c.body.appLink,200);await save('applink',/^https:\/\/t\.me\/[\w]+(\/[\w]+)?$/.test(link)?link:'');
   return json({ok:true});
 },true);
 route('POST','/api/admin/donate-settings',async c=>{
@@ -453,6 +474,28 @@ async function handleApi(request,env,ctx){
   return bad(404,'not found');
 }
 
+/** Private chat with the bot: commands, plus any plain text becomes a support message for the admins. */
+async function onBotMessage(c,m){
+  const env=c.env,uz=(m.from?.language_code||'').startsWith('uz'),lang=uz?'uz':'ru',chat=m.chat.id,uid=String(m.from.id);
+  const T=(ru,u)=>uz?u:ru;
+  const name=clip([m.from.first_name,m.from.last_name].filter(Boolean).join(' '),40)||null;
+  await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET blocked=0,last_seen=excluded.last_seen',uid,name,Date.now(),Date.now());
+  if((await get(c,'SELECT banned FROM users WHERE id=?',uid))?.banned)return;
+  const text=m.text.trim(),cmd=text.startsWith('/')?text.split(/[\s@]/)[0].toLowerCase():'';
+  const send=(t,open)=>tgApi(env,'sendMessage',{chat_id:chat,text:t,...openBtn(env,{lang,open})});
+  const help=()=>send(T('Что я умею:\n/library — продолжить чтение\n/donate — поддержать проект\n/support — написать в поддержку\n\nЛюбое обычное сообщение попадёт к администратору, ответ придёт сюда.','Men nimalar qila olaman:\n/library — o‘qishni davom ettirish\n/donate — loyihani qo‘llab-quvvatlash\n/support — yordamga yozish\n\nIstalgan oddiy xabar administratorga yetadi, javob shu yerga keladi.'));
+  if(cmd==='/start')return void await send(await getWelcome(c,lang));
+  if(cmd==='/library')return void await send(T('Ваша библиотека и прогресс чтения:','Kutubxonangiz va o‘qish jarayoni:'),'library');
+  if(cmd==='/donate')return void await send(T('Поддержите развитие Muloqot Books 💛','Muloqot Books rivojiga hissa qo‘shing 💛'),'donate');
+  if(cmd==='/support')return void await send(T('Напишите ваш вопрос одним сообщением прямо сюда. Ответ придёт в этот чат.','Savolingizni shu yerga yozing. Javob shu chatga keladi.'));
+  if(cmd)return void await help();
+  if(cmd==='/help')return;
+  if((await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND created>?',uid,Date.now()-6e4)).n>=10)return;
+  await run(c,'INSERT INTO support_messages(user_id,from_admin,text,created,read) VALUES(?,?,?,?,0)',uid,0,clip(text,2000),Date.now());
+  await notifyAdmins(c,`💬 Сообщение от ${name||uid}: «${clip(text,200)}»\nОтветьте в приложении: Профиль → Админ-панель → Чат.`);
+  await tgApi(env,'sendMessage',{chat_id:chat,text:T('Спасибо! Сообщение передано администратору, ответ придёт сюда ✅','Rahmat! Xabaringiz administratorga yuborildi, javob shu yerga keladi ✅')});
+}
+
 async function handleWebhook(request,env,ctx){
   const h=request.headers.get('x-telegram-bot-api-secret-token');
   if(!env.BOT_TOKEN||(h!==await webhookSecret(env)&&(!env.WEBHOOK_SECRET||h!==env.WEBHOOK_SECRET)))return new Response('forbidden',{status:403});
@@ -463,11 +506,7 @@ async function handleWebhook(request,env,ctx){
     await tgApi(env,'answerPreCheckoutQuery',d&&d.status==='pending'?{pre_checkout_query_id:q.id,ok:true}:{pre_checkout_query_id:q.id,ok:false,error_message:'Платёж не найден или уже оплачен'});
   }else if(u.message?.successful_payment){
     await onPaid(c,u.message.successful_payment,u.message.from?.id);
-  }else if(u.message?.text?.startsWith('/start')){
-    const m=u.message;
-    await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET blocked=0',String(m.from.id),clip([m.from.first_name,m.from.last_name].filter(Boolean).join(' '),40)||null,Date.now(),Date.now());
-    await tgApi(env,'sendMessage',{chat_id:m.chat.id,text:await getWelcome(c),...openBtn(env)});
-  }
+  }else if(u.message?.text&&u.message.chat?.type==='private')await onBotMessage(c,u.message);
   return new Response('ok');
 }
 

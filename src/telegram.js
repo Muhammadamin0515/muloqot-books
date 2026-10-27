@@ -34,13 +34,13 @@ export function sync({canBack,theme}){
 }
 export function tap(){if(inTg)try{w.HapticFeedback?.selectionChanged()}catch(e){}}
 export function notify(type='success'){if(inTg)try{w.HapticFeedback?.notificationOccurred(type)}catch(e){}}
-/* Opens Telegram's share sheet with text only (no public URL until the bot link exists). */
-export function share(text){
+/* Opens Telegram's share sheet. `link` is a deep link (t.me/bot/app?startapp=...) so the recipient lands on the same book. */
+export function share(text,link){
   if(!inTg)return false;
-  const link=import.meta.env.VITE_APP_LINK||'';
   const u='https://t.me/share/url?url='+encodeURIComponent(link||' ')+'&text='+encodeURIComponent(text);
   try{w.openTelegramLink(u);return true}catch(e){return false}
 }
+export const startParam=()=>inTg?(w.initDataUnsafe&&w.initDataUnsafe.start_param)||'':'';
 export const initData=()=>inTg?w.initData||'':'';
 /* Telegram Stars checkout. Returns false outside Telegram (or on very old clients). */
 export function openInvoice(link,cb){if(!inTg||!w.openInvoice)return false;try{w.openInvoice(link,cb);return true}catch(e){return false}}

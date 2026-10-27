@@ -23,7 +23,7 @@ const DEFAULT=()=>({onboarded:false,lang:'ru',theme:'dark',name:'Читател�
   subs:[]});
 let S;
 function load(){try{const raw=localStorage.getItem(KEY);S=Object.assign(DEFAULT(),raw?JSON.parse(raw):{})}catch(e){S=DEFAULT()}}
-const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','me','donateGoal','donateOn'];
+const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','me','donateGoal','donateOn','appLink'];
 const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);return o};
 let saveT,syncT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250);
   if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>api('/api/state','PUT',persistable()).catch(()=>{}),1200)}}
@@ -88,13 +88,14 @@ ACT.closeSheet=closeSheet;
    ONBOARDING
    ===================================================================== */
 const langSeg=(cls='')=>`<div class="seg mini ${cls}" role="group" aria-label="${t('language')}"><button class="${S.lang==='ru'?'on':''}" data-a="setLang" data-v="ru">RU</button><button class="${S.lang==='uz'?'on':''}" data-a="setLang" data-v="uz">UZ</button></div>`;
-SCREENS.onboarding=()=>{const i=OB.i,last=i===3;
-  return `<div class="onb"><div class="onb-art ${i>1?'paper':''}">${onbArt(i)}<div class="onb-top px">${i>0?`<button class="iconbtn flat" data-a="obBack" aria-label="${t('back')}">${ico('back')}</button>`:'<span style="width:42px"></span>'}${langSeg()}${!last?`<button class="link" data-a="obSkip">${t('skip')}</button>`:'<span style="width:42px"></span>'}</div></div>
+const OB_STEPS=[0,3];
+SCREENS.onboarding=()=>{const n=OB_STEPS.length,pos=OB.i,i=OB_STEPS[pos],last=pos===n-1;
+  return `<div class="onb"><div class="onb-art ${i>1?'paper':''}">${onbArt(i)}<div class="onb-top px">${pos>0?`<button class="iconbtn flat" data-a="obBack" aria-label="${t('back')}">${ico('back')}</button>`:'<span style="width:42px"></span>'}${langSeg()}${!last?`<button class="link" data-a="obSkip">${t('skip')}</button>`:'<span style="width:42px"></span>'}</div></div>
   <div class="onb-panel px"><h1 class="display">${t('ob'+(i+1)+'_t')}</h1><p class="lede">${t('ob'+(i+1)+'_d')}</p>
-  <div class="onb-foot"><span class="mono" style="color:#a79c90">0${i+1}</span><div class="bar" role="progressbar" aria-valuemin="1" aria-valuemax="4" aria-valuenow="${i+1}"><i style="width:${(i+1)*25}%"></i></div><span class="mono" style="color:#7a7068">04</span>
+  <div class="onb-foot"><span class="mono" style="color:#a79c90">0${pos+1}</span><div class="bar" role="progressbar" aria-valuemin="1" aria-valuemax="${n}" aria-valuenow="${pos+1}"><i style="width:${(pos+1)/n*100}%"></i></div><span class="mono" style="color:#7a7068">0${n}</span>
   ${last?`<button class="btn" data-a="obNext">${t('start')}</button>`:`<button class="roundgo" data-a="obNext" aria-label="${t('next')}">${ico('arrow',22)}</button>`}</div></div></div>`};
 function finishOnb(){S.onboarded=true;save();OB.i=0;go('home')}
-ACT.obNext=()=>{if(OB.i<3){OB.i++;render(true)}else finishOnb()};
+ACT.obNext=()=>{if(OB.i<OB_STEPS.length-1){OB.i++;render(true)}else finishOnb()};
 ACT.obBack=()=>{if(OB.i>0){OB.i--;render(true)}};
 ACT.obSkip=finishOnb;
 
@@ -233,7 +234,7 @@ ACT.bookTab=el=>{BK.tab=el.dataset.v;refresh()};
 ACT.toggleSyn=()=>{BK.syn=!BK.syn;refresh()};
 ACT.rate=el=>{tg.notify('success');const id=el.dataset.id;S.ratings[id]=+el.dataset.v;save();toast(tr('Оценка сохранена','Baho saqlandi'));
   if(net.online)bg(api(`/api/books/${id}/rate`,'POST',{value:S.ratings[id]}).then(r=>{Object.assign(book(id),r);refresh()}));else refresh()};
-ACT.shareBook=el=>{const b=book(el.dataset.id);{const txt=`${b.title} — ${authorOf(b).name}`;if(!tg.share(txt))copyText(txt,t('share_copied'))}};
+ACT.shareBook=el=>{const b=book(el.dataset.id);{const txt=`${b.title} — ${authorOf(b).name}`,link=S.appLink?`${S.appLink}?startapp=book_${b.id}`:'';if(!tg.share(txt,link))copyText(link?`${txt}\n${link}`:txt,t('share_copied'))}};
 
 /* =====================================================================
    REVIEWS / COMMUNITY actions
@@ -519,7 +520,7 @@ tg.onBack(()=>{if(NAV.cur.name==='reader'&&$('#sheet').classList.contains('on'))
 const swap=(arr,v)=>arr.splice(0,arr.length,...v);
 function applyBoot(d,first){
   swap(BOOKS,d.books);swap(AUTHORS,d.authors);swap(COLLECTIONS,d.collections);swap(SEED_QUOTES,d.quotes);Object.assign(WEEKLY,d.weekly);
-  S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;
+  S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;S.appLink=d.appLink;
   S.reacts={};d.reviews.forEach(r=>{if(r.my&&(r.my.heart||r.my.insight))S.reacts[r.id]=r.my});
   S.qLikes={};d.quotes.forEach(q=>{if(q.mine)S.qLikes[q.id]=true});
   if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=Object.assign(DEFAULT(),d.state);['reviews','threads','ratings','follows','subs','me','reacts','qLikes'].forEach(k=>S[k]=loc[k])}
@@ -535,5 +536,15 @@ const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toa
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
 if(stale)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Сессия устарела','Seans eskirgan')}</b><span>${tr('Закройте приложение и откройте его заново.','Ilovani yoping va qayta oching.')}</span><button class="btn" data-a="tgClose">${tr('Закрыть','Yopish')}</button></div>`;
 else if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Доступ ограничен','Kirish cheklangan')}</b><span>${tr('Ваш аккаунт заблокирован администратором.','Akkauntingiz administrator tomonidan bloklangan.')}</span></div>`;
-else{NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
-render(true);}
+else{
+  /* Deep links: ?open=library|donate|support|catalog|profile (bot buttons) or startapp=book_<id> (shared books) */
+  const dl=new URLSearchParams(location.search).get('open')||tg.startParam()||'';
+  const target=/^book_/.test(dl)&&book(dl.slice(5))?'book':{library:'library',donate:'donate',support:'support',catalog:'catalog',profile:'profile'}[dl]||'';
+  if(target&&!S.onboarded){S.onboarded=true;save()}
+  NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
+  render(true);
+  if(target==='book')ACT.openBook({dataset:{id:dl.slice(5)}});
+  else if(target==='donate')ACT.openDonate();
+  else if(target==='support')ACT.openSupport();
+  else if(target)go(target);
+}
