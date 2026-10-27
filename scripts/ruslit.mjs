@@ -40,10 +40,19 @@ function target(){
   return{url,token,local,key:sha1(url).slice(0,10)};
 }
 async function call(t,path,method='GET',body){
-  const r=await fetch(t.url+path,{method,headers:{authorization:'Bearer '+t.token,'content-type':'application/json'},body:body&&JSON.stringify(body)});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw Object.assign(new Error(`${method} ${path} → ${r.status} ${j.error||''}`),{status:r.status,code:j.error});
-  return j;
+  /* The Worker can answer 5xx (e.g. error 1102, CPU limit) for a heavy request; those are retried with a pause, other errors are final. */
+  let last;
+  for(let attempt=0;attempt<4;attempt++){
+    try{
+      const r=await fetch(t.url+path,{method,headers:{authorization:'Bearer '+t.token,'content-type':'application/json'},body:body&&JSON.stringify(body)});
+      const txt=await r.text();let j={};try{j=JSON.parse(txt)}catch{}
+      if(r.ok)return j;
+      last=Object.assign(new Error(`${method} ${path} → ${r.status} ${j.error||txt.slice(0,80).replace(/\s+/g,' ')}`),{status:r.status,code:j.error});
+      if(r.status<500&&r.status!==429)throw last;
+    }catch(e){if(e.status&&e.status<500&&e.status!==429)throw e;last=e}
+    await new Promise(r=>setTimeout(r,1500*(attempt+1)));
+  }
+  throw last;
 }
 
 /* ---------- commands ---------- */
@@ -96,7 +105,7 @@ async function main(){
           const b=await call(t,'/api/import/book','POST',{record});
           if(b.status==='exists'){tally.skipped_existing++;row.result='skipped_existing'}
           else{
-            for(let i=0;i<chunks.length;){let size=0,j=i;while(j<chunks.length&&j-i<60&&size+chunks[j].body.length<350_000){size+=chunks[j].body.length;j++}if(j===i)j=i+1;
+            for(let i=0;i<chunks.length;){let size=0,j=i;while(j<chunks.length&&j-i<60&&size+chunks[j].body.length<120_000){size+=chunks[j].body.length;j++}if(j===i)j=i+1;
               await call(t,'/api/import/chunks','POST',{id:r.id,version:r.version,chunks:chunks.slice(i,j)});i=j}
             await call(t,'/api/import/finish','POST',{id:r.id,version:r.version,chunks:chunks.length});
             b.status==='created'?tally.created++:tally.updated++;row.result=b.status;state.done[r.sourceId]=r.version;
@@ -106,7 +115,8 @@ async function main(){
       out.results.push(row);
       if(n%25===0){log(`  ${n}/${res.records.length}`);save()}
     }
-    save();log(JSON.stringify(out.summary,null,1));log('Report:',join(WORK,'reports',`ruslit-import-${stamp}.json`));
+    save();log(JSON.stringify(out.summary,null,1));
+    for(const f of out.results.filter(x=>x.result==='failed'))log('FAILED:',f.path,'→',f.error);log('Report:',join(WORK,'reports',`ruslit-import-${stamp}.json`));
     process.exit(tally.failed?1:0);
   }
   if(cmd==='verify'){
