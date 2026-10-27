@@ -94,11 +94,12 @@ function toParas(lines,kind,{notes}={}){
 }
 
 /** Main entry. text is the decoded file. kind: 'prose' | 'poems' | 'publicism' (the source folder). */
-export function prepareText(text,{title,author,kind='prose'}={}){
+export function prepareText(text,{title,author,kind='prose',dropNotes=false}={}){
   const lines=stripHeader(cleanLines(text),{title,author});
   const {chapters,structure}=splitChapters(lines,title,kind);
   const out=[];
   for(const c of chapters){
+    if(dropNotes&&NOTES.test(c.t))continue;   // editorial notes of modern editions: optional, see docs/READING.md
     const notes=NOTES.test(c.t),paras=toParas(c.lines,notes?'prose':kind,{notes}).filter(p=>p.trim());
     if(paras.length)out.push({t:c.t,paras});
   }
@@ -115,7 +116,7 @@ export function prepareText(text,{title,author,kind='prose'}={}){
     }else final.push({...c,synthetic:false});
   }
   const chars=final.reduce((n,c)=>n+c.paras.reduce((m,p)=>m+p.length,0),0);
-  return{chapters:final,chars,structure,synthetic};
+  return{chapters:final,chars,structure,synthetic,dropNotes};
 }
 
 /** Quality checks. Returns {fatal?:code, issues:[code]}; fatal files are reported and skipped, issues are kept as review notes. */
@@ -133,9 +134,10 @@ export function inspect(text,prepared,{kind='prose'}={}){
 }
 
 /** Canonical content hash and storage chunks. Chunks are JSON arrays of paragraphs, a few hundred KB at most. */
+/** Content hash used for versions and verification. */
+export const contentHash=(pairs,dropNotes)=>sha256(JSON.stringify(pairs)+PREP_VERSION+(dropNotes?'|nonotes':''));
 export function finalize(prepared){
-  const canon=JSON.stringify(prepared.chapters.map(c=>[c.t,c.paras]));
-  const hash=sha256(canon+PREP_VERSION);
+  const hash=contentHash(prepared.chapters.map(c=>[c.t,c.paras]),prepared.dropNotes);
   const toc=prepared.chapters.map(c=>({t:c.t,n:c.paras.reduce((m,p)=>m+p.length,0),...(c.synthetic?{s:1}:{})}));
   const chunks=[];
   prepared.chapters.forEach((c,ch)=>{

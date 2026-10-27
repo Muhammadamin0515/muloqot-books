@@ -1,0 +1,10 @@
+{
+  "_comment": "Files whose automatic warnings were looked at by hand (head of the file and decoded text) and found harmless. The warning stays in the import report; these paths are allowed into the proposed allow-list.",
+  "poems/Pushkin/Руслан и Людмила.txt": "windows-1251 decoded cleanly: no replacement characters, Cyrillic text intact",
+  "prose/Dostoevsky/Братья Карамазовы.txt": "the first line is a dedication, not an author name; author is the folder author",
+  "prose/Dostoevsky/Господин Прохарчин.txt": "the first line is the title",
+  "prose/Gorky/Мещане.txt": "header 'Горький Максим' is surname-first spelling of the folder author",
+  "prose/Gorky/Фома Гордеев.txt": "header 'Горький Максим' is surname-first spelling of the folder author",
+  "prose/Tolstoy/Война и мир. Том 2.txt": "header 'Лев Николаевич / Толстой' split over two lines",
+  "prose/Turgenev/Яков Пасынков.txt": "header 'Тургенев Иван' is surname-first spelling of the folder author"
+}

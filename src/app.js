@@ -183,7 +183,8 @@ function catList(){
     return l;
   }
   const pop=b=>(b.pop||0);
-  const cmp={pop:(a,b)=>pop(b)-pop(a)||stat(b).n-stat(a).n,rating:(a,b)=>stat(b).avg-stat(a).avg||stat(b).n-stat(a).n,new:(a,b)=>b.added-a.added,az:(a,b)=>a.title.localeCompare(b.title,S.lang==='ru'?'ru':'uz')};
+  const byName=(a,b)=>authorOf(a).name.localeCompare(authorOf(b).name,'ru')||a.title.localeCompare(b.title,'ru');
+  const cmp={pop:(a,b)=>pop(b)-pop(a)||stat(b).n-stat(a).n||byName(a,b),rating:(a,b)=>stat(b).avg-stat(a).avg||stat(b).n-stat(a).n,new:(a,b)=>b.added-a.added,az:(a,b)=>a.title.localeCompare(b.title,S.lang==='ru'?'ru':'uz')};
   return l.sort(cmp[CAT.sort]);
 }
 const cardBk=b=>{const st=stat(b),sv=S.saved.includes(b.id);return `<div class="cardwrap"><button class="fab ${sv?'on':''}" data-a="toggleSave" data-id="${b.id}" aria-label="${t('add_lib')}" aria-pressed="${sv}">${ico('bookmark',17)}</button><button class="cardbk" data-a="openBook" data-id="${b.id}">${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${rateBit(st)}<span class="tag">${b.lang.toUpperCase()}</span><span>${gl(b.genre)}</span>${kindBit(b)}</span></button></div>`};

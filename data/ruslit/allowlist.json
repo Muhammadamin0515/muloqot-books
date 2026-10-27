@@ -1,0 +1,1542 @@
+{
+ "_comment": "Proposed by scripts/ruslit.mjs allowlist. Basis: the author died more than 70 years ago (reference table data/ruslit/authors.json), which is public domain in Uzbekistan for the original text. NOT verified: the specific edition, the source site, and any editorial notes. Review before publishing.",
+ "verifiedBy": "владелец проекта (запрос в сессии Claude)",
+ "verifiedOn": "2026-10-27",
+ "sourceCommit": "4509680428729da225a73a22008133660f92bb7e",
+ "dropNotes": true,
+ "rights": {
+  "status": "public_domain",
+  "license": "Общественное достояние: автор умер более 70 лет назад",
+  "evidenceUrl": "https://github.com/d0rj/RusLit",
+  "note": "Основание: год смерти автора; издание, сайт-источник и редакторские примечания отдельно не проверялись. Примечания исключены из текста."
+ },
+ "books": [
+  {
+   "path": "poems/Blok/Возмездие.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "poems/Blok/Двенадцать.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "poems/Blok/Корреспонденция Бальмонта из Мексики.txt",
+   "authorDeathYear": 1921,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Blok/Скифы.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "poems/Blok/Соловьиный сад.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "poems/Blok/Стихотворения 1897-1903 гг, не вошедшие в основное собрание.txt",
+   "authorDeathYear": 1921,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Blok/Стихотворения. Книга вторая (1904-1908).txt",
+   "authorDeathYear": 1921,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Blok/Стихотворения. Книга первая (1898-1904).txt",
+   "authorDeathYear": 1921,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Blok/Стихотворения. Книга третья (1907-1916).txt",
+   "authorDeathYear": 1921,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Blok/Шуточные стихи и сценки.txt",
+   "authorDeathYear": 1921,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/А. О. Смирновой.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Аминт твой на глупца походит....txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Ангел.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Ах! сокрылась в мрак ненастный....txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Бородино.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Валерик.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Выхожу один я на дорогу.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Дума.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/И скучно и грустно.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Из-под таинственной холодной полумаски.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Молитва (В минуту жизни трудную...).txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Молитва (Я, матерь божия, ныне с молитвою...).txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Мцыри.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Парус.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Пророк.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Родина.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Смерть поэта.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Lermontov/Тучи.txt",
+   "authorDeathYear": 1841,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Nekrasov/В дороге.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Вчерашний день, часу в шестом....txt",
+   "authorDeathYear": 1878,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Nekrasov/Дедушка.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Железная дорога.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Кому на Руси жить хорошо.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Крестьянские дети.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Мороз, красный нос.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Мы с тобой бестолковые люди....txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/О Муза! я у двери гроба....txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Поэт и гражданин.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Размышления у парадного подъезда.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Русские женщины.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Тройка.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Элегия.txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Nekrasov/Я не люблю иронии твоей....txt",
+   "authorDeathYear": 1878
+  },
+  {
+   "path": "poems/Pushkin/19 октября.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Анчар.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Борис Годунов.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Во глубине сибирских руд....txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Деревня.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Евгений Онегин.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Зимнее утро.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/К Чаадаеву.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/К морю.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/К.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Каменный гость.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Медный всадник.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Моцарт и Сальери.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/На холмах Грузии лежит ночная мгла....txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Песнь о вещем Олеге.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Пир во время чумы.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Поэт.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Пророк.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Руслан и Людмила.txt",
+   "authorDeathYear": 1837,
+   "metaConfirmed": true
+  },
+  {
+   "path": "poems/Pushkin/Сказка о золотом петушке.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Сказка о медведихе.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Сказка о мёртвой царевне.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Сказка о попе и работнике его Балде.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Сказка о рыбаке и рыбке.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Сказка о царе Салтане.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Скупой рыцарь.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Узник.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Элегия (Безумных лет угасшее веселье...).txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Элегия (Воспоминаньем упоенный...).txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Элегия (Опять я ваш, о юные друзья...).txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Элегия (Счастлив, кто в страсти сам себе...).txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Элегия (Я думал, что любовь погасла навсегда...).txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Элегия на смерть Анны Львовны.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Я вас любил любовь ещё, быть может,....txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "poems/Pushkin/Я памятник себе воздвиг нерукотворный.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Blok/Девушка розовой калитки и муравьиный царь.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "prose/Blok/Ни сны, ни явь.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "prose/Blok/Сказка о той, которая не поймет её.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "prose/Blok/Сограждане.txt",
+   "authorDeathYear": 1921
+  },
+  {
+   "path": "prose/Bryusov/Алтарь победы.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Бемоль.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/В башне.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/В зеркале.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/В подземной тюрьме.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Восстание машин.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Гора Звезды.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Декадент.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Дитя и безумец.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/За себя или за другую.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Защита.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Моцарт.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Мраморная головка.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Ночное путешествие.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Обручение Даши.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Огненный ангел.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Первая любовь.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Под Старым мостом.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Последние мученики.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Последние страницы из дневника женщины.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Предсмертный бред Вергилия.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Рассказы Маши, с реки Мологи, под городом Устюжна.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Республика Южного Креста.txt",
+   "authorDeathYear": 1924,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Bryusov/Рея Сильвия.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Семь земных соблазнов.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Сестры.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Теперь, - когда я проснулся....txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Через пятнадцать лет.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Элули, сын Элули.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Bryusov/Юпитер поверженный.txt",
+   "authorDeathYear": 1924
+  },
+  {
+   "path": "prose/Chekhov/Агафья.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Альбом.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Анна на шее.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Анюта.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Аптекарша.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Ариадна.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Архиерей.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Ах, зубы.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Бабы.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Баран и барышня.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Барыня.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Беглец.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Беда 1886.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Беда 1887.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Беззащитное существо.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Белолобый.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Беседа пьяного с трезвым чёртом.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Брак по расчёту.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Брожение умов.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Бумажник.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/В аптеке.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/В вагоне.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/В овраге.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/В потёмках.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/В ссылке.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/В суде.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Ванька.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Ведьма.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Верочка.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Винт.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Вишнёвый сад.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Водевиль.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Володя.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Восклицательный знак.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Враги.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Встреча весны.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Выигрышный билет.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Глупый француз.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Горе.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Гость.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Грешник из Толедо.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Гриша.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Гусев.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дама с собачкой.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дачники.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дачница.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Два скандала.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Двадцать девятое июня.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/День за городом.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Детвора.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дипломат.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Добрый знакомый.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дом с мезонином.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дома.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дополнительные вопросы.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дорогая собака.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дорогие уроки.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дочь Альбиона.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Драма на охоте.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Душечка.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Дуэль.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Злоумышленник.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Ионыч.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Каштанка.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Крыжовник.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Лошадиная фамилия.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Налим.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/О любви.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Палата №6.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Пересолил.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Смерть чиновника.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Толстый и тонкий.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Тоска.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Три сестры.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Хамелеон.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Хирургия.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Chekhov/Человек в футляре.txt",
+   "authorDeathYear": 1904
+  },
+  {
+   "path": "prose/Dostoevsky/Ёлка и свадьба.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Бедные люди.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Белые ночи.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Бесы.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Бобок.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Братья Карамазовы.txt",
+   "authorDeathYear": 1881,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Dostoevsky/Вечный муж.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Господин Прохарчин.txt",
+   "authorDeathYear": 1881,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Dostoevsky/Два самоубийства.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Двойник.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Дневник писателя.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Домовой.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Дядюшкин сон.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Записки из подполья.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Игрок.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Идиот.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Короткая.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Крокодил.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Маленький герой.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Мальчик у Христа на ёлке.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Неточка Незванова.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Петербургские сновидения в стихах и в прозе.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Подросток.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Ползунков.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Роман в девяти письмах.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Село Степанчиково и его обитатели.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Скверный анекдот.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Слабое сердце.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Сон смешного человека.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Униженные и оскорблённые.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Хозяйка.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Честный вор.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Dostoevsky/Чужая жена и муж под кроватью.txt",
+   "authorDeathYear": 1881
+  },
+  {
+   "path": "prose/Gogol/Вечера на хуторе близ Диканьки.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Вий.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Записки сумасшедшего.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Коляска.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Мёртвые души.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Невский проспект.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Нос.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Ночи на вилле.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Ночь перед Рождеством.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Повесть о том, как поссорился Иван Иванович с Иваном Никифоровичем.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Портрет.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Ревизор.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Рим.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Старосветские помещики.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Тарас Бульба.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gogol/Шинель.txt",
+   "authorDeathYear": 1852
+  },
+  {
+   "path": "prose/Gorky/Бывшие люди.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/В людях.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/В степи.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Вывод.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Город жёлтого дьявола.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Двадцать шесть и одна.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Дело с застёжками.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Детство.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Емельян Пиляй.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Знахарка.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Коновалов.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Ледоход.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Ма-аленькая!....txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Макар Чудра.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Мать.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Мещане.txt",
+   "authorDeathYear": 1936,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Gorky/Мои университеты.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/На дне.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/На плотах.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Несвоевременные мысли.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Озорник.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Песня о Буревестнике.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Песня о соколе.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Проходимец.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Рождение человека.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Сказки об Италии.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Скуки ради.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Старуха Изергиль.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Страсти-мордасти.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Фома Гордеев.txt",
+   "authorDeathYear": 1936,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Gorky/Челкаш.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Человек.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Gorky/Ярмарка в Голтве.txt",
+   "authorDeathYear": 1936
+  },
+  {
+   "path": "prose/Herzen/Доктор Крупов.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Долг прежде всего.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Елена.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Кто виноват.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Легенда.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Мимоездом.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Повреждённый.txt",
+   "authorDeathYear": 1870,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Herzen/С того берега.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Скуки ради.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Сорока-воровка.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Herzen/Трагедия за стаканом грога.txt",
+   "authorDeathYear": 1870
+  },
+  {
+   "path": "prose/Lermontov/Ашик-Кериб.txt",
+   "authorDeathYear": 1841
+  },
+  {
+   "path": "prose/Lermontov/Герой нашего времени.txt",
+   "authorDeathYear": 1841
+  },
+  {
+   "path": "prose/Lermontov/Штосс.txt",
+   "authorDeathYear": 1841
+  },
+  {
+   "path": "prose/Pushkin/Арап Петра Великого.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Дубровский.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Египетские ночи.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/История Пугачёва.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/История села Горюхина.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Капитанская дочка.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Кирджали.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Пиковая дама.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Повести Белкина.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Pushkin/Рославлев.txt",
+   "authorDeathYear": 1837
+  },
+  {
+   "path": "prose/Tolstoy/Альберт.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Алёша горшок.txt",
+   "authorDeathYear": 1910,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Tolstoy/Анна Каренина.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Божеское и человеческое.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Война и мир. Том 1.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Война и мир. Том 2.txt",
+   "authorDeathYear": 1910,
+   "metaConfirmed": true
+  },
+  {
+   "path": "prose/Tolstoy/Война и мир. Том 3.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Война и мир. Том 4.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Воскресение.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Два гусара.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Декабристы.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Детство.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Дьявол.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Записки маркера.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Записки сумасшедшего.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Из записок князя Д. Нехлюдова (Люцерн).txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Кавказский пленник.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Казаки.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Корней Васильев.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Крейцерова соната.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Метель.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Набег.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Отец Сергий.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Отрочество.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Поликуша.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/После бала.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Праведный судья.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Работник Емельян и пустой барабан.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Разжалованный.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Рубка леса.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Севастополь в августе 1855 года.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Севастополь в декабре месяце.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Севастополь в мае.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Семейное счастье.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Смерть Ивана Ильича.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Три смерти.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Утро пемещика.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Хаджи-Мурат.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Хозяин и работник.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Холстомер.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Юность.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Tolstoy/Ягоды.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "prose/Turgenev/Ася.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Вешние воды.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Дворянское гнездо.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Дым.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Записки охотника.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Муму.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Отцы и дети.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Первая любовь.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Стихотворения в прозе.txt",
+   "authorDeathYear": 1883
+  },
+  {
+   "path": "prose/Turgenev/Яков Пасынков.txt",
+   "authorDeathYear": 1883,
+   "metaConfirmed": true
+  },
+  {
+   "path": "publicism/Tolstoy/Carthago Delenda Est.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Бессмысленные мечтания.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Богу или маммоне.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Два письма к М.Ганди.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Две войны.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Доклад, приготовленный для конгресса о мире в Стокгольме.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Исповедь.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Не могу молчать (1-я редакция).txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Неделание.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/О безумии.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/О веротерпимости.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/О науке (Ответ  крестьянину).txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/О социализме.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Ответ польской женщине.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Патриотизм и правительство.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Патриотизм или мир.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Первая ступень.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Письмо революционеру.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Письмо студенту о праве.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/По поводу заключения В.А. Молчникова.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Почему христианские народы вообще и в особенности русский находятся теперь в бедственном положении.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Приближение конца.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Славянскому съезду.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Студенческое движение 1899 года.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Удивительные существа.txt",
+   "authorDeathYear": 1910
+  },
+  {
+   "path": "publicism/Tolstoy/Церковь и государство.txt",
+   "authorDeathYear": 1910
+  }
+ ]
+}

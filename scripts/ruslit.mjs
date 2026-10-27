@@ -4,8 +4,10 @@
      node scripts/ruslit.mjs scan    --source DIR [--limit N] [--report FILE]                  (dry-run, nothing is sent anywhere)
      node scripts/ruslit.mjs import  --source DIR --target local|URL [--limit N] [--resume] [--dry-run] [--allow-remote] [--report FILE]
      node scripts/ruslit.mjs verify  --source DIR --target local|URL [--limit N]                (reads every chapter back and compares content hashes)
+     node scripts/ruslit.mjs allowlist --source DIR --out FILE [--drop-notes] [--verified-by NAME]   (proposes a list; a person must review it)
      node scripts/ruslit.mjs publish --target local|URL --allowlist FILE [--dry-run] [--allow-remote]
      node scripts/ruslit.mjs unpublish --target local|URL --ids rlXXXX,rlYYYY
+   Add --drop-notes to scan/import/verify to leave out the "Примечания"/"Комментарии" sections (editorial notes of modern editions) from the prepared text.
    The target Worker must have IMPORT_TOKEN configured (secret). The token is read from the environment (or .dev.vars for local) and never printed.
    Imported books are drafts with unconfirmed rights: they are invisible to readers until "publish" applies a verified allow-list. */
 import {execFileSync} from 'node:child_process';
@@ -13,7 +15,7 @@ import {existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {resolve,join} from 'node:path';
 import {scan,summarize,brief,SOURCE_REPO} from './ruslit/scan.js';
-import {sha256,PREP_VERSION} from './ruslit/prepare.js';
+import {contentHash} from './ruslit/prepare.js';
 
 const argv=process.argv.slice(2),cmd=argv[0];
 const flag=n=>argv.includes('--'+n),opt=(n,d)=>{const i=argv.indexOf('--'+n);return i>=0&&argv[i+1]&&!argv[i+1].startsWith('--')?argv[i+1]:d};
@@ -56,7 +58,7 @@ async function main(){
   if(cmd==='scan'||(cmd==='import'&&flag('dry-run'))){
     const src=resolve(opt('source','/tmp/ruslit-src')),commit=commitOf(src),limit=+opt('limit',0);
     log(`Scanning ${src} @ ${commit}${limit?` (first ${limit} files)`:''} …`);
-    const res=scan(src,{commit,limit}),sum=summarize(res);
+    const res=scan(src,{commit,limit,dropNotes:flag('drop-notes')}),sum=summarize(res);
     let plan=null;
     if(cmd==='import'){
       const t=target();const st=await call(t,'/api/import/status').catch(e=>{log('(server status unavailable: '+e.message+')');return null});
@@ -74,7 +76,7 @@ async function main(){
     const stateFile=opt('state',join(WORK,`state-${t.key}.json`));
     const state=existsSync(stateFile)?JSON.parse(readFileSync(stateFile,'utf8')):{done:{}};
     log(`Importing ${src} @ ${commit} → ${t.url}${limit?` (first ${limit})`:''}${flag('resume')?' [resume]':''}`);
-    const res=scan(src,{commit,limit});log('prepared:',JSON.stringify(summarize(res)));
+    const res=scan(src,{commit,limit,dropNotes:flag('drop-notes')});log('prepared:',JSON.stringify(summarize(res)));
     const have=new Map((await call(t,'/api/import/status')).books.map(b=>[b.sourceId,b]));
     const out={kind:'import',started:new Date().toISOString(),source:SOURCE_REPO,commit,target:t.local?'local':new URL(t.url).host,results:[],summary:{}};
     const tally={created:0,updated:0,skipped_existing:0,skipped_duplicate:0,skipped_error:0,failed:0};
@@ -109,18 +111,39 @@ async function main(){
   }
   if(cmd==='verify'){
     const src=resolve(opt('source','/tmp/ruslit-src')),t=target(),limit=+opt('limit',0);
-    const res=scan(src,{commit:commitOf(src),limit}),have=new Map((await call(t,'/api/import/status')).books.map(b=>[b.sourceId,b]));
+    const res=scan(src,{commit:commitOf(src),limit,dropNotes:flag('drop-notes')}),have=new Map((await call(t,'/api/import/status')).books.map(b=>[b.sourceId,b]));
     const out={checked:0,ok:0,missing:[],mismatched:[]};
     for(const r of res.records){
       if(r.status==='error'||r.dupOf)continue;out.checked++;
       const h=have.get(r.sourceId);if(!h||!h.ver){out.missing.push(r.path);continue}
       const chapters=[];try{for(let i=0;i<r.chapters;i++){const c=await call(t,`/api/import/chapter/${r.id}/${i}`);chapters.push([c.t,c.p])}}catch(e){out.mismatched.push({path:r.path,error:e.message});continue}
-      const hash=sha256(JSON.stringify(chapters)+PREP_VERSION);
+      const hash=contentHash(chapters,flag('drop-notes'));
       if(hash===r.hash&&h.ver===r.version)out.ok++;else out.mismatched.push({path:r.path,expected:r.hash.slice(0,12),got:hash.slice(0,12)});
       if(out.checked%50===0)log(`  ${out.checked}`);
     }
     writeFileSync(join(WORK,'reports',`ruslit-verify-${stamp}.json`),JSON.stringify({generated:new Date().toISOString(),...out},null,1));
     log(JSON.stringify({checked:out.checked,identical:out.ok,missing:out.missing.length,mismatched:out.mismatched.length},null,1));process.exit(out.ok===out.checked?0:1);
+  }
+  if(cmd==='allowlist'){
+    /* Proposes a publication list from the dry-run: the author's death year (reference table) must prove public domain, and only
+       title/year-table doubts may remain in the metadata. Everything else stays a draft for a person to look at. */
+    const src=resolve(opt('source','/tmp/ruslit-src')),commit=commitOf(src),out=opt('out',join(WORK,'allowlist.proposed.json')),by=opt('verified-by','owner');
+    const res=scan(src,{commit,dropNotes:flag('drop-notes')}),now=new Date().getFullYear();
+    const reviewed=JSON.parse(readFileSync(new URL('../data/ruslit/reviewed.json',import.meta.url),'utf8'));
+    const soft=k=>/^(no_info_csv|not_in_info_csv|csv_name_fuzzy_match)/.test(k);
+    const books=[],skipped={};const skip=(r,why)=>{(skipped[why]=skipped[why]||[]).push(r.path)};
+    for(const r of res.records){
+      if(r.status==='error'){skip(r,'error:'+r.error);continue}
+      if(r.dupOf){skip(r,'duplicate');continue}
+      if(!r.authorDeathYear||r.authorDeathYear>now-71){skip(r,'author death year unknown or too recent');continue}
+      const hard=reviewed[r.path]?[]:r.review.filter(k=>!soft(k));if(hard.length){skip(r,'needs a person: '+hard.map(k=>k.split(':')[0]).join(','));continue}
+      books.push({path:r.path,authorDeathYear:r.authorDeathYear,...(r.review.length?{metaConfirmed:true}:{})});
+    }
+    const doc={_comment:'Proposed by scripts/ruslit.mjs allowlist. Basis: the author died more than 70 years ago (reference table data/ruslit/authors.json), which is public domain in Uzbekistan for the original text. NOT verified: the specific edition, the source site, and any editorial notes. Review before publishing.',
+      verifiedBy:by,verifiedOn:new Date().toISOString().slice(0,10),sourceCommit:commit,dropNotes:flag('drop-notes'),
+      rights:{status:'public_domain',license:'Общественное достояние: автор умер более 70 лет назад',evidenceUrl:'https://github.com/d0rj/RusLit',note:`Основание: год смерти автора; издание, сайт-источник и редакторские примечания отдельно не проверялись.${flag('drop-notes')?' Примечания исключены из текста.':''}`},books};
+    writeFileSync(out,JSON.stringify(doc,null,1));
+    log(`allow-list: ${books.length} of ${res.records.length} books → ${out}`);for(const [k,v] of Object.entries(skipped))log(`  not included (${k}): ${v.length}${v.length<=8?' — '+v.join('; '):''}`);return;
   }
   if(cmd==='publish'){
     const t=target(),file=opt('allowlist');if(!file){console.error('--allowlist FILE is required');process.exit(2)}

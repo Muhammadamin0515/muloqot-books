@@ -67,7 +67,7 @@ export function discover(root){
 }
 
 /** Prepares every work. onFile(record) is called as each file is finished (for progress); errors never stop the scan. */
-export function scan(root,{commit='unknown',limit=0,onFile}={}){
+export function scan(root,{commit='unknown',limit=0,onFile,dropNotes=false}={}){
   const {files,csv,ignored}=discover(root);
   const texts=new Map(),firsts={};
   const list=limit?files.slice(0,limit):files;
@@ -108,7 +108,7 @@ export function scan(root,{commit='unknown',limit=0,onFile}={}){
       else if(da){author=da.name;authorSource='folder_header_majority';rec.review.push('author_not_in_curated_mapping')}
       else if(own){author=own;authorSource='file_header';rec.review.push('author_single_vote')}
       else{author=f.authorDir||'';authorSource='folder_name';rec.review.push('author_unresolved_folder_name_used')}
-      const prepared=prepareText(d.text,{title,author,kind:f.kind||'prose'});
+      const prepared=prepareText(d.text,{title,author,kind:f.kind||'prose',dropNotes});
       const ins=inspect(d.text,prepared,{kind:f.kind||'prose'});if(ins.fatal)throw Object.assign(new Error(ins.fatal),{code:ins.fatal});
       rec.review.push(...ins.issues);rec.info.push(...ins.info);
       if(d.encoding!=='utf-8')rec.review.push('encoding:'+d.encoding);
