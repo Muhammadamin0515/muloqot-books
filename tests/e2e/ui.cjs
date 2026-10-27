@@ -18,7 +18,7 @@ await p.close();
 /* B. admin imports an EPUB with rights */
 const a=await page('admin');await a.goto(B+'/?as=admin&open=profile');await a.waitForTimeout(900);
 await a.click('[data-a=openAdmin]');await a.waitForTimeout(400);await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(900);
-ok((await a.textContent('.tiles')).includes('Настоящих книг'),'catalog tab opens');
+ok((await a.textContent('.tiles')).includes('Опубликовано'),'catalog tab opens');
 await a.click('summary:has-text("Одна книга")');
 await a.setInputFiles('#ciFile',FX+'/classic.epub');await a.waitForTimeout(900);
 ok(await a.inputValue('#ciT')==='Старый двор'&&await a.inputValue('#ciA')==='Иван Тестов','EPUB metadata prefills the form');
@@ -52,8 +52,8 @@ await p.waitForTimeout(2200); // state sync is debounced
 await p.close();
 /* same reader on a "second device": fresh browser context, nothing in localStorage */
 const p2=await page('reader2');await p2.goto(B+'/?as=reader2');await p2.waitForTimeout(1500);
-const st=(await api('reader2','/api/bootstrap')).j.state;const pr=Object.values(st.progress||{})[0];
-ok(pr&&pr.para>=para-1&&pr.para<=para+1,'position (paragraph) is synced to the server: '+JSON.stringify(pr));
+const pr=Object.values((await api('reader2','/api/bootstrap')).j.progress||{})[0];
+ok(pr&&pr.locator.para>=para-1&&pr.locator.para<=para+1,'position (paragraph) is synced to the server: '+JSON.stringify(pr));
 await p2.evaluate(()=>{});
 const id=(await api('reader2','/api/bootstrap')).j.books.find(b=>b.title==='Старый двор').id;
 await p2.goto(B+'/?as=reader2&open=read_'+id);await p2.waitForTimeout(1500);

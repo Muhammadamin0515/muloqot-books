@@ -553,3 +553,6 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .aud-play{width:68px;height:68px;border-radius:50%;border:0;background:var(--acc);color:#fff;display:grid;place-items:center}
 .aud-ctl .iconbtn:disabled{opacity:.35}
 .li.on{background:var(--acc-soft)}
+
+/* ---- reader: verses keep their line breaks; the text is always inserted as text, never as HTML ---- */
+.rp{white-space:pre-line}

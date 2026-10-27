@@ -26,11 +26,12 @@ const DEFAULT=()=>({onboarded:false,lang:'ru',theme:'dark',name:'Читател�
   ratings:{},reviews:clone(SEED_REVIEWS),threads:clone(SEED_THREADS),reacts:{},follows:[],days:[],
   myQuotes:[],qLikes:{},reader:{size:19,lh:1.7,theme:'dark',font:'serif'},
   notif:{chapters:true,replies:true,reminder:false,authors:true},goal:20,
-  subs:[]});
+  subs:[],outbox:{p:{},b:{}}});
 let S;
 function load(){try{const raw=localStorage.getItem(KEY);S=Object.assign(DEFAULT(),raw?JSON.parse(raw):{})}catch(e){S=DEFAULT()}}
 const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','me','donateGoal','donateOn','appLink'];
-const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);return o};
+/* Reading progress and bookmarks are synced record by record (see syncReading), not inside the state blob. */
+const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);delete o.progress;delete o.bookmarks;delete o.outbox;return o};
 let saveT,syncT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250);
   if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>api('/api/state','PUT',persistable()).catch(()=>{}),1200)}}
 const ERR={rate:['Слишком часто. Подождите минуту.','Juda tez-tez. Bir daqiqa kuting.'],links:['Ссылки в сообщениях запрещены.','Xabarlarda havolalar taqiqlangan.'],duplicate:['Такое сообщение уже отправлено.','Bunday xabar allaqachon yuborilgan.'],stopword:['Сообщение содержит запрещённые слова.','Xabarda taqiqlangan so‘zlar bor.'],banned:['Ваш аккаунт заблокирован.','Akkauntingiz bloklangan.']};
@@ -51,7 +52,7 @@ const tr=(ru,uz)=>S.lang==='ru'?ru:uz;
 
 /* ---------- helpers ---------- */
 function stat(b){if(net.online)return{avg:Math.round(b.rating*10)/10,n:b.count};const u=S.ratings[b.id];const n=b.count+(u?1:0);const avg=u?(b.rating*b.count+u)/n:b.rating;return{avg:Math.round(avg*10)/10,n}}
-function pctRaw(id){const pr=S.progress[id];if(!pr)return 0;const n=book(id).chapters.length;if(!n)return 0;return Math.min(100,Math.round(100*(pr.ch+pr.p)/n))}
+function pctRaw(id){const pr=S.progress[id];if(!pr)return 0;if(pr.pct!=null)return Math.min(100,Math.round(pr.pct));const n=book(id).chapters.length;if(!n)return 0;return Math.min(100,Math.round(100*(pr.ch+pr.p)/n))}
 function pctOf(id){return S.finished.includes(id)?100:Math.min(99,pctRaw(id))}
 const readingIds=()=>Object.keys(S.progress).filter(id=>!S.finished.includes(id)&&book(id)).sort((a,b)=>(S.progress[b].ts||0)-(S.progress[a].ts||0));
 const stars=(v,s=14)=>`<span class="stars" role="img" aria-label="${v}/5">${[1,2,3,4,5].map(i=>ico('star',s,i<=Math.round(v)?'f':'e')).join('')}</span>`;
@@ -142,7 +143,7 @@ SCREENS.home=()=>{
   ${pop.length?`<section class="sec">${head(t('popular'),`<button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button>`)}<div class="hs px">${pop.map(b=>bkCard(b)).join('')}</div></section>`:''}
   ${net.online&&S.donateOn?donCard():''}
   <section class="sec">${head(t('new_rel'),`<button class="link acc" data-a="openNew">${t('all')}</button>`)}<div class="hs px">${nw.map(b=>bkCard(b,t('new'))).join('')}</div></section>
-  <section class="sec">${head(t('genres'))}<div class="hs px">${GENRES.map(g=>`<button class="chip" data-a="genreFilter" data-id="${g}">${gl(g)} <span class="mute">${gc(g)}</span></button>`).join('')}</div></section>
+  <section class="sec">${head(t('genres'))}<div class="hs px">${GENRES.filter(g=>gc(g)>0).map(g=>`<button class="chip" data-a="genreFilter" data-id="${g}">${gl(g)} <span class="mute">${gc(g)}</span></button>`).join('')}</div></section>
   <section class="sec">${head(t('authors'))}<div class="hs px">${AUTHORS.filter(a=>BOOKS.some(b=>b.a===a.id)).slice(0,10).map(a=>`<button class="au" data-a="openAuthor" data-id="${a.id}"><div class="pt">${portrait(a)}</div><b>${esc(a.name)}</b><small>${esc(L(a.city))}</small></button>`).join('')}</div></section>`;
 };
 ACT.tab=el=>{if(NAV.tab===el.dataset.id&&NAV.cur.name===el.dataset.id){$('#screen').scrollTo({top:0,behavior:'smooth'});return}go(el.dataset.id)};
@@ -158,9 +159,10 @@ ACT.tgClose=()=>tg.close();
 /* =====================================================================
    CATALOG & SEARCH
    ===================================================================== */
-const CAT={q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false,only:'all'};
+const PAGE=24;
+const CAT={q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false,only:'all',shown:PAGE};
 MODEL.cat=CAT;
-function resetCat(){Object.assign(CAT,{q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false,only:'all'})}
+function resetCat(){Object.assign(CAT,{q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false,only:'all',shown:PAGE})}
 /* Search index: one small document per book, built once and reused while typing. */
 const DOCS=new Map();
 const docOf=b=>{const key=b.title+'|'+b.a+'|'+b.series,d=DOCS.get(b.id);if(d&&d.k===key)return d;
@@ -185,11 +187,13 @@ function catList(){
   return l.sort(cmp[CAT.sort]);
 }
 const cardBk=b=>{const st=stat(b),sv=S.saved.includes(b.id);return `<div class="cardwrap"><button class="fab ${sv?'on':''}" data-a="toggleSave" data-id="${b.id}" aria-label="${t('add_lib')}" aria-pressed="${sv}">${ico('bookmark',17)}</button><button class="cardbk" data-a="openBook" data-id="${b.id}">${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${rateBit(st)}<span class="tag">${b.lang.toUpperCase()}</span><span>${gl(b.genre)}</span>${kindBit(b)}</span></button></div>`};
-function catResults(l){return l.length?`<div class="grid2">${l.map(cardBk).join('')}</div>`:empty('search',t('nothing'),t('nothing_d'),`${lastSuggest?`<button class="btn sm" style="margin-bottom:10px" data-a="useSuggest" data-v="${esc(lastSuggest)}">${tr('Искать','Qidirish')}: «${esc(lastSuggest)}»</button>`:''}<button class="btn sm ghost" data-a="resetFilters">${t('reset')}</button>`)}
+function catResults(l){return l.length?`<div class="grid2">${l.slice(0,CAT.shown).map(cardBk).join('')}</div>${l.length>CAT.shown?`<button class="btn block ghost" style="margin-top:18px" data-a="catMore">${tr('Показать ещё','Yana ko‘rsatish')} (${l.length-CAT.shown})</button>`:''}`:empty('search',t('nothing'),t('nothing_d'),`${lastSuggest?`<button class="btn sm" style="margin-bottom:10px" data-a="useSuggest" data-v="${esc(lastSuggest)}">${tr('Искать','Qidirish')}: «${esc(lastSuggest)}»</button>`:''}<button class="btn sm ghost" data-a="resetFilters">${t('reset')}</button>`)}
+ACT.catMore=()=>{CAT.shown+=PAGE;const l=catList(),r=$('#catRes');if(r)r.innerHTML=catResults(l)};
 ACT.useSuggest=el=>{CAT.q=el.dataset.v;const q=$('#q');if(q)q.value=CAT.q;const x=$('.searchbox .x');if(x)x.hidden=false;updateCatalog()};
 ACT.catOnly=el=>{CAT.only=CAT.only===el.dataset.v?'all':el.dataset.v;$$('[data-a="catOnly"]').forEach(b=>b.classList.toggle('on',b.dataset.v===CAT.only));updateCatalog()};
 let catT;
-function updateCatalog(){
+function updateCatalog(keep){
+  if(!keep)CAT.shown=PAGE;
   const res=$('#catRes');if(!res)return;
   res.innerHTML=skelGrid(4);clearTimeout(catT);
   catT=setTimeout(()=>{const l=catList();const r=$('#catRes');if(!r)return;r.innerHTML=catResults(l);const c=$('#catCount');if(c)c.textContent=`${t('found')}: ${l.length}`},300);
@@ -252,9 +256,9 @@ function detailRows(b){
   if(b.series)r.push([tr('Серия','Seriya'),esc(b.series)+(b.seriesNo?` · №${b.seriesNo}`:'')]);
   if(b.originalTitle)r.push([tr('Оригинал','Asl nomi'),esc(b.originalTitle)]);
   if(b.translator)r.push([tr('Перевод','Tarjimon'),esc(b.translator)]);
-  if(b.pages>0)r.push([t('d_pages'),b.pages]);
+  if(b.pages>0)r.push([t('d_pages'),'≈'+b.pages]);
   if(b.year)r.push([t('d_year'),b.year]);
-  if(b.chapters.length)r.push([t('d_chapters'),b.chapters.length]);
+  if(b.nch>1)r.push([t('d_chapters'),b.nch]);
   if(b.publisher)r.push([tr('Издатель','Nashriyot'),esc(b.publisher)]);
   if(b.isbn)r.push(['ISBN',esc(b.isbn)]);
   r.push([tr('Формат','Format'),[b.fullText?tr('Текст','Matn'):tr('Только описание','Faqat tavsif'),b.audio?tr('Аудио','Audio'):''].filter(Boolean).join(' + ')]);
@@ -264,7 +268,7 @@ function detailRows(b){
 const availability=b=>b.fullText!==false?'':`<section class="px sec" style="margin-top:18px"><div class="card avail">${ico('info',20)}<div><b>${tr('Полный текст недоступен','To‘liq matn mavjud emas')}</b><p>${tr('Мы публикуем книги целиком только при подтверждённых правах на распространение. Здесь пока только описание. Книгу можно добавить в библиотеку, чтобы не потерять.','Kitoblarni faqat tarqatish huquqi tasdiqlangan bo‘lsagina to‘liq e’lon qilamiz. Hozircha faqat tavsif. Kitobni kutubxonaga qo‘shib qo‘yishingiz mumkin.')}</p></div></div></section>`;
 SCREENS.book=({id})=>{
   const b=book(id),a=authorOf(b),st=stat(b),sv=S.saved.includes(id),pr=S.progress[id],fin=S.finished.includes(id);
-  const cta=fin?t('read_again'):pr?`${t('resume')} · ${pctOf(id)}%`:t('read_now'),canRead=b.fullText!==false;
+  const cta=fin?t('read_again'):pr?`${t('resume')} · ${pctLabel(pctOf(id))}`:t('read_now'),canRead=b.fullText!==false;
   const revs=S.reviews.filter(r=>r.bookId===id);
   /* The distribution is counted from real ratings. Only the offline demo catalog, which has no ratings table, uses a sample. */
   const dsum=b.dist?b.dist.reduce((x,y)=>x+y,0):0;
@@ -272,7 +276,7 @@ SCREENS.book=({id})=>{
   const rel=BOOKS.filter(x=>x.id!==id&&(x.genre===b.genre||x.lang===b.lang||x.a===b.a)).sort((x,y)=>((y.genre===b.genre)*2+(y.lang===b.lang))-((x.genre===b.genre)*2+(x.lang===b.lang))||stat(y).n-stat(x).n).slice(0,6);
   const my=S.ratings[id]||0;
   let body='';
-  if(BK.tab==='about')body=`<section class="px sec" style="margin-top:6px"><h2 class="display" style="font-size:20px;margin-bottom:12px">${t('synopsis')}</h2><p class="syn ${BK.syn?'':'clamp'}">${esc(b.desc)}</p><button class="link acc" data-a="toggleSyn">${BK.syn?t('less'):t('more')}</button></section>
+  if(BK.tab==='about')body=`${b.desc?`<section class="px sec" style="margin-top:6px"><h2 class="display" style="font-size:20px;margin-bottom:12px">${t('synopsis')}</h2><p class="syn ${BK.syn?'':'clamp'}">${esc(b.desc)}</p><button class="link acc" data-a="toggleSyn">${BK.syn?t('less'):t('more')}</button></section>`:''}
    <section class="px sec" style="margin-top:22px"><div class="card" style="text-align:center"><b style="font-size:14px">${t('your_rating')}</b>${starInput(my,'rate',id)}<span class="mute" style="font-size:12.5px">${my?`${my}/5`:t('tap_rate')}</span></div></section>
    <section class="px sec" style="margin-top:22px"><h2 class="display" style="font-size:20px;margin-bottom:6px">${t('details')}</h2><div class="kv">${detailRows(b).map(([k,v])=>`<div>${k}</div><div>${v}</div>`).join('')}</div></section>${availability(b)}
    <section class="sec"><div class="sec-h px"><h2>${t('related')}</h2></div><div class="hs px">${rel.map(bkCard).join('')}</div></section>`;
@@ -427,27 +431,117 @@ ACT.openBm=el=>{const x=S.bookmarks.find(b=>b.id===el.dataset.id);openReader(x.b
    ===================================================================== */
 const R={id:null,ch:0,startP:0,startPara:null,sel:null,fresh:false};
 const bmFind=(id,ch,para)=>S.bookmarks.find(x=>x.bookId===id&&x.ch===ch&&x.para===para);
-const TEXT={},LOADING={};
+const TEXT={},LOADING={},TOC={};
 const track=(id,type)=>{if(net.online)api(`/api/books/${id}/event`,'POST',{type}).catch(()=>{})};
-const hasText=b=>b.chapters.length>0&&b.chapters.every(c=>Array.isArray(c.p));
-/* Chapter text is fetched when needed; the catalog only carries chapter titles. */
+const hasText=b=>b.lazy?!!b.tocLoaded:(b.chapters.length>0&&b.chapters.every(c=>Array.isArray(c.p)));
+/* Collections (lazy books) are read chapter by chapter; the catalog carries no chapter list at all. Other books load their whole text once. */
 function loadText(id){
   const b=book(id);if(!b||hasText(b))return Promise.resolve();
+  if(b.lazy)return LOADING[id]||(LOADING[id]=api(`/api/books/${id}/toc?v=${book(id).ver}`).then(r=>{const bb=book(id);bb.chapters=r.chapters.map(c=>({t:c.t,n:c.n,...(c.s?{s:1}:{})}));bb.ver=r.ver||bb.ver;bb.tocLoaded=true}).finally(()=>{delete LOADING[id]}));
   if(TEXT[id]){b.chapters=TEXT[id];return Promise.resolve()}
   return LOADING[id]||(LOADING[id]=api(`/api/books/${id}/text`).then(r=>{TEXT[id]=r.chapters;book(id).chapters=r.chapters}).finally(()=>{delete LOADING[id]}));
 }
+const CHLOAD={},CHKEEP=[];
+/** Makes sure the paragraphs of chapter n are in memory (lazy books only); at most 8 chapters stay loaded. */
+async function ensureChapter(id,n){
+  const b=book(id),ch=b&&b.chapters[n];if(!ch||!b.lazy||Array.isArray(ch.p))return;
+  const k=id+':'+n;
+  await (CHLOAD[k]||(CHLOAD[k]=api(`/api/books/${id}/chapter/${n}?v=${b.ver}`).then(r=>{ch.p=r.p;CHKEEP.push([id,n]);while(CHKEEP.length>8){const [i2,n2]=CHKEEP.shift();if(!(i2===R.id&&n2===R.ch)){const c2=book(i2)&&book(i2).chapters[n2];if(c2)delete c2.p}}}).finally(()=>{delete CHLOAD[k]})));
+}
+/** Weighted by chapter length when the table of contents has sizes; always an estimate, shown with "≈". */
+function approxPct(b,ch,p){
+  const cs=b.chapters;if(!cs.length)return 0;
+  const tot=cs.reduce((n,c)=>n+(c.n||0),0);
+  if(tot>0){let before=0;for(let i=0;i<ch&&i<cs.length;i++)before+=cs[i].n||0;return Math.min(100,(before+(cs[ch]?.n||0)*p)/tot*100)}
+  return Math.min(100,100*(ch+p)/cs.length);
+}
+const pctLabel=v=>'≈'+v+'%';
+
+/* ---------- reading sync: one record per book / bookmark, with a revision against stale writes ---------- */
+function setProgress(id,ch,p,para){
+  const b=book(id)||{chapters:[]},old=S.progress[id]||{};
+  S.progress[id]={ch,p,para:para??null,ts:Date.now(),ver:b.ver||'',rev:old.rev||0,pct:Math.round(approxPct(b,ch,p)*10)/10};
+  S.outbox.p[id]=1;save();kickSync(4000);
+}
+function queueBookmark(id,op){S.outbox.b[id]=op;save();kickSync(1200)}
+let syncTimer=0,syncDelay=4000,syncBusy=false;
+function kickSync(ms){if(!net.online)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReading(),ms)}
+const fromServer=st=>({ch:st.locator.ch,p:st.locator.p||0,para:st.locator.para,ts:st.ts,ver:st.ver||'',rev:st.rev,pct:st.percent});
+async function syncReading(keepalive){
+  if(!net.online||syncBusy)return;syncBusy=true;let failed=false;const ob=S.outbox;
+  try{
+    for(const id of Object.keys(ob.p)){
+      const pr=S.progress[id];if(!pr){delete ob.p[id];continue}
+      const rev=(pr.rev||0)+1,ts=pr.ts;
+      try{
+        await api(`/api/progress/${id}`,'PUT',{ver:pr.ver||'',locator:{ch:pr.ch,para:pr.para,p:pr.p},percent:pr.pct??null,rev},{keepalive});
+        pr.rev=rev;if((pr.ts||0)<=ts)delete ob.p[id];
+      }catch(e){
+        const st=e.body&&e.body.stored;
+        if(e.status===409&&st){if(st.ts>=(pr.ts||0)){S.progress[id]=fromServer(st);delete ob.p[id]}else pr.rev=st.rev}
+        else if(e.status===404||e.status===422)delete ob.p[id];
+        else failed=true;
+      }
+    }
+    for(const id of Object.keys(ob.b)){
+      const op=ob.b[id],bm=S.bookmarks.find(x=>x.id===id);
+      try{
+        if(op==='del')await api(`/api/bookmarks/${id}`,'DELETE',undefined,{keepalive});
+        else if(bm){await api('/api/bookmarks','POST',{id,bookId:bm.bookId,ver:bm.ver||'',ch:bm.ch,para:bm.para,snip:bm.snip},{keepalive});bm.sy=1}
+        delete ob.b[id];
+      }catch(e){if(e.status===404||e.status===422)delete ob.b[id];else failed=true}
+    }
+  }finally{syncBusy=false}
+  save();
+  if(failed){syncDelay=Math.min(syncDelay*2,300000);kickSync(syncDelay)}else syncDelay=4000;
+}
+/** Merges what the server knows (progress rows and bookmarks of THIS user) with what this device has. Revisions decide; unsent local changes stay queued. */
+function adoptReading(d){
+  const sp=d.progress||{},loc=S.progress||{};S.outbox=S.outbox||{p:{},b:{}};
+  for(const [id,sv] of Object.entries(sp)){
+    const l=loc[id],lrev=l?(l.rev||0):0;
+    if(!l||lrev<sv.rev&&(l.ts||0)<=sv.ts||lrev===sv.rev&&sv.ts>=(l.ts||0))loc[id]=fromServer(sv);
+    else{if(lrev<sv.rev)l.rev=sv.rev;S.outbox.p[id]=1}
+  }
+  for(const id of Object.keys(loc))if(!sp[id]&&book(id))S.outbox.p[id]=1;
+  S.progress=loc;
+  const sv=new Map((d.bookmarks||[]).map(x=>[x.id,x])),out=[];
+  for(const l of S.bookmarks||[]){
+    if(S.outbox.b[l.id]==='del')continue;
+    if(sv.has(l.id)){out.push({...l,...sv.get(l.id),sy:1});sv.delete(l.id)}
+    else if(l.sy){/* removed on another device */}
+    else{out.push(l);S.outbox.b[l.id]='add'}
+  }
+  for(const x of sv.values())if(S.outbox.b[x.id]!=='del')out.push({...x,sy:1});
+  S.bookmarks=out;
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)syncReading(true)});
+window.addEventListener('pagehide',()=>syncReading(true));
+window.addEventListener('online',()=>kickSync(500));
 async function openReader(id,opts){
-  if(!book(id))return;
-  if(book(id).fullText===false){toast(tr('Полный текст этой книги недоступен','Bu kitobning to‘liq matni mavjud emas'));return}
-  if(!hasText(book(id))){toast(t('opening'));try{await loadText(id)}catch(e){if(e&&e.detail==='rights'){book(id).fullText=false;toast(tr('Полный текст этой книги недоступен','Bu kitobning to‘liq matni mavjud emas'));refresh()}else toast(tr('Не удалось загрузить книгу. Проверьте соединение.','Kitobni yuklab bo‘lmadi. Aloqani tekshiring.'));return}}
-  opts=opts||{};track(id,'read');const pr=S.progress[id],fin=S.finished.includes(id);
-  const nch=book(id).chapters.length;if(pr&&pr.ch>=nch){pr.ch=Math.max(0,nch-1);pr.p=0}
-  if(opts.bm&&opts.bm.ch>=nch)opts.bm={...opts.bm,ch:Math.max(0,nch-1),para:0};
-  if(opts.bm){R.ch=opts.bm.ch;R.startP=0;R.startPara=opts.bm.para}
-  else if(fin||!pr){R.ch=0;R.startP=0;R.startPara=null}
-  else{R.ch=pr.ch;R.startP=pr.p;R.startPara=pr.para!=null?pr.para:null}
-  R.id=id;R.sel=null;R.fresh=true;markDay();
-  if(!pr&&!fin){S.progress[id]={ch:R.ch,p:0,ts:Date.now()};save()}
+  const b=book(id);if(!b)return;
+  const noText=()=>{b.fullText=false;toast(tr('Полный текст этой книги недоступен','Bu kitobning to‘liq matni mavjud emas'));refresh()};
+  if(b.fullText===false){toast(tr('Полный текст этой книги недоступен','Bu kitobning to‘liq matni mavjud emas'));return}
+  opts=opts||{};const pr=S.progress[id],fin=S.finished.includes(id);
+  try{
+    if(!hasText(b)){toast(t('opening'));await loadText(id)}
+    const nch=b.chapters.length;if(!nch){noText();return}
+    /* A position belongs to one version of the text. After the text was replaced we only keep the chapter. */
+    const stale=!!(pr&&pr.ver&&b.ver&&pr.ver!==b.ver);
+    if(pr&&pr.ch>=nch){pr.ch=Math.max(0,nch-1);pr.p=0;pr.para=null}
+    let bm=opts.bm;if(bm&&bm.ch>=nch)bm={...bm,ch:Math.max(0,nch-1),para:0};
+    if(bm){R.ch=bm.ch;R.startP=0;R.startPara=bm.ver&&b.ver&&bm.ver!==b.ver?null:bm.para}
+    else if(fin||!pr){R.ch=0;R.startP=0;R.startPara=null}
+    else{R.ch=pr.ch;R.startP=stale?0:pr.p;R.startPara=stale?null:(pr.para!=null?pr.para:null)}
+    if(stale&&!bm){toast(tr('Текст книги обновился: место чтения восстановлено только до главы','Kitob matni yangilangan: o‘qish joyi faqat bobgacha tiklandi'))}
+    await ensureChapter(id,R.ch);
+    if(R.ch+1<nch)ensureChapter(id,R.ch+1).catch(()=>{});
+  }catch(e){
+    if(e&&e.detail==='rights')noText();else toast(tr('Не удалось загрузить книгу. Проверьте соединение.','Kitobni yuklab bo‘lmadi. Aloqani tekshiring.'));
+    return;
+  }
+  track(id,'read');R.id=id;R.sel=null;R.fresh=true;markDay();
+  if((!pr||pr.ver!==b.ver)&&!fin&&!opts.bm)setProgress(id,R.ch,R.startP||0,R.startPara);
   if(NAV.cur.name==='reader')replace('reader',{id});else go('reader',{id});
 }
 const today=()=>new Date().toISOString().slice(0,10);
@@ -476,11 +570,11 @@ SCREENS.reader=({id})=>{
   const b=book(id),ch=b.chapters[R.ch],rs=S.reader,last=R.ch===b.chapters.length-1;
   const paras=ch.p.map((tx,i)=>`<p class="rp${bmFind(id,R.ch,i)?' bm':''}" data-i="${i}" data-a="rSel">${esc(tx)}</p>`).join('');
   return `<div class="reader" data-mt="${rs.theme}" style="--rs:${rs.size}px;--rlh:${rs.lh};--rf:${rs.font==='sans'?'var(--ui)':'var(--read)'}">
-  <header class="rhead px"><button class="iconbtn" data-a="toBook" aria-label="${t('to_book')}">${ico('back')}</button><div class="ttl"><b>${esc(b.title)}</b><small>${t('chapter')} ${R.ch+1} · ${esc(ch.t)}</small></div><button id="bmBtn" class="iconbtn" data-a="rBm" aria-label="${t('bm_added')}">${ico('bookmark',21)}</button><button class="iconbtn" data-a="rToc" aria-label="${t('toc')}">${ico('list',21)}</button><button class="iconbtn" data-a="rSet" aria-label="${t('text_settings')}">${ico('text',22)}</button></header>
+  <header class="rhead px"><button class="iconbtn" data-a="toBook" aria-label="${t('to_book')}">${ico('back')}</button><div class="ttl"><b>${esc(b.title)}</b><small>${t('chapter')} ${R.ch+1} · ${esc(ch.t)}</small></div><button id="bmBtn" class="iconbtn" data-a="rBm" aria-label="${t('bm_added')}">${ico('bookmark',21)}</button>${b.chapters.length>1&&!b.chapters.every(c=>c.s)?`<button class="iconbtn" data-a="rToc" aria-label="${t('toc')}">${ico('list',21)}</button>`:''}<button class="iconbtn" data-a="rSet" aria-label="${t('text_settings')}">${ico('text',22)}</button></header>
   <div class="rwrap"><div id="rbody"><div class="chhead"><span class="eyebrow">${t('chapter')} ${R.ch+1} / ${b.chapters.length}</span><h2>${esc(ch.t)}</h2></div>${paras}${endCard(b,last)}</div>
   ${R.fresh?`<div id="rload" class="rload" aria-label="${t('opening')}"><div class="sk" style="height:14px;width:36%"></div><div class="sk" style="height:34px;width:78%;margin-bottom:12px"></div>${Array.from({length:9},(_,i)=>`<div class="sk" style="height:12px;width:${i%4===3?'60%':'100%'}"></div>`).join('')}</div>`:''}
   <div id="qbar" class="qbar" hidden><button data-a="rQuote">${ico('quote',16)} ${t('save_quote')}</button><button data-a="rCopy">${ico('share',16)} ${t('copy')}</button></div></div>
-  <footer class="rfoot px"><button class="iconbtn" data-a="rPrev" aria-label="${t('prev_ch')}" ${R.ch===0?'disabled':''}>${ico('back',20)}</button><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="rbar" style="width:${pctRaw(id)}%"></i></div><span id="rpc" class="pc mono">${pctRaw(id)}%</span><button class="iconbtn" data-a="rNext" aria-label="${t('next_ch')}" ${last?'disabled':''}>${ico('chev',20)}</button></footer></div>`;
+  <footer class="rfoot px"><button class="iconbtn" data-a="rPrev" aria-label="${t('prev_ch')}" ${R.ch===0?'disabled':''}>${ico('back',20)}</button><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="rbar" style="width:${pctRaw(id)}%"></i></div><span id="rpc" class="pc mono" title="${tr('Приблизительно','Taxminan')}">${pctLabel(pctRaw(id))}</span><button class="iconbtn" data-a="rNext" aria-label="${t('next_ch')}" ${last?'disabled':''}>${ico('chev',20)}</button></footer></div>`;
 };
 AFTER.reader=()=>{
   const body=$('#rbody');if(!body)return;
@@ -493,13 +587,13 @@ AFTER.reader=()=>{
   updateBm();
 };
 let rraf=0;
-function onRScroll(){if(rraf)return;rraf=requestAnimationFrame(()=>{rraf=0;const body=$('#rbody');if(!body||NAV.cur.name!=='reader')return;const max=body.scrollHeight-body.clientHeight;const p=max>0?Math.min(1,body.scrollTop/max):1;S.progress[R.id]={ch:R.ch,p,para:curPara(),ts:Date.now()};save();const v=pctRaw(R.id);const bar=$('#rbar'),pc=$('#rpc');if(bar)bar.style.width=v+'%';if(pc)pc.textContent=v+'%';updateBm()})}
+function onRScroll(){if(rraf)return;rraf=requestAnimationFrame(()=>{rraf=0;const body=$('#rbody');if(!body||NAV.cur.name!=='reader')return;const max=body.scrollHeight-body.clientHeight;const p=max>0?Math.min(1,body.scrollTop/max):1;setProgress(R.id,R.ch,p,curPara());const v=pctRaw(R.id);const bar=$('#rbar'),pc=$('#rpc');if(bar)bar.style.width=v+'%';if(pc)pc.textContent=pctLabel(v);updateBm()})}
 function curPara(){const body=$('#rbody');if(!body)return 0;const top=body.getBoundingClientRect().top;const ps=$$('.rp',body);for(const p of ps){if(p.getBoundingClientRect().bottom>top+60)return +p.dataset.i}return Math.max(0,ps.length-1)}
 function updateBm(){const b=$('#bmBtn');if(b)b.classList.toggle('on',!!bmFind(R.id,R.ch,curPara()))}
 function markBm(){$$('#rbody .rp').forEach(p=>p.classList.toggle('bm',!!bmFind(R.id,R.ch,+p.dataset.i)));updateBm()}
 ACT.rBm=()=>{const i=curPara(),ex=bmFind(R.id,R.ch,i);
-  if(ex){S.bookmarks=S.bookmarks.filter(x=>x!==ex);toast(t('bm_removed'))}
-  else{const tx=book(R.id).chapters[R.ch].p[i];S.bookmarks.push({id:'bm'+Date.now(),bookId:R.id,ch:R.ch,para:i,snip:tx.split(/(?<=[.!?…»])\s/)[0].slice(0,110)});toast(t('bm_added'))}
+  if(ex){S.bookmarks=S.bookmarks.filter(x=>x!==ex);queueBookmark(ex.id,'del');toast(t('bm_removed'))}
+  else{const tx=book(R.id).chapters[R.ch].p[i],bm={id:'bm'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),bookId:R.id,ch:R.ch,para:i,ver:book(R.id).ver||'',snip:tx.split(/(?<=[.!?…»])\s/)[0].slice(0,110)};S.bookmarks.push(bm);queueBookmark(bm.id,'add');toast(t('bm_added'))}
   save();markBm()};
 ACT.rSel=el=>{const was=el.classList.contains('sel');$$('#rbody .rp.sel').forEach(p=>p.classList.remove('sel'));R.sel=null;if(!was){el.classList.add('sel');R.sel=+el.dataset.i}const q=$('#qbar');if(q)q.hidden=R.sel==null};
 function selText(){return book(R.id).chapters[R.ch].p[R.sel]}
@@ -508,7 +602,12 @@ ACT.rQuote=()=>{if(R.sel==null)return;const tx=selText();const sent=tx.split(/(?
     if(net.online)api('/api/quotes','POST',{bookId:R.id,text:sent}).then(x=>{q.id=x.quote.id;SEED_QUOTES.unshift(x.quote);save()}).catch(()=>{})}
   save();clearSel();toast(t('quote_saved'))};
 ACT.rCopy=()=>{if(R.sel==null)return;const b=book(R.id);copyText(`«${selText()}» — ${authorOf(b).name}, «${b.title}»`);clearSel()};
-function gotoChapter(n){const b=book(R.id);if(n<0||n>=b.chapters.length)return;R.ch=n;R.startP=0;R.startPara=null;R.fresh=false;R.sel=null;S.progress[R.id]={ch:n,p:0,ts:Date.now()};save();render(false)}
+async function gotoChapter(n){
+  const b=book(R.id);if(n<0||n>=b.chapters.length)return;
+  try{await ensureChapter(R.id,n)}catch(e){toast(tr('Не удалось загрузить главу. Проверьте соединение.','Bobni yuklab bo‘lmadi. Aloqani tekshiring.'));return}
+  R.ch=n;R.startP=0;R.startPara=null;R.fresh=false;R.sel=null;setProgress(R.id,n,0,0);render(false);
+  if(n+1<b.chapters.length)ensureChapter(R.id,n+1).catch(()=>{});
+}
 ACT.rNext=()=>gotoChapter(R.ch+1);ACT.rPrev=()=>gotoChapter(R.ch-1);
 ACT.rCh=el=>{closeSheet();gotoChapter(+el.dataset.i)};
 ACT.toBook=()=>{const id=R.id;BK.tab='about';BK.syn=false;const top=NAV.stack[NAV.stack.length-1];if(top&&top.name==='book'&&top.p.id===id){back();return}replace('book',{id})};
@@ -616,8 +715,9 @@ function applyBoot(d,first){
   S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;S.appLink=d.appLink;
   S.reacts={};d.reviews.forEach(r=>{if(r.my&&(r.my.heart||r.my.insight))S.reacts[r.id]=r.my});
   S.qLikes={};d.quotes.forEach(q=>{if(q.mine)S.qLikes[q.id]=true});
-  if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=mergeState(loc,Object.assign(DEFAULT(),d.state));SHARED.forEach(k=>S[k]=loc[k]);if(net.online)save()}
+  if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=mergeState(loc,Object.assign(DEFAULT(),d.state));SHARED.forEach(k=>S[k]=loc[k]);S.outbox=loc.outbox||S.outbox;if(net.online)save()}
   else if(first)api('/api/state','PUT',persistable()).catch(()=>{});
+  adoptReading(d);kickSync(1500);
   if(first&&!(d.state&&d.state.name)&&!localStorage.getItem(KEY)&&d.me.name)S.name=d.me.name.slice(0,24);
 }
 function loadBoot(first){return api('/api/bootstrap').then(d=>{net.online=true;applyBoot(d,first)})}
@@ -628,7 +728,7 @@ try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e
 /* ---------- boot ---------- */
 const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
-initCatalogAdmin({SCREENS,ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,refresh},admApi);
+initCatalogAdmin({SCREENS,ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,refresh,tg},admApi);
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
 initAchievements(ctx2);
 initAudio(ctx2);

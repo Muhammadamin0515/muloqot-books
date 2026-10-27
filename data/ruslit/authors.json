@@ -1,0 +1,15 @@
+{
+  "_comment": "Reference data for the RusLit folders (folder name is a transliterated surname). Used for the catalog author name and, later, for rights checks. deathYear is reference data to be verified by a person before any publication; it does not confirm the rights to a specific edition of a text.",
+  "Blok": {"name": "Александр Блок", "deathYear": 1921},
+  "Bryusov": {"name": "Валерий Брюсов", "deathYear": 1924},
+  "Chekhov": {"name": "Антон Чехов", "deathYear": 1904},
+  "Dostoevsky": {"name": "Фёдор Достоевский", "deathYear": 1881},
+  "Gogol": {"name": "Николай Гоголь", "deathYear": 1852},
+  "Gorky": {"name": "Максим Горький", "deathYear": 1936},
+  "Herzen": {"name": "Александр Герцен", "deathYear": 1870},
+  "Lermontov": {"name": "Михаил Лермонтов", "deathYear": 1841},
+  "Nekrasov": {"name": "Николай Некрасов", "deathYear": 1878},
+  "Pushkin": {"name": "Александр Пушкин", "deathYear": 1837},
+  "Tolstoy": {"name": "Лев Толстой", "deathYear": 1910},
+  "Turgenev": {"name": "Иван Тургенев", "deathYear": 1883}
+}

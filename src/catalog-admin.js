@@ -2,28 +2,30 @@
 import {readManuscriptFull,analyze,detectLang,titleFromFile,textBytes,MAX_TEXT_BYTES,MAX_FILE} from './manuscript.js';
 import {compressImage} from './image.js';
 
-const GENRE_RU={novel:'Роман',detective:'Детектив',historical:'Исторический',adventure:'Приключения',drama:'Драма',stories:'Рассказы',modern:'Современная проза'};
+const GENRE_RU={novel:'Роман',detective:'Детектив',historical:'Исторический',adventure:'Приключения',drama:'Драма',stories:'Рассказы',modern:'Современная проза',prose:'Проза',poetry:'Поэзия',publicism:'Публицистика'};
 const STATUS=[['public_domain','Общественное достояние'],['permission','Разрешение правообладателя'],['licensed','Лицензия'],['author','Автор подтвердил права'],['unverified','Права не подтверждены (только карточка)']];
+const REVIEW={not_in_info_csv:'Нет в info.csv источника: год не подтверждён',no_info_csv:'В папке источника нет info.csv: год неизвестен',csv_name_fuzzy_match:'Название сопоставлено с info.csv приблизительно',encoding:'Файл был не в UTF-8',author_header_conflict:'Автор в файле не совпадает с автором папки',very_short:'Очень короткий текст',author_not_in_curated_mapping:'Автор определён только по заголовкам файлов',author_single_vote:'Автор определён по одному файлу',author_unresolved_folder_name_used:'Автор не определён: взято имя папки',unexpected_folder_layout:'Нестандартное расположение файла',possible_duplicate_title:'Похожее название и автор: возможный дубль',no_structure_detected:'Структура глав не найдена',not_mostly_cyrillic:'Текст не похож на русский',replacement_characters:'В тексте есть повреждённые символы'};
+const reviewText=k=>{const [c,arg]=String(k).split(/:(.*)/s);return (REVIEW[c]||c)+(arg?` (${arg})`:'')};
 const STATUS_LABEL=Object.fromEntries(STATUS);
 const ERR={title:'Укажите название',author:'Укажите автора',lang:'Язык: ru или uz',genre:'Выберите жанр из списка',source:'Укажите источник (название)',
   rights_required:'Для публикации текста выберите подтверждённое основание прав',pd_not_proven:'Общественное достояние: нужен год смерти автора не позже (текущий год − 71). Иначе выберите другое основание',
   evidence:'Для этого основания нужна ссылка (https) или описание документа',toolarge:'Текст больше 1,4 МБ: разделите книгу',manuscript:'Не удалось выделить главы из текста',duplicate:'Такая книга уже есть',
-  rights:'Нет подтверждённых прав: аудио и текст недоступны',url:'Ссылки на аудио должны начинаться с https://',empty:'Нечего импортировать'};
+  rights:'Нет подтверждённых прав: аудио и текст недоступны',no_file:'У книги нет готового файла текста',meta_review_required:'Сначала подтвердите, что автор, название и год проверены',lazy_book:'Текст импортированной книги меняется повторным импортом (скрипт ruslit)',url:'Ссылки на аудио должны начинаться с https://',empty:'Нечего импортировать'};
 export function initCatalogAdmin(x,adm){
-  const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot}=x;
+  const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,tg}=x;
   const {A,M,T,bodies,loaders,hm,loading,bg}=adm;
   Object.assign(M,{ci_title:'',ci_author:'',ci_lang:'ru',ci_genre:'novel',ci_year:'',ci_series:'',ci_seriesNo:'',ci_desc:'',ci_orig:'',ci_transl:'',ci_publ:'',ci_isbn:'',ci_srcName:'',ci_srcUrl:'',ci_coverUrl:'',
     ci_status:'public_domain',ci_license:'',ci_evid:'',ci_note:'',ci_death:'',ci_json:'',rt_status:'public_domain',rt_license:'',rt_evid:'',rt_note:'',rt_death:'',rt_src:'',rt_srcUrl:'',au_list:''});
-  const CI={text:'',file:'',info:null,cover:null,coverName:'',busy:false,msg:null,filter:'all',json:null};
+  const CI={text:'',file:'',info:null,cover:null,coverName:'',busy:false,msg:null,filter:'all',json:null,shown:40};
   let L=null; // {books, demo, audit}
   const OPEN={};document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.dataset.cg)OPEN[d.dataset.cg]=d.open},true);
   const num=v=>v===''||v==null?null:Math.round(+v);
   const msgOf=r=>r.error?`<span class="bad">✕ ${esc(r.title||'')}: ${esc(ERR[r.error]||r.error)}</span>`:`<span class="ok">✓ ${esc(r.title)} ${r.fullText?'(текст)':'(только карточка)'}</span>`;
 
   function stats(){
-    const real=L.books.filter(b=>!b.demo),full=real.filter(b=>b.fullText),meta=real.filter(b=>!b.fullText),check=real.filter(b=>b.rights.status==='unverified'||b.rights.legacy);
+    const real=L.books.filter(b=>!b.demo&&b.publish!=='draft'),full=real.filter(b=>b.fullText),meta=real.filter(b=>!b.fullText),check=real.filter(b=>b.publish!=='draft'&&(b.rights.status==='unverified'||b.rights.legacy)),drafts=real.filter(b=>b.publish==='draft');
     const tile=(n,l,sub)=>`<div class="tile"><b>${n}</b><span>${l}</span>${sub?`<small>${sub}</small>`:''}</div>`;
-    return `<div class="tiles">${tile(real.length,'Настоящих книг')}${tile(full.length,'С полным текстом')}${tile(meta.length,'Только карточка')}${tile(check.length,'Проверить права')}</div>`;
+    return `<div class="tiles">${tile(real.length,'Опубликовано')}${tile(full.length,'С полным текстом')}${tile(meta.length,'Только карточка')}${tile(check.length,'Проверить права')}${drafts.length?tile(drafts.length,'Черновиков','не видны читателям'):''}</div>`;
   }
   function demoBlock(){
     const d=L.demo,c=d.counts||{};
@@ -62,15 +64,16 @@ export function initCatalogAdmin(x,adm){
   "coverUrl":"https://covers.openlibrary.org/…","text":"# Глава 1\\n\\n…"}
 ]`;
   function bookRow(b){
-    const r=b.rights,chip=(t,c)=>`<span class="tag ${c||''}">${t}</span>`;
+    const r=b.rights,chip=(t,c)=>`<span class="tag ${c||''}">${t}</span>`,lit=b.lit,draft=b.publish==='draft';
     return `<div class="li" style="align-items:flex-start"><div class="grow" style="min-width:0"><b style="font-size:14px">${esc(b.title)}</b>
-      <div class="row" style="gap:6px;margin:4px 0;flex-wrap:wrap">${b.demo?chip('ТЕСТ'):''}${chip(b.fullText?'ТЕКСТ':'КАРТОЧКА',b.fullText?'acc':'')}${chip(esc(STATUS_LABEL[r.status]||(r.status==='demo'?'Тестовые данные':r.status)))}${r.legacy?chip('ПРОВЕРИТЬ'):''}</div>
-      ${r.source?`<div class="mute" style="font-size:12px">Источник: ${esc(r.source)}</div>`:''}
-      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm ghost" data-a="ciRights" data-id="${esc(b.id)}">Права</button><button class="btn sm ghost" data-a="ciText" data-id="${esc(b.id)}">${b.chapters?'Заменить текст':'Добавить текст'}</button><button class="btn sm ghost" data-a="ciAudio" data-id="${esc(b.id)}">Аудио</button></div></div></div>`;
+      <div class="row" style="gap:6px;margin:4px 0;flex-wrap:wrap">${b.demo?chip('ТЕСТ'):''}${draft?chip('ЧЕРНОВИК'):''}${chip(b.fullText?'ТЕКСТ':b.lazy&&!b.ver?'НЕТ ФАЙЛА':'КАРТОЧКА',b.fullText?'acc':'')}${chip(esc(STATUS_LABEL[r.status]||(r.status==='demo'?'Тестовые данные':r.status)))}${r.legacy?chip('ПРОВЕРИТЬ'):''}${lit&&lit.metaStatus==='needs_review'&&!lit.metaConfirmed?chip('МЕТАДАННЫЕ ПРОВЕРИТЬ'):''}</div>
+      ${r.source?`<div class="mute" style="font-size:12px">Источник: ${esc(r.source)}${lit&&lit.commit?` · ${esc(lit.commit.slice(0,8))}`:''}</div>`:''}
+      ${lit&&lit.path?`<div class="mute" style="font-size:11.5px;word-break:break-all">${esc(lit.path)}</div>`:''}
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm ghost" data-a="ciRights" data-id="${esc(b.id)}">Права</button>${b.lazy?'':`<button class="btn sm ghost" data-a="ciText" data-id="${esc(b.id)}">${b.chapters?'Заменить текст':'Добавить текст'}</button>`}<button class="btn sm ghost" data-a="ciAudio" data-id="${esc(b.id)}">Аудио</button>${b.demo?'':`<button class="btn sm ${draft?'':'ghost'}" data-a="ciPublish" data-id="${esc(b.id)}">${draft?'Опубликовать…':'Снять с публикации'}</button>`}${lit&&lit.sourceUrl?`<button class="btn sm ghost" data-a="ciOpen" data-u="${esc(lit.sourceUrl)}">Источник</button>`:''}</div></div></div>`;
   }
   function tabCatalog(){
     if(!L)return loading();
-    const f=CI.filter,list=L.books.filter(b=>f==='all'?true:f==='check'?(b.rights.status==='unverified'||b.rights.legacy)&&!b.demo:f==='demo'?b.demo:f==='meta'?!b.fullText&&!b.demo:!b.demo);
+    const f=CI.filter,list=L.books.filter(b=>f==='all'?true:f==='check'?(b.rights.status==='unverified'||b.rights.legacy)&&!b.demo&&b.publish!=='draft':f==='draft'?b.publish==='draft':f==='metareview'?!!(b.lit&&b.lit.metaStatus==='needs_review'&&!b.lit.metaConfirmed):f==='demo'?b.demo:f==='meta'?!b.fullText&&!b.demo&&b.publish!=='draft':!b.demo&&b.publish!=='draft');
     const g=(title,sub,body)=>`<details class="dgroup" data-cg="${title}" ${OPEN[title]?'open':''}><summary><b>${title}</b><span>${sub}</span></summary><div class="dbody">${body}</div></details>`;
     return `${stats()}${demoBlock()}
     <div class="sec"><div class="sec-h"><h2>Добавить</h2></div>
@@ -79,8 +82,8 @@ export function initCatalogAdmin(x,adm){
       <div class="field"><label for="ciJ">Вставьте JSON</label><textarea id="ciJ" class="in" data-m="adm:ci_json" style="min-height:120px;font-family:var(--mono,monospace);font-size:12px">${esc(M.ci_json)}</textarea></div>
       ${CI.json?`<div class="card" style="margin:10px 0;font-size:13px">${CI.json.map(msgOf).join('<br>')}</div>`:''}<button class="btn block" data-a="ciJson" ${CI.busy?'disabled':''}>Импортировать</button>`)}</div>
     <div class="sec"><div class="sec-h"><h2>Книги и права</h2></div>
-    <div class="hs" style="margin-bottom:10px">${[['all','Все'],['real','Настоящие'],['check','Проверить права'],['meta','Только карточка'],['demo','Тестовые']].map(([k,n])=>`<button class="chip ${f===k?'on':''}" data-a="ciFilter" data-v="${k}">${n}</button>`).join('')}</div>
-    <div class="list">${list.map(bookRow).join('')||'<div class="li mute">Нет книг</div>'}</div>
+    <div class="hs" style="margin-bottom:10px">${[['all','Все'],['real','Опубликованные'],['draft','Черновики'],['metareview','Проверить метаданные'],['check','Проверить права'],['meta','Только карточка'],['demo','Тестовые']].map(([k,n])=>`<button class="chip ${f===k?'on':''}" data-a="ciFilter" data-v="${k}">${n}</button>`).join('')}</div>
+    <div class="list">${list.slice(0,CI.shown).map(bookRow).join('')||'<div class="li mute">Нет книг</div>'}</div>${list.length>CI.shown?`<button class="btn block ghost" style="margin-top:10px" data-a="ciMore">Показать ещё (${list.length-CI.shown})</button>`:''}<p class="hint">Всего в списке: ${list.length}</p>
     <p class="hint">Читатели видят полный текст только у книг с подтверждёнными правами. «Проверить права» — книги, опубликованные до появления учёта прав: подтвердите основание, чтобы они остались доступны.</p></div>
     <div class="sec"><div class="sec-h"><h2>Журнал действий</h2></div>${L.audit.length?`<div class="list">${L.audit.slice(0,15).map(a=>`<div class="li"><div class="grow" style="min-width:0"><b style="font-size:13px">${esc(a.action)}</b> <span class="mute" style="font-size:12px">${esc(a.target||'')}</span><div class="mute" style="font-size:11.5px">${hm(a.ts)} · ${esc(a.user_id)} · ${esc(a.detail.slice(0,90))}</div></div></div>`).join('')}</div>`:'<p class="mute">Записей пока нет</p>'}</div>`;
   }
@@ -91,7 +94,23 @@ export function initCatalogAdmin(x,adm){
   T.push(['catalog','Каталог']);bodies.catalog=tabCatalog;loaders.catalog=reloadCatalog;
 
   CHG.ciSel=el=>{M[el.dataset.k]=el.value};
-  ACT.ciFilter=el=>{CI.filter=el.dataset.v;x.refresh()};
+  ACT.ciFilter=el=>{CI.filter=el.dataset.v;CI.shown=40;x.refresh()};
+  ACT.ciMore=()=>{CI.shown+=40;x.refresh()};
+  ACT.ciOpen=el=>{if(tg&&tg.openLink)tg.openLink(el.dataset.u);else window.open(el.dataset.u,'_blank','noopener')};
+  /* publication: the server refuses without confirmed rights and (for imported books) confirmed metadata */
+  ACT.ciPublish=el=>{
+    const b=bookOf(el.dataset.id),draft=b.publish==='draft',lit=b.lit,needMeta=draft&&lit&&lit.metaStatus==='needs_review'&&!lit.metaConfirmed;
+    if(!draft){openSheet(`<h2>Снять «${esc(b.title)}» с публикации?</h2><p class="mute" style="font-size:13px;margin-bottom:14px">Книга исчезнет из каталога и станет недоступна читателям. Закладки и позиции читателей сохранятся.</p><button class="btn block" data-a="ciPublishGo" data-id="${esc(b.id)}" data-on="0">Снять с публикации</button>`);return}
+    const ok=['public_domain','author','licensed','permission'].includes(b.rights.status);
+    openSheet(`<h2>Опубликовать «${esc(b.title)}»</h2>
+      <p class="mute" style="font-size:13px;margin-bottom:10px">Права: <b>${esc(STATUS_LABEL[b.rights.status]||b.rights.status)}</b>${ok?'':'. Сначала подтвердите основание кнопкой «Права»: без этого публикация будет отклонена.'}</p>
+      ${lit&&lit.review.length?`<div class="card" style="font-size:12.5px;margin-bottom:12px"><b>Что проверить в метаданных</b><ul style="margin:6px 0 0 16px">${lit.review.map(k=>`<li>${esc(reviewText(k))}</li>`).join('')}</ul></div>`:''}
+      ${needMeta?`<label class="wz-rights" style="margin-bottom:12px"><input type="checkbox" id="ciMeta"><span>Я проверил автора, название и год этой книги по источнику</span></label>`:''}
+      <button class="btn block" data-a="ciPublishGo" data-id="${esc(b.id)}" data-on="1">Опубликовать</button>`)};
+  ACT.ciPublishGo=async el=>{
+    const meta=document.getElementById('ciMeta');
+    try{await api(`/api/admin/books/${el.dataset.id}/publish`,'POST',{on:el.dataset.on==='1',metaConfirmed:!!(meta&&meta.checked)});closeSheet();toast(el.dataset.on==='1'?'Книга опубликована':'Книга снята с публикации');await loadBoot();reloadCatalog()}
+    catch(e){toast(ERR[e.detail]||'Не удалось: '+(e.detail||'ошибка'))}};
   ACT.ciDemo=el=>bg(api('/api/admin/demo','POST',{show:el.dataset.v==='auto'?'auto':el.dataset.v==='true'}).then(async()=>{await loadBoot();toast('Сохранено');reloadCatalog()}));
 
   CHG.ciFile=async el=>{const f=el.files&&el.files[0];el.value='';if(!f)return;

@@ -2,3 +2,4 @@
 # пользователь задаётся заголовком x-dev-user, в браузере ?as=admin даёт права администратора.
 BOT_TOKEN=
 WEBHOOK_SECRET=
+IMPORT_TOKEN=

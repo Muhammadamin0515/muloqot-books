@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PORT=${PORT:-8806}
+export IMPORT_TOKEN=${IMPORT_TOKEN:-$(head -c 24 /dev/urandom | od -An -tx1 | tr -d " \n")}
 npm test
 npm run build
 node tests/fixtures.mjs /tmp/fixtures
@@ -14,10 +15,12 @@ trap stop EXIT
 fresh(){
   stop; rm -rf .wrangler/state
   npx wrangler d1 migrations apply muloqot-books --local >/dev/null
-  setsid npx wrangler dev --port "$PORT" >/tmp/wrangler-e2e.log 2>&1 &
+  setsid npx wrangler dev --port "$PORT" --var IMPORT_TOKEN:"$IMPORT_TOKEN" >/tmp/wrangler-e2e.log 2>&1 &
   WR=$!
   for i in $(seq 1 40); do curl -sf "localhost:$PORT/api/health" >/dev/null && return; sleep 1; done
   echo "wrangler did not start"; exit 1
 }
 fresh; BASE="http://localhost:$PORT" node tests/e2e/api.mjs
+fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit.mjs
+fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit-ui.cjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ui.cjs

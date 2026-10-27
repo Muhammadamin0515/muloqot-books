@@ -17,6 +17,11 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS achievements(user_id TEXT,key TEXT,ts INTEGER,seen INTEGER DEFAULT 0,PRIMARY KEY(user_id,key))',
   'CREATE TABLE IF NOT EXISTS audio_tracks(id INTEGER PRIMARY KEY AUTOINCREMENT,book_id TEXT,idx INTEGER,title TEXT,url TEXT,duration INTEGER DEFAULT 0,created INTEGER)',
   'CREATE INDEX IF NOT EXISTS idx_audio_book ON audio_tracks(book_id,idx)',
+  'CREATE TABLE IF NOT EXISTS lit_files(book_id TEXT,version TEXT,hash TEXT,chapters INTEGER,chunks INTEGER,chars INTEGER,bytes INTEGER,format TEXT,storage TEXT,toc TEXT,prep_version TEXT,ready INTEGER DEFAULT 0,created INTEGER,PRIMARY KEY(book_id,version))',
+  'CREATE TABLE IF NOT EXISTS book_chunks(book_id TEXT,version TEXT,ch INTEGER,seq INTEGER,body TEXT,PRIMARY KEY(book_id,version,ch,seq))',
+  'CREATE TABLE IF NOT EXISTS reading_progress(user_id TEXT,book_id TEXT,ver TEXT,locator TEXT,percent REAL,rev INTEGER,updated INTEGER,PRIMARY KEY(user_id,book_id))',
+  'CREATE TABLE IF NOT EXISTS bookmarks(user_id TEXT,id TEXT,book_id TEXT,ver TEXT,ch INTEGER,para INTEGER,snippet TEXT,created INTEGER,PRIMARY KEY(user_id,id))',
+  'CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id,created)',
   'CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts INTEGER,user_id TEXT,action TEXT,target TEXT,detail TEXT)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];

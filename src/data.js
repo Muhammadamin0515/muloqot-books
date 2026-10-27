@@ -1,4 +1,4 @@
-export const GENRES=['novel','detective','historical','adventure','drama','stories','modern'];
+export const GENRES=['novel','detective','historical','adventure','drama','stories','modern','prose','poetry','publicism'];
 
 export const AUTHORS=[
  {id:'a1',name:'Ирина Вальцева',city:{ru:'Ташкент',uz:'Toshkent'},hair:'long',hairc:'#2b1b14',skin:'#d9b08c',glasses:0,pal:['#3a1d14','#a2431f'],followers:2480,

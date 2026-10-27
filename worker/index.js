@@ -1,12 +1,14 @@
 import {parseManuscript} from './parse.js';
 import {ensureSchema} from './schema.js';
 import {COVER_STYLES} from './covers.js';
-import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,rightsOf,publicRights,validateImport,fetchCover,popularity,isDemo,checkTextRights,cleanRights,httpsUrl} from './catalog.js';
+import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,rightsOf,publicRights,validateImport,fetchCover,popularity,isDemo,checkTextRights,cleanRights,httpsUrl,hasText,isPublished} from './catalog.js';
+import {registerLibrary,tokenCheck} from './library.js';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
 const clip=(s,n)=>String(s??'').trim().slice(0,n);
 const id8=()=>crypto.randomUUID().slice(0,8);
-const LOCAL=['state','reviews','threads','subs','reacts','qLikes','follows','ratings'];
+const LOCAL=['state','reviews','threads','subs','reacts','qLikes','follows','ratings','progress','bookmarks','outbox'];
+let LIB;
 const csv=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
 
 /* ---------- Telegram ---------- */
@@ -76,12 +78,13 @@ function bookOut(row,agg,extra={}){const b=P(row.data);const a=agg[row.id]||{n:0
   /* Real ratings only. The base numbers stored with the test (demo) books are used for demo books and never mixed into real ones. */
   const base=isDemo(b)?b.count||0:0,count=base+a.n,rating=count?Math.round(((isDemo(b)?b.rating*base:0)+a.s)/count*100)/100:0;
   const full=canRead(b);
-  /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/text) and covers are served as images (/api/cover/:id). */
-  const {rights,chapters,img,...rest}=b;
-  return{...rest,chapters:full?chapters.map(ch=>({t:ch.t})):[],fullText:full&&chapters.length>0,rights:publicRights(b),...(img?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,dist:a.d||[0,0,0,0,0]}}
+  /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/chapter/:n) and covers are served as images (/api/cover/:id). */
+  const {rights,chapters,img,lit,pendingToc,pendingNch,pendingChars,...rest}=b;
+  return{...rest,chapters:full&&!b.lazy?chapters.map(ch=>({t:ch.t})):[],nch:b.lazy?b.nch:chapters.length,ver:b.ver||'',fullText:full&&hasText(b),rights:publicRights(b),...(lit?{collection:lit.collection}:{}),...(img?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,dist:a.d||[0,0,0,0,0]}}
 const DIST=',SUM(value=1) c1,SUM(value=2) c2,SUM(value=3) c3,SUM(value=4) c4,SUM(value=5) c5';
 const distOf=r=>[r.c1,r.c2,r.c3,r.c4,r.c5].map(x=>x||0);
 const ratingAgg=async c=>{const o={};(await all(c,`SELECT book_id,COUNT(*) n,SUM(value) s${DIST} FROM ratings GROUP BY book_id`)).forEach(r=>o[r.book_id]={n:r.n,s:r.s,d:distOf(r)});return o};
+const pubBook=(c,id)=>get(c,"SELECT 1 x FROM books WHERE id=? AND json_extract(data,'$.publish') IS NOT 'draft'",id);
 const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id=?',id);if(!row)return null;const a=await get(c,`SELECT COUNT(*) n,COALESCE(SUM(value),0) s${DIST} FROM ratings WHERE book_id=?`,id);return bookOut(row,{[id]:{n:a.n,s:a.s,d:distOf(a)}})};
 
 async function loadReviews(c,onlyId,realOnly){
@@ -126,18 +129,19 @@ const bad=(s=400,e='invalid')=>json({error:e},s);
 const demoVisible=async c=>{
   const r=await get(c,"SELECT value FROM meta WHERE key='showDemo'"),v=r?P(r.value):'auto';
   if(v===true||v===false)return v;
-  return !(await get(c,"SELECT 1 x FROM books WHERE json_extract(data,'$.demo') IS NOT 1 AND (hidden=0 OR hidden IS NULL) LIMIT 1"));
+  return !(await get(c,"SELECT 1 x FROM books WHERE json_extract(data,'$.demo') IS NOT 1 AND json_extract(data,'$.publish') IS NOT 'draft' AND (hidden=0 OR hidden IS NULL) LIMIT 1"));
 };
 const REAL_BOOK="(SELECT id FROM books WHERE json_extract(data,'$.demo') IS NOT 1)";
 route('GET','/api/bootstrap',async c=>{
   const uid=c.user.id,demo=await demoVisible(c),since=new Date(Date.now()-29*864e5).toISOString().slice(0,10);
   const [books,authors,fol,meta,sub,usr,my1,my2,stats,aud]=await batch(c,[
-    stmt(c,`SELECT * FROM books WHERE (hidden=0 OR hidden IS NULL)${demo?'':" AND json_extract(data,'$.demo') IS NOT 1"}`),
+    stmt(c,`SELECT * FROM books WHERE (hidden=0 OR hidden IS NULL) AND json_extract(data,'$.publish') IS NOT 'draft'${demo?'':" AND json_extract(data,'$.demo') IS NOT 1"}`),
     stmt(c,`SELECT * FROM authors${demo?'':" WHERE json_extract(data,'$.demo') IS NOT 1"}`),stmt(c,'SELECT author_id,COUNT(*) n FROM follows GROUP BY author_id'),
     stmt(c,'SELECT key,value FROM meta'),stmt(c,"SELECT * FROM submissions WHERE user_id=? AND status<>'withdrawn' ORDER BY created DESC",uid),
     stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid),
     stmt(c,'SELECT book_id,SUM(views) v,SUM(reads) r,SUM(finishes) f FROM book_stats WHERE day>=? GROUP BY book_id',since),
     stmt(c,'SELECT book_id,COUNT(*) n FROM audio_tracks GROUP BY book_id')]);
+  const [progress,bookmarks]=[await LIB.progressOf(c),await LIB.bookmarksOf(c)];
   const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)]));
   const sup=await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid);
   const don=await get(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),ds=await getDonateSettings(c),goals=await goalRows(c);
@@ -148,14 +152,16 @@ route('GET','/api/bootstrap',async c=>{
     books:out,
     authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(fol.find(f=>f.author_id===a.id)?.n||0)})),
     collections,weekly:m.weekly&&ids.has(m.weekly.bookId)?m.weekly:null,quotes:await loadQuotes(c,null,!demo),reviews:await loadReviews(c,null,!demo),threads:await loadThreads(c,null,!demo),
-    ratings:Object.fromEntries(my1.map(r=>[r.book_id,r.value])),follows:my2.map(r=>r.author_id),subs:sub.map(subOut),state:P(usr[0]?.state||'{}')});
+    ratings:Object.fromEntries(my1.map(r=>[r.book_id,r.value])),follows:my2.map(r=>r.author_id),subs:sub.map(subOut),progress,bookmarks,state:P(usr[0]?.state||'{}')});
 });
 /* Full text is served only for books whose distribution rights are confirmed (or demo books). Admins can always preview. */
 route('GET','/api/books/:id/text',async(c,id)=>{
   const row=await get(c,'SELECT data,hidden FROM books WHERE id=?',id);
   if(!row||(row.hidden&&!c.user.admin))return bad(404);
   const b=P(row.data);
+  if(b.publish==='draft'&&!c.user.admin)return bad(404);
   if(!canRead(b)&&!c.user.admin)return bad(403,'rights');
+  if(b.lazy)return json({lazy:true,chapters:[]});   // collection books are read chapter by chapter: /api/books/:id/toc and /chapter/:n
   return new Response(J({chapters:b.chapters}),{headers:{'content-type':'application/json','cache-control':'private, max-age=3600'}});
 });
 route('PUT','/api/state',async c=>{
@@ -183,7 +189,7 @@ async function guardPost(c,text){
 }
 const upsertRating=(c,bookId,v)=>run(c,'INSERT INTO ratings VALUES(?,?,?) ON CONFLICT(user_id,book_id) DO UPDATE SET value=excluded.value',c.user.id,bookId,v);
 route('POST','/api/books/:id/rate',async(c,id)=>{
-  if(!await get(c,'SELECT 1 x FROM books WHERE id=?',id))return bad(404);
+  if(!await pubBook(c,id))return bad(404);
   const v=Math.round(+c.body.value);if(!(v>=1&&v<=5))return bad();
   await upsertRating(c,id,v);const b=await bookById(c,id);return json({rating:b.rating,count:b.count});
 });
@@ -194,7 +200,7 @@ route('POST','/api/authors/:id/follow',async(c,id)=>{
 });
 route('POST','/api/reviews',async c=>{
   const {bookId,rating}=c.body,text=clip(c.body.text,2000);
-  if(!await get(c,'SELECT 1 x FROM books WHERE id=?',bookId)||!(rating>=1&&rating<=5)||text.length<10)return bad();
+  if(!await pubBook(c,bookId)||!(rating>=1&&rating<=5)||text.length<10)return bad();
   const g1=await guardPost(c,text);if(g1)return g1;
   const id='u'+id8();
   await run(c,'INSERT INTO reviews(id,book_id,user_id,user_name,rating,text,created) VALUES(?,?,?,?,?,?,?)',id,bookId,c.user.id,c.user.name,Math.round(rating),text,Date.now());
@@ -218,7 +224,7 @@ route('POST','/api/reviews/:id/replies',async(c,id)=>{
 route('POST','/api/threads',async c=>{
   const title=clip(c.body.title,200);if(!title)return bad();
   const g3=await guardPost(c,title);if(g3)return g3;
-  const bookId=c.body.bookId&&await get(c,'SELECT 1 x FROM books WHERE id=?',c.body.bookId)?c.body.bookId:null;
+  const bookId=c.body.bookId&&await pubBook(c,c.body.bookId)?c.body.bookId:null;
   const id='t'+id8();await run(c,'INSERT INTO threads(id,book_id,user_id,user_name,title,text,created) VALUES(?,?,?,?,?,?,?)',id,bookId,c.user.id,c.user.name,title,'',Date.now());
   return json({thread:(await loadThreads(c,id))[0]});
 });
@@ -237,7 +243,7 @@ route('POST','/api/quotes/:id/like',async(c,id)=>{
   return json({likes:(await loadQuotes(c,id))[0].likes});
 });
 route('POST','/api/quotes',async c=>{
-  const text=clip(c.body.text,500);if(!text||!await get(c,'SELECT 1 x FROM books WHERE id=?',c.body.bookId))return bad();
+  const text=clip(c.body.text,500);if(!text||!await pubBook(c,c.body.bookId))return bad();
   const id='q'+id8();await run(c,'INSERT INTO quotes(id,book_id,text,likes_base) VALUES(?,?,?,0)',id,c.body.bookId,text);
   return json({quote:(await loadQuotes(c,id))[0]});
 });
@@ -439,7 +445,7 @@ route('POST','/api/admin/admins',async c=>{
 },true);
 
 /* ---------- admin: content ---------- */
-route('GET','/api/admin/books',async c=>json({list:(await all(c,'SELECT id,data,added,hidden FROM books ORDER BY added DESC')).map(r=>{const b=P(r.data),ri=rightsOf(b);return{id:r.id,title:b.title,desc:b.desc,author:b.a,lang:b.lang,hidden:!!r.hidden,chapters:b.chapters.length,demo:isDemo(b),fullText:canRead(b)&&b.chapters.length>0,
+route('GET','/api/admin/books',async c=>json({list:(await all(c,'SELECT id,data,added,hidden FROM books ORDER BY added DESC')).map(r=>{const b=P(r.data),ri=rightsOf(b);return{id:r.id,title:b.title,desc:b.desc,author:b.a,lang:b.lang,hidden:!!r.hidden,chapters:b.lazy?b.nch:b.chapters.length,demo:isDemo(b),fullText:canRead(b)&&hasText(b),publish:b.publish==='draft'?'draft':'published',lazy:!!b.lazy,ver:b.ver||'',lit:b.lit?{collection:b.lit.collection,metaStatus:b.lit.metaStatus,review:b.lit.review||[],info:b.lit.info||[],path:b.lit.path,sourceUrl:b.lit.sourceUrl,commit:b.lit.commit,metaConfirmed:!!b.lit.metaConfirmed,dupOf:b.lit.dupOf||'',possibleDuplicate:b.lit.possibleDuplicate||''}:null,
   rights:{status:ri.status,license:ri.license||'',evidenceUrl:ri.evidenceUrl||'',note:ri.note||'',source:ri.source?.name||'',sourceUrl:ri.source?.url||'',legacy:!!ri.legacy,authorDeathYear:ri.authorDeathYear||null}}})}),true);
 route('POST','/api/admin/books/:id/hide',async(c,id)=>{await run(c,'UPDATE books SET hidden=? WHERE id=?',c.body.on?1:0,id);return json({ok:true})},true);
 route('POST','/api/admin/books/:id/delete',async(c,id)=>{
@@ -481,7 +487,7 @@ route('POST','/api/admin/books/:id/rights',async(c,id)=>{
   const b=P(row.data),r=cleanRights(c.body),death=Number.isInteger(c.body.authorDeathYear)?c.body.authorDeathYear:(b.rights?.authorDeathYear??null);
   if(death!==null)r.authorDeathYear=death;
   r.source={name:clip(c.body.sourceName,80)||b.rights?.source?.name||'',url:httpsUrl(c.body.sourceUrl)||b.rights?.source?.url||''};
-  if(b.chapters.length&&RIGHTS_OK.includes(r.status)){const e=checkTextRights(r,death,J(b.chapters),new Date().getFullYear());if(e&&e!=='toolarge')return bad(422,e)}
+  if(hasText(b)&&RIGHTS_OK.includes(r.status)){const e=checkTextRights(r,death,b.lazy?'':J(b.chapters),new Date().getFullYear());if(e&&e!=='toolarge')return bad(422,e)}
   const before=b.rights?.status||'legacy';
   b.rights={...r,verifiedBy:c.user.id,verifiedAt:Date.now()};
   await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);await audit(c,'rights',id,{from:before,to:r.status,license:r.license,evidence:r.evidenceUrl});
@@ -490,7 +496,8 @@ route('POST','/api/admin/books/:id/rights',async(c,id)=>{
 /** Adds the full text to a metadata-only book, under the same rights check as an import. */
 route('POST','/api/admin/books/:id/text',async(c,id)=>{
   const row=await get(c,'SELECT data FROM books WHERE id=?',id);if(!row)return bad(404);
-  const b=P(row.data),text=String(c.body.text||''),r=cleanRights(c.body.rights),death=Number.isInteger(c.body.authorDeathYear)?c.body.authorDeathYear:null;
+  const b=P(row.data);if(b.lazy)return bad(409,'lazy_book');
+  const text=String(c.body.text||''),r=cleanRights(c.body.rights),death=Number.isInteger(c.body.authorDeathYear)?c.body.authorDeathYear:null;
   if(death!==null)r.authorDeathYear=death;
   r.source={name:clip(c.body.sourceName,80)||b.rights?.source?.name||'',url:httpsUrl(c.body.sourceUrl)||b.rights?.source?.url||''};
   if(!r.source.name)return bad(422,'source');
@@ -651,7 +658,7 @@ route('POST','/api/admin/donate-settings',async c=>{
 /* ---------- author stats & book events ---------- */
 route('POST','/api/books/:id/event',async(c,id)=>{
   const col={view:'views',read:'reads',finish:'finishes'}[c.body.type];
-  if(!col||!await get(c,'SELECT 1 x FROM books WHERE id=?',id))return bad();
+  if(!col||!await pubBook(c,id))return bad();
   const day=new Date().toISOString().slice(0,10);
   const r=await run(c,'INSERT OR IGNORE INTO book_seen(user_id,book_id,day,type) VALUES(?,?,?,?)',c.user.id,id,day,c.body.type);
   if(r.meta.changes)await run(c,`INSERT INTO book_stats(book_id,day,${col}) VALUES(?,?,1) ON CONFLICT(book_id,day) DO UPDATE SET ${col}=${col}+1`,id,day);
@@ -716,7 +723,7 @@ const ACH=[
 const bestStreak=days=>{const d=[...new Set(days||[])].sort();let best=0,run=0,prev=null;for(const x of d){const t=Date.parse(x+'T00:00:00Z');run=prev!==null&&t-prev===864e5?run+1:1;prev=t;if(run>best)best=run}return best};
 async function achFacts(c,uid){
   const own="FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?1";
-  const [u,rv,th,cm,don,fol,bk,my,st,rt,orv,up]=await batch(c,[
+  const [u,rv,th,cm,don,fol,bk,my,st,rt,orv,up,rp]=await batch(c,[
     stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT COUNT(*) n FROM reviews WHERE user_id=?',uid),stmt(c,'SELECT COUNT(*) n FROM threads WHERE user_id=?',uid),stmt(c,'SELECT COUNT(*) n FROM comments WHERE user_id=?',uid),
     stmt(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),stmt(c,'SELECT COUNT(*) n FROM follows WHERE user_id=?',uid),
     stmt(c,"SELECT id,json_extract(data,'$.lang') l FROM books"),
@@ -724,11 +731,12 @@ async function achFacts(c,uid){
     stmt(c,"SELECT COALESCE(SUM(s.views),0) v,COALESCE(SUM(s.reads),0) r,COALESCE(SUM(s.finishes),0) f FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
     stmt(c,"SELECT COUNT(*) n,COALESCE(AVG(r.value),0) avg FROM ratings r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
     stmt(c,"SELECT COUNT(*) n FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
-    stmt(c,"SELECT COUNT(*) n FROM submissions WHERE user_id=? AND status='approved' AND update_book_id IS NOT NULL",uid)]);
+    stmt(c,"SELECT COUNT(*) n FROM submissions WHERE user_id=? AND status='approved' AND update_book_id IS NOT NULL",uid),
+    stmt(c,'SELECT COUNT(*) n FROM reading_progress WHERE user_id=?',uid)]);
   const state=P(u[0]?.state||'{}'),lang=Object.fromEntries(bk.map(b=>[b.id,b.l]));
   const fin=state.finished||[];
   const ratings=rt[0];
-  return{opened:Object.keys(state.progress||{}).length,finished:fin.length,streak:bestStreak(state.days),reviews:rv[0].n,saved:(state.saved||[]).length,quotes:(state.myQuotes||[]).length,
+  return{opened:Math.max(Object.keys(state.progress||{}).length,rp[0].n),finished:fin.length,streak:bestStreak(state.days),reviews:rv[0].n,saved:(state.saved||[]).length,quotes:(state.myQuotes||[]).length,
     langs:new Set(fin.map(id=>lang[id]).filter(Boolean)).size,talk:th[0].n+cm[0].n,follows:fol[0].n,patron:don[0].s>0?1:0,
     books:my[0].n,views:st[0].v,reads:st[0].r,finishes:st[0].f,loved:ratings.avg>=4.5?ratings.n:Math.min(ratings.n,4),ownreviews:orv[0].n,updates:up[0].n};
 }
@@ -749,7 +757,7 @@ route('GET','/api/achievements',async c=>{
 /* ---------- inline search (@bot query in any chat) ---------- */
 const fold=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,'').replace(/ё/g,'е');
 const hesc=t=>String(t||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
-const BOOK_ROW_SQL="SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,json_extract(b.data,'$.img') IS NOT NULL img,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE (b.hidden=0 OR b.hidden IS NULL)";
+const BOOK_ROW_SQL="SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,json_extract(b.data,'$.img') IS NOT NULL img,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE (b.hidden=0 OR b.hidden IS NULL) AND json_extract(b.data,'$.publish') IS NOT 'draft'";
 /** One book as a Telegram inline result: used by inline search and by the prepared "share" card. */
 function bookCard(b,{base,link,lang}){
   const rating=Math.round(b.r*10)/10,d=String(b.d||'');
@@ -776,6 +784,7 @@ route('POST','/api/books/:id/prepared',async(c,id)=>{
 
 /* ---------- book versions (kept so an approved replacement can be rolled back) ---------- */
 async function snapshotBook(c,bookId,book){
+  if(book.lazy)return;
   await run(c,'INSERT INTO book_versions(book_id,created,data) VALUES(?,?,?)',bookId,Date.now(),J({chapters:book.chapters,pages:book.pages}));
   await run(c,'DELETE FROM book_versions WHERE book_id=?1 AND id NOT IN (SELECT id FROM book_versions WHERE book_id=?1 ORDER BY id DESC LIMIT 5)',bookId);
 }
@@ -830,6 +839,20 @@ route('POST','/api/admin/stopwords',async c=>{
 },true);
 
 /* ---------- entry points ---------- */
+/** Machine import: Authorization: Bearer IMPORT_TOKEN. Disabled (503) unless the secret is configured; no user session is involved. */
+async function handleImport(request,env,ctx){
+  const t=await tokenCheck(env,request.headers.get('authorization'));
+  if(t==='disabled')return bad(503,'import_disabled');if(t!=='ok')return bad(401,'unauthorized');
+  await ensureSchema(env);
+  const c={env,ctx,request,body:{},user:{id:'import',name:'import',admin:true,superadmin:true}};
+  const url=new URL(request.url);
+  for(const r of routes){
+    if(r.admin!=='token'||r.method!==request.method)continue;const m=r.re.exec(url.pathname);if(!m)continue;
+    if(request.method!=='GET'){if(+request.headers.get('content-length')>4_500_000)return bad(413,'toolarge');try{c.body=await request.json()}catch{c.body={}}}
+    return r.fn(c,...m.slice(1));
+  }
+  return bad(404,'not found');
+}
 async function handleApi(request,env,ctx){
   const c={env,ctx,request,body:{}};
   /* The x-dev-user shortcut exists for local development only: it must never work on a deployed host, even if BOT_TOKEN is missing. */
@@ -845,6 +868,7 @@ async function handleApi(request,env,ctx){
   const url=new URL(request.url);
   for(const r of routes){
     if(r.method!==request.method)continue;const m=r.re.exec(url.pathname);if(!m)continue;
+    if(r.admin==='token')continue;
     if(r.admin&&!c.user.admin)return bad(403,'forbidden');
     if(request.method!=='GET'){if(+request.headers.get('content-length')>4_500_000)return bad(413,'toolarge');try{c.body=await request.json()}catch{c.body={}}}
     await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=COALESCE(users.name,excluded.name),last_seen=excluded.last_seen,blocked=0',id,name,Date.now(),Date.now());
@@ -915,11 +939,13 @@ async function reminders(env,ctx){
   await ensureSchema(env);
   const users=await all(c,"SELECT id,state FROM users WHERE state LIKE '%\"reminder\":true%' AND (reminded IS NULL OR reminded<>?) AND banned=0 AND blocked=0 LIMIT 18",today);
   if(!users.length)return;
-  const titles=Object.fromEntries((await all(c,"SELECT id,json_extract(data,'$.title') t FROM books WHERE hidden=0 OR hidden IS NULL")).map(b=>[b.id,b.t]));
+  const titles=Object.fromEntries((await all(c,"SELECT id,json_extract(data,'$.title') t FROM books WHERE (hidden=0 OR hidden IS NULL) AND json_extract(data,'$.publish') IS NOT 'draft'")).map(b=>[b.id,b.t]));
   for(const u of users){
     const s=P(u.state||'{}'),uz=s.lang==='uz';
     if(s.notif?.reminder&&!(s.days||[]).includes(today)){
-      const cur=Object.entries(s.progress||{}).filter(([id])=>titles[id]&&!(s.finished||[]).includes(id)).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))[0];
+      const rows=await all(c,'SELECT book_id,locator,updated FROM reading_progress WHERE user_id=? ORDER BY updated DESC LIMIT 6',u.id);
+      const prog=rows.length?rows.map(r=>[r.book_id,{ch:P(r.locator).ch,ts:r.updated}]):Object.entries(s.progress||{});
+      const cur=prog.filter(([id])=>titles[id]&&!(s.finished||[]).includes(id)).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))[0];
       const text=cur?(uz?`Siz «${titles[cur[0]]}» kitobida ${cur[1].ch+1}-bobda to‘xtagansiz. Davom ettiramizmi? 📖`:`Вы остановились на «${titles[cur[0]]}», глава ${cur[1].ch+1}. Продолжим? 📖`):(uz?'O‘qish vaqti 📖 Bugun hali kitob ochmadingiz.':'Время почитать 📖 Сегодня вы ещё не открывали книгу.');
       await tgApi(env,'sendMessage',{chat_id:u.id,text,...openBtn(env,{lang:uz?'uz':'ru',open:cur?'read_'+cur[0]:'library'})});
     }
@@ -929,13 +955,14 @@ async function reminders(env,ctx){
 
 /** A token pasted into the dashboard often carries a trailing space or newline; normalise it once. */
 const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKEN||'').trim().replace(/^bot/i,''),WEBHOOK_SECRET:String(env.WEBHOOK_SECRET||'').trim()});
+LIB=registerLibrary({route,stmt,get,all,run,batch,json,bad,P,J,audit,id8});
 export default {
   async fetch(request,env0,ctx){
     const env=clean(env0);
     const {pathname,origin}=new URL(request.url);ORIGIN=origin;
     const cv=/^\/api\/cover\/([\w-]+)$/.exec(pathname);
     if(cv&&request.method==='GET'){
-      const row=await env.DB.prepare('SELECT data FROM books WHERE id=?').bind(cv[1]).first();const img=row&&P(row.data).img;
+      const row=await env.DB.prepare("SELECT data FROM books WHERE id=? AND json_extract(data,'$.publish') IS NOT 'draft' AND (hidden=0 OR hidden IS NULL)").bind(cv[1]).first();const img=row&&P(row.data).img;
       const m=img&&/^data:(image\/[\w.+-]+);base64,(.+)$/.exec(img);
       if(!m)return new Response('not found',{status:404});
       const bin=atob(m[2]),bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
@@ -944,6 +971,7 @@ export default {
     if(pathname==='/api/health'){const t=env.BOT_TOKEN;{const al=env.DB?await env.DB.prepare("SELECT value FROM meta WHERE key='applink'").first().catch(()=>null):null;return json({bot:!!t,botId:t.split(':')[0]||null,format:/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(t),db:!!env.DB,admins:csv(env.ADMIN_IDS).length,appLink:al?JSON.parse(al.value):''})}}
     try{
       if(pathname==='/telegram/webhook'&&request.method==='POST')return await handleWebhook(request,env,ctx);
+      if(pathname.startsWith('/api/import/'))return await handleImport(request,env,ctx);
       if(pathname.startsWith('/api/'))return await handleApi(request,env,ctx);
     }catch(e){console.error(e);return json({error:'server',...(pathname.startsWith('/api/admin/')?{detail:String(e.message||e).slice(0,200)}:{})},500)}
     return env.ASSETS.fetch(request);

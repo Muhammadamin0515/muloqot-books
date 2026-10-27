@@ -1,7 +1,7 @@
 /* Catalog rules: which books are real, who may read the full text, and how an imported record is validated. */
 import {parseManuscript} from './parse.js';
 
-export const GENRES=['novel','detective','historical','adventure','drama','stories','modern'];
+export const GENRES=['novel','detective','historical','adventure','drama','stories','modern','prose','poetry','publicism'];
 /** Statuses under which the full text may be shown to readers. Anything else means "metadata only". */
 export const RIGHTS_OK=['public_domain','author','licensed','permission'];
 export const RIGHTS_ALL=[...RIGHTS_OK,'unverified'];
@@ -14,7 +14,11 @@ export const COVER_HOSTS=['covers.openlibrary.org','upload.wikimedia.org','www.g
 export const isDemo=b=>!!(b&&b.demo);
 /** Legacy books (published before rights were recorded) came from author submissions and count as author-attested. */
 export const rightsOf=b=>b.rights||(b.demo?{status:'demo'}:{status:'author',legacy:true});
-export const canRead=b=>isDemo(b)||RIGHTS_OK.includes(rightsOf(b).status);
+/** A book is public unless it is a draft. Imported books start as drafts and are published only after their rights are confirmed. */
+export const isPublished=b=>b.publish!=='draft';
+/** Chapters of a book live in the row (legacy) or in book_chunks (lazy books, e.g. imported collections). */
+export const hasText=b=>b.lazy?(b.nch>0&&!!b.ver):(b.chapters||[]).length>0;
+export const canRead=b=>isPublished(b)&&(isDemo(b)||RIGHTS_OK.includes(rightsOf(b).status));
 /** The part of the rights record that readers may see. Evidence links and notes stay in the admin panel. */
 export const publicRights=b=>{const r=rightsOf(b);return{status:r.status,license:r.license||'',source:r.source?.name||'',sourceUrl:r.source?.url||''}};
 
