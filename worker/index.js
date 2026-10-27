@@ -487,7 +487,7 @@ route('POST','/api/admin/books/:id/rights',async(c,id)=>{
   const b=P(row.data),r=cleanRights(c.body),death=Number.isInteger(c.body.authorDeathYear)?c.body.authorDeathYear:(b.rights?.authorDeathYear??null);
   if(death!==null)r.authorDeathYear=death;
   r.source={name:clip(c.body.sourceName,80)||b.rights?.source?.name||'',url:httpsUrl(c.body.sourceUrl)||b.rights?.source?.url||''};
-  if(hasText(b)&&RIGHTS_OK.includes(r.status)){const e=checkTextRights(r,death,b.lazy?'':J(b.chapters),new Date().getFullYear());if(e&&e!=='toolarge')return bad(422,e)}
+  if(hasText(b)&&RIGHTS_OK.includes(r.status)){const td=Number.isInteger(c.body.translatorDeathYear)?c.body.translatorDeathYear:(b.rights?.translatorDeathYear??null);if(td!==null)r.translatorDeathYear=td;const e=checkTextRights(r,death,b.lazy?'':J(b.chapters),new Date().getFullYear(),{translated:!!b.translator,translatorDeath:td});if(e&&e!=='toolarge')return bad(422,e)}
   const before=b.rights?.status||'legacy';
   b.rights={...r,verifiedBy:c.user.id,verifiedAt:Date.now()};
   await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);await audit(c,'rights',id,{from:before,to:r.status,license:r.license,evidence:r.evidenceUrl});
@@ -501,7 +501,8 @@ route('POST','/api/admin/books/:id/text',async(c,id)=>{
   if(death!==null)r.authorDeathYear=death;
   r.source={name:clip(c.body.sourceName,80)||b.rights?.source?.name||'',url:httpsUrl(c.body.sourceUrl)||b.rights?.source?.url||''};
   if(!r.source.name)return bad(422,'source');
-  const e=checkTextRights(r,death,text);if(e)return bad(e==='toolarge'?413:422,e);
+  const td=Number.isInteger(c.body.translatorDeathYear)?c.body.translatorDeathYear:(b.rights?.translatorDeathYear??null);if(td!==null)r.translatorDeathYear=td;
+  const e=checkTextRights(r,death,text,new Date().getFullYear(),{translated:!!b.translator,translatorDeath:td});if(e)return bad(e==='toolarge'?413:422,e);
   const chapters=parseManuscript(text);if(!chapters.length)return bad(400,'manuscript');
   await snapshotBook(c,id,b);
   b.chapters=chapters;b.pages=Math.max(1,Math.round(chapters.reduce((n,x)=>n+x.p.join('').length,0)/1800));b.rights={...r,verifiedBy:c.user.id,verifiedAt:Date.now()};b.updated=Date.now();

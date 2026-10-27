@@ -27,9 +27,11 @@ const byteLen=t=>new TextEncoder().encode(t).length;
 const httpsUrl=u=>{try{const x=new URL(String(u));return x.protocol==='https:'?x.href.slice(0,500):''}catch{return ''}};
 
 /** The rule that guards every full text: confirmed basis, proof of it, and a size the database can hold. Returns an error code or null. */
-export function checkTextRights(rights,death,text,now=new Date().getFullYear()){
+export function checkTextRights(rights,death,text,now=new Date().getFullYear(),{translated=false,translatorDeath=null}={}){
   if(!RIGHTS_OK.includes(rights.status))return 'rights_required';
   if(rights.status==='public_domain'&&!(Number.isInteger(death)&&death<=now-PD_YEARS))return 'pd_not_proven';
+  /* A translation is a separate work: the translator's rights must have expired too (the original being free is not enough). */
+  if(rights.status==='public_domain'&&translated&&!(Number.isInteger(translatorDeath)&&translatorDeath<=now-PD_YEARS))return 'translator_pd_not_proven';
   if(rights.status!=='public_domain'&&!rights.evidenceUrl&&!rights.note)return 'evidence';
   if(byteLen(text)>MAX_TEXT_BYTES)return 'toolarge';
   return null;
@@ -54,7 +56,8 @@ export function validateImport(r,{now=new Date().getFullYear()}={}){
   if(death!==null)rights.authorDeathYear=death;
   const text=typeof r.text==='string'?r.text:'';
   let chapters=[];
-  if(text.trim()){const e=checkTextRights(rights,death,text,now);if(e)return{error:e};chapters=parseManuscript(text);if(!chapters.length)return{error:'manuscript'}}
+  const translatorDeath=Number.isInteger(r.translatorDeathYear)?r.translatorDeathYear:null;if(translatorDeath!==null)rights.translatorDeathYear=translatorDeath;
+  if(text.trim()){const e=checkTextRights(rights,death,text,now,{translated:!!clip(r.translator,100),translatorDeath});if(e)return{error:e};chapters=parseManuscript(text);if(!chapters.length)return{error:'manuscript'}}
   const source={name:clip(r.source?.name,80),url:httpsUrl(r.source?.url)};
   if(!source.name)return{error:'source'};
   rights.source=source;

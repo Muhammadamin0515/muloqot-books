@@ -9,6 +9,14 @@ test('public domain needs a death year old enough',()=>{
   assert.equal(validateImport({...base,authorDeathYear:1955,rights:{status:'public_domain'}},{now:NOW}).error,undefined,'1955 + 71 years = 2026');
   assert.equal(validateImport({...base,authorDeathYear:1956,rights:{status:'public_domain'}},{now:NOW}).error,'pd_not_proven');
 });
+test('a translation needs the translator to be out of copyright as well',()=>{
+  const tr={...base,translator:'Тестовый Переводчик',authorDeathYear:1900,rights:{status:'public_domain'}};
+  assert.equal(validateImport(tr,{now:NOW}).error,'translator_pd_not_proven');
+  assert.equal(validateImport({...tr,translatorDeathYear:2000},{now:NOW}).error,'translator_pd_not_proven');
+  assert.equal(validateImport({...tr,translatorDeathYear:1955},{now:NOW}).error,undefined);
+  assert.equal(validateImport({...tr,translatorDeathYear:1956},{now:NOW}).error,'translator_pd_not_proven');
+  assert.ok(validateImport({...tr,rights:{status:'permission',note:'Письмо переводчика'}},{now:NOW}).book,'a written permission covers a living translator');
+});
 test('other bases need evidence',()=>{
   assert.equal(validateImport({...base,rights:{status:'licensed'}}).error,'evidence');
   assert.equal(validateImport({...base,rights:{status:'licensed',evidenceUrl:'http://insecure'}}).error,'evidence');

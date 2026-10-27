@@ -130,7 +130,8 @@ export function registerLibrary(d){
     const r=cleanRights(item.rights),death=Number.isInteger(item.authorDeathYear)?item.authorDeathYear:null;
     if(death!==null)r.authorDeathYear=death;
     r.source=b.rights?.source||{name:'',url:''};
-    const e=checkTextRights(r,death,'');if(e)return{id:row.id,error:e};
+    const td=Number.isInteger(item.translatorDeathYear)?item.translatorDeathYear:(b.rights?.translatorDeathYear??null);if(td!==null)r.translatorDeathYear=td;
+    const e=checkTextRights(r,death,'',new Date().getFullYear(),{translated:!!b.translator,translatorDeath:td});if(e)return{id:row.id,error:e};
     b.rights={...r,verifiedBy:str(item.verifiedBy||by,60),verifiedAt:Date.now(),verifiedOn:str(item.verifiedOn,20)};
     if(b.lit&&item.metaConfirmed)b.lit.metaConfirmed=true;
     const blocked=publishBlock(b,{metaConfirmed:!!item.metaConfirmed});if(blocked)return{id:row.id,error:blocked};
