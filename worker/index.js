@@ -722,7 +722,7 @@ export default {
       const bin=atob(m[2]),bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
       return new Response(bytes,{headers:{'content-type':m[1],'cache-control':'public, max-age=86400'}});
     }
-    if(pathname==='/api/health'){const t=env.BOT_TOKEN;return json({bot:!!t,botId:t.split(':')[0]||null,format:/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(t),db:!!env.DB,admins:csv(env.ADMIN_IDS).length})}
+    if(pathname==='/api/health'){const t=env.BOT_TOKEN;{const al=env.DB?await env.DB.prepare("SELECT value FROM meta WHERE key='applink'").first().catch(()=>null):null;return json({bot:!!t,botId:t.split(':')[0]||null,format:/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(t),db:!!env.DB,admins:csv(env.ADMIN_IDS).length,appLink:al?JSON.parse(al.value):''})}}
     try{
       if(pathname==='/telegram/webhook'&&request.method==='POST')return await handleWebhook(request,env,ctx);
       if(pathname.startsWith('/api/'))return await handleApi(request,env,ctx);
