@@ -428,3 +428,15 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .step i{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#fff;font-style:normal;font-weight:800;font-size:12.5px;display:grid;place-items:center;flex:none}
 .step b{font-size:14.5px}
 .counter{font-size:11.5px;color:var(--dim);text-align:right;margin-top:4px}
+
+/* home polish */
+.bk{position:relative}
+.newtag{position:absolute;top:8px;left:8px;z-index:2;height:20px;padding:0 8px;border-radius:6px;background:var(--acc);color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;display:inline-flex;align-items:center;box-shadow:0 4px 10px rgba(0,0,0,.35)}
+.streak{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:var(--acc-soft);font-size:12px;font-weight:700;color:var(--acc-t);margin-top:8px}
+.hello{padding-top:20px;align-items:flex-start}
+.hello h1{margin-top:2px}
+.don-card{padding:14px 16px;gap:14px}
+.don-ico{width:44px;height:44px;border-radius:14px;background:var(--acc);color:#fff;display:grid;place-items:center;flex:none}
+.don-t{display:block;font-family:var(--display);font-weight:400;font-size:17px;line-height:1.25;margin-top:4px}
+.sec-h{margin-bottom:14px}
+.hs .chip{flex:none}

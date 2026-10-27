@@ -106,32 +106,34 @@ ACT.obSkip=finishOnb;
 /* =====================================================================
    HOME
    ===================================================================== */
-const bkCard=b=>{const st=stat(b);return `<button class="bk" data-a="openBook" data-id="${b.id}">${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${ico('star',13,'f')}<b style="color:var(--fg)">${st.avg}</b><span class="tag">${b.lang.toUpperCase()}</span></span></button>`};
+const bkCard=(b,badge)=>{const st=stat(b);return `<button class="bk" data-a="openBook" data-id="${b.id}">${badge?`<span class="newtag">${badge}</span>`:''}${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${ico('star',13,'f')}<b style="color:var(--fg)">${st.avg}</b><span class="tag">${b.lang.toUpperCase()}</span></span></button>`};
 const colCard=c=>{const bs=c.ids.slice(0,3).map(book);return `<button class="col" data-a="openCollection" data-id="${c.id}" style="background:linear-gradient(135deg,${c.pal[0]},${c.pal[1]})"><div class="stack">${bs.map((b,i)=>`<div style="position:absolute;left:${i*28}px;top:${i*9}px;width:62px;z-index:${3-i}">${cover(b,'sm')}</div>`).join('')}</div><div class="tx"><b>${esc(L(c.t))}</b><small>${c.ids.length} ${t('books_n')}</small></div></button>`};
-const donCard=()=>{const g=S.donateGoal;
-  return `<div class="px" style="margin-top:16px"><button class="don-card cine" data-a="openDonate"><div class="grow" style="min-width:0;text-align:left"><span class="eyebrow" style="color:#f4a07c">${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</span><b style="display:block;font-family:var(--display);font-weight:400;font-size:17px;margin:4px 0 ${g?'10px':'0'}">${g?esc(L(g.title)):tr('Помогите нам создавать новые книги','Yangi kitoblar yaratishimizga yordam bering')}</b>${g?`<div class="bar"><i style="width:${Math.min(100,Math.round(g.raised/g.target*100))}%"></i></div><span class="mono" style="font-size:12px;color:#c8bcae">⭐ ${g.raised} / ${g.target}</span>`:''}</div><span class="roundgo" style="width:46px;height:46px">${ico('heart',20)}</span></button></div>`};
+const donCard=()=>{const g=S.donateGoal,pct=g?Math.min(100,Math.round(g.raised/g.target*100)):0;
+  return `<div class="px" style="margin-top:30px"><button class="don-card cine" data-a="openDonate"><span class="don-ico">${ico('heart',22)}</span><div class="grow" style="min-width:0;text-align:left"><span class="eyebrow" style="color:#f4a07c">${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</span><b class="don-t">${g?esc(L(g.title)):tr('Помогите создавать новые книги','Yangi kitoblar yaratishga yordam bering')}</b>${g?`<div class="bar" style="margin:9px 0 5px"><i style="width:${pct}%"></i></div><span class="mono" style="font-size:12px;color:#c8bcae">⭐ ${g.raised} / ${g.target}</span>`:''}</div>${ico('chev',18)}</button></div>`};
 SCREENS.home=()=>{
   const h=new Date().getHours(),g=h<5?'g_night':h<12?'g_morning':h<18?'g_day':'g_evening';
   const rd=readingIds(),cb=rd.length?book(rd[0]):null;
   const cont=cb?`<button class="cont cine" data-a="read" data-id="${cb.id}"><div class="bgc">${cover(cb,'sm')}</div><div class="fade"></div><div class="in-"><div class="cv">${cover(cb)}</div><div class="grow" style="display:flex;flex-direction:column;justify-content:center;min-width:0"><span class="eyebrow" style="color:#f4a07c">${t('continue')}</span><h3>${esc(cb.title)}</h3><span style="color:#c8bcae;font-size:13px">${esc(authorOf(cb).name)}</span><div class="bar"><i style="width:${pctOf(cb.id)}%"></i></div><div class="row" style="justify-content:space-between;gap:8px"><span class="mono" style="font-size:12px;color:#c8bcae;white-space:nowrap">${pctOf(cb.id)}% · ${S.progress[cb.id].ch+1}/${cb.chapters.length}</span><span class="btn sm">${t('resume')} ${ico('arrow',15)}</span></div></div></div></button>`
    :`<div class="card">${empty('lib',t('empty_cont'),t('empty_cont_d'),`<button class="btn sm" data-a="tab" data-id="catalog">${t('pick_book')}</button>`)}</div>`;
   const pop=BOOKS.slice().sort((a,b)=>stat(b).n-stat(a).n).slice(0,8);
-  const nw=BOOKS.filter(b=>b.added>=9).sort((a,b)=>b.added-a.added);
+  const nw=BOOKS.slice().sort((a,b)=>b.added-a.added).slice(0,8);
   const gc=g=>BOOKS.filter(b=>b.genre===g).length;
+  const head=(title,link)=>`<div class="sec-h px"><h2>${title}</h2>${link||''}</div>`;
   return `<header class="hello px"><div class="grow"><p class="eyebrow">${t(g)}</p><h1 class="display">${esc(dispName())}</h1><span class="streak">${ico('flame',14)} ${streak()?`${streak()} ${tr('дн. подряд','kun ketma-ket')}`:tr('Начните серию сегодня','Bugun boshlang')}</span></div><button class="avatar" data-a="tab" data-id="profile" aria-label="${t('nav_profile')}" style="background:${AVC[0]}">${hasName()?esc(S.name[0].toUpperCase()):ico('user',20)}</button></header>
   <div class="px" style="margin-top:18px"><button class="fakesearch" data-a="openSearch">${ico('search',20)}<span>${t('search_ph')}</span></button></div>
   <div class="px" style="margin-top:20px">${cont}</div>
+  <section class="sec">${head(t('collections'))}<div class="hs px">${COLLECTIONS.map(colCard).join('')}</div></section>
+  <section class="sec">${head(t('popular'),`<button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button>`)}<div class="hs px">${pop.map(b=>bkCard(b)).join('')}</div></section>
   ${net.online&&S.donateOn?donCard():''}
-  <section class="sec"><div class="sec-h px"><h2>${t('collections')}</h2></div><div class="hs px">${COLLECTIONS.map(colCard).join('')}</div></section>
-  <section class="sec"><div class="sec-h px"><h2>${t('popular')}</h2><button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button></div><div class="hs px">${pop.map(bkCard).join('')}</div></section>
-  <section class="sec px"><div class="sec-h"><h2>${t('new_rel')}</h2></div>${nw.map(b=>`<button class="nb" data-a="openBook" data-id="${b.id}">${cover(b,'sm')}<div class="grow"><span class="tag acc">${t('new')}</span><h3 style="margin-top:8px">${esc(b.title)}</h3><div class="meta">${esc(authorOf(b).name)} · ${b.lang.toUpperCase()}</div><p>${esc(b.desc)}</p></div></button>`).join('')}</section>
-  <section class="sec px"><div class="sec-h"><h2>${t('genres')}</h2></div><div class="gen">${GENRES.map(g=>`<button class="chip" data-a="genreFilter" data-id="${g}">${gl(g)} <span class="mute">${gc(g)}</span></button>`).join('')}</div></section>
-  <section class="sec"><div class="sec-h px"><h2>${t('authors')}</h2></div><div class="hs px">${AUTHORS.slice(0,10).map(a=>`<button class="au" data-a="openAuthor" data-id="${a.id}"><div class="pt">${portrait(a)}</div><b>${esc(a.name)}</b><small>${esc(L(a.city))}</small></button>`).join('')}</div></section>`;
+  <section class="sec">${head(t('new_rel'),`<button class="link acc" data-a="openNew">${t('all')}</button>`)}<div class="hs px">${nw.map(b=>bkCard(b,t('new'))).join('')}</div></section>
+  <section class="sec">${head(t('genres'))}<div class="hs px">${GENRES.map(g=>`<button class="chip" data-a="genreFilter" data-id="${g}">${gl(g)} <span class="mute">${gc(g)}</span></button>`).join('')}</div></section>
+  <section class="sec">${head(t('authors'))}<div class="hs px">${AUTHORS.slice(0,10).map(a=>`<button class="au" data-a="openAuthor" data-id="${a.id}"><div class="pt">${portrait(a)}</div><b>${esc(a.name)}</b><small>${esc(L(a.city))}</small></button>`).join('')}</div></section>`;
 };
 ACT.tab=el=>{if(NAV.tab===el.dataset.id&&NAV.cur.name===el.dataset.id){$('#screen').scrollTo({top:0,behavior:'smooth'});return}go(el.dataset.id)};
 ACT.openBook=el=>{BK.tab='about';BK.syn=false;go('book',{id:el.dataset.id});loadText(el.dataset.id).catch(()=>{});track(el.dataset.id,'view')};
 ACT.openAuthor=el=>go('author',{id:el.dataset.id});
 ACT.openSearch=()=>{resetCat();CAT.focus=true;go('catalog')};
+ACT.openNew=()=>{resetCat();CAT.sort='new';go('catalog')};
 ACT.genreFilter=el=>{resetCat();CAT.genres=[el.dataset.id];go('catalog')};
 ACT.openCollection=el=>{const c=COLLECTIONS.find(x=>x.id===el.dataset.id);resetCat();CAT.ids=c.ids;CAT.coll=c.id;go('catalog')};
 ACT.back=back;
