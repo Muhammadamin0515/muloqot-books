@@ -4,6 +4,7 @@ import {esc,ico,cover,portrait,onbArt,authorOf} from './art.js';
 import * as tg from './telegram.js';
 import {api,net} from './api.js';
 import {initAdmin} from './admin.js';
+import {initDonate} from './donate.js';
 
 const KEY='muloqot.proto.v1';
 const $=(s,el=document)=>el.querySelector(s);
@@ -22,7 +23,7 @@ const DEFAULT=()=>({onboarded:false,lang:'ru',theme:'dark',name:'Читател�
   subs:[]});
 let S;
 function load(){try{const raw=localStorage.getItem(KEY);S=Object.assign(DEFAULT(),raw?JSON.parse(raw):{})}catch(e){S=DEFAULT()}}
-const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','me'];
+const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','me','donateGoal','donateOn'];
 const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);return o};
 let saveT,syncT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250);
   if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>api('/api/state','PUT',persistable()).catch(()=>{}),1200)}}
@@ -102,6 +103,8 @@ ACT.obSkip=finishOnb;
    ===================================================================== */
 const bkCard=b=>{const st=stat(b);return `<button class="bk" data-a="openBook" data-id="${b.id}">${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${ico('star',13,'f')}<b style="color:var(--fg)">${st.avg}</b><span class="tag">${b.lang.toUpperCase()}</span></span></button>`};
 const colCard=c=>{const bs=c.ids.slice(0,3).map(book);return `<button class="col" data-a="openCollection" data-id="${c.id}" style="background:linear-gradient(135deg,${c.pal[0]},${c.pal[1]})"><div class="stack">${bs.map((b,i)=>`<div style="position:absolute;left:${i*28}px;top:${i*9}px;width:62px;z-index:${3-i}">${cover(b,'sm')}</div>`).join('')}</div><div class="tx"><b>${esc(L(c.t))}</b><small>${c.ids.length} ${t('books_n')}</small></div></button>`};
+const donCard=()=>{const g=S.donateGoal;
+  return `<div class="px" style="margin-top:16px"><button class="don-card cine" data-a="openDonate"><div class="grow" style="min-width:0;text-align:left"><span class="eyebrow" style="color:#f4a07c">${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</span><b style="display:block;font-family:var(--display);font-weight:400;font-size:17px;margin:4px 0 ${g?'10px':'0'}">${g?esc(L(g.title)):tr('Помогите нам создавать новые книги','Yangi kitoblar yaratishimizga yordam bering')}</b>${g?`<div class="bar"><i style="width:${Math.min(100,Math.round(g.raised/g.target*100))}%"></i></div><span class="mono" style="font-size:12px;color:#c8bcae">⭐ ${g.raised} / ${g.target}</span>`:''}</div><span class="roundgo" style="width:46px;height:46px">${ico('heart',20)}</span></button></div>`};
 SCREENS.home=()=>{
   const h=new Date().getHours(),g=h<5?'g_night':h<12?'g_morning':h<18?'g_day':'g_evening';
   const rd=readingIds(),cb=rd.length?book(rd[0]):null;
@@ -113,6 +116,7 @@ SCREENS.home=()=>{
   return `<header class="hello px"><div class="grow"><p class="eyebrow">${t(g)}</p><h1 class="display">${esc(S.name)}</h1><span class="streak">${ico('flame',14)} ${streak()?`${streak()} ${tr('дн. подряд','kun ketma-ket')}`:tr('Начните серию сегодня','Bugun boshlang')}</span></div><button class="avatar" data-a="tab" data-id="profile" aria-label="${t('nav_profile')}" style="background:${AVC[0]}">${esc((S.name||'?')[0].toUpperCase())}</button></header>
   <div class="px" style="margin-top:18px"><button class="fakesearch" data-a="openSearch">${ico('search',20)}<span>${t('search_ph')}</span></button></div>
   <div class="px" style="margin-top:20px">${cont}</div>
+  ${net.online&&S.donateOn?donCard():''}
   <section class="sec"><div class="sec-h px"><h2>${t('collections')}</h2></div><div class="hs px">${COLLECTIONS.map(colCard).join('')}</div></section>
   <section class="sec"><div class="sec-h px"><h2>${t('popular')}</h2><button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button></div><div class="hs px">${pop.map(bkCard).join('')}</div></section>
   <section class="sec px"><div class="sec-h"><h2>${t('new_rel')}</h2></div>${nw.map(b=>`<button class="nb" data-a="openBook" data-id="${b.id}">${cover(b,'sm')}<div class="grow"><span class="tag acc">${t('new')}</span><h3 style="margin-top:8px">${esc(b.title)}</h3><div class="meta">${esc(authorOf(b).name)} · ${b.lang.toUpperCase()}</div><p>${esc(b.desc)}</p></div></button>`).join('')}</section>
@@ -179,7 +183,7 @@ const starInput=(cur,act,id)=>`<div class="rate-in" role="group" aria-label="${t
 const rcnt=(r,k,on)=>net.online?r[k]:r[k]+(on?1:0);
 function reviewCard(r,showBook){
   const b=book(r.bookId),rc=S.reacts[r.id]||{};
-  return `<article class="rev" id="rev_${r.id}"><div class="rev-h">${avatar(r.user)}<div class="grow"><b>${esc(r.user)}</b><small>${esc(L(r.date))}</small></div>${stars(r.rating)}${S.me&&S.me.admin?`<button class="iconbtn flat" data-a="admDelReview" data-id="${r.id}" aria-label="Удалить" style="width:34px;height:34px">${ico('trash',16)}</button>`:''}</div>
+  return `<article class="rev" id="rev_${r.id}"><div class="rev-h">${avatar(r.user)}<div class="grow"><b>${esc(r.user)}${r.patron?' <span class="tag acc" style="margin-left:4px">⭐</span>':''}</b><small>${esc(L(r.date))}</small></div>${stars(r.rating)}${S.me&&S.me.admin?`<button class="iconbtn flat" data-a="admDelReview" data-id="${r.id}" aria-label="Удалить" style="width:34px;height:34px">${ico('trash',16)}</button>`:''}</div>
   ${showBook&&b?`<button class="revbook" data-a="openBook" data-id="${b.id}">${cover(b,'xs')}<span>${esc(b.title)}</span></button>`:''}
   <p class="tx">${esc(r.text)}</p>
   <div class="rev-f"><button class="react ${rc.heart?'on':''}" data-a="react" data-id="${r.id}" data-k="heart" aria-pressed="${!!rc.heart}">${ico('heart',16)} ${rcnt(r,'likes',rc.heart)}</button><button class="react ${rc.insight?'on':''}" data-a="react" data-id="${r.id}" data-k="insight" aria-pressed="${!!rc.insight}">${ico('spark',16)} ${rcnt(r,'insight',rc.insight)}</button><button class="react" data-a="toggleReply" data-id="${r.id}">${ico('reply',16)} ${t('reply')}</button></div>
@@ -361,7 +365,7 @@ ACT.read=el=>openReader(el.dataset.id);
 SCREENS.reader=({id})=>{
   const b=book(id),ch=b.chapters[R.ch],rs=S.reader,last=R.ch===b.chapters.length-1;
   const paras=ch.p.map((tx,i)=>`<p class="rp${bmFind(id,R.ch,i)?' bm':''}" data-i="${i}" data-a="rSel">${esc(tx)}</p>`).join('');
-  const end=last?`<div class="rend"><b>${t('end_demo')}</b><p>${t('end_demo_d')}</p><div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap"><button class="btn sm" data-a="rFinish">${ico('check',16)} ${t('mark_finished')}</button><button class="btn sm ghost" data-a="toBook">${t('to_book')}</button></div></div>`
+  const end=last?`<div class="rend"><b>${t('end_demo')}</b><p>${t('end_demo_d')}</p><div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap"><button class="btn sm" data-a="rFinish">${ico('check',16)} ${t('mark_finished')}</button><button class="btn sm ghost" data-a="toBook">${t('to_book')}</button>${net.online&&S.donateOn?`<button class="btn sm ghost" data-a="openDonate">💛 ${tr('Поддержать','Qo‘llab-quvvatlash')}</button>`:''}</div></div>`
    :`<div class="rend"><b>${esc(b.chapters[R.ch+1].t)}</b><p>${t('chapter')} ${R.ch+2}</p><button class="btn sm" data-a="rNext">${t('next_ch')} ${ico('arrow',16)}</button></div>`;
   return `<div class="reader" data-mt="${rs.theme}" style="--rs:${rs.size}px;--rlh:${rs.lh};--rf:${rs.font==='sans'?'var(--ui)':'var(--read)'}">
   <header class="rhead px"><button class="iconbtn" data-a="toBook" aria-label="${t('to_book')}">${ico('back')}</button><div class="ttl"><b>${esc(b.title)}</b><small>${t('chapter')} ${R.ch+1} · ${esc(ch.t)}</small></div><button id="bmBtn" class="iconbtn" data-a="rBm" aria-label="${t('bm_added')}">${ico('bookmark',21)}</button><button class="iconbtn" data-a="rToc" aria-label="${t('toc')}">${ico('list',21)}</button><button class="iconbtn" data-a="rSet" aria-label="${t('text_settings')}">${ico('text',22)}</button></header>
@@ -472,6 +476,7 @@ SCREENS.profile=()=>{
   <div class="px"><div class="row" style="gap:16px;margin-bottom:22px"><span class="avatar" style="width:68px;height:68px;font-size:26px;background:${AVC[0]}">${esc((S.name||'?')[0].toUpperCase())}</span><div class="field grow" style="margin:0"><label for="pname">${t('reader_name')}</label><input id="pname" class="in" value="${esc(S.name)}" maxlength="24" autocomplete="off"></div></div>
   <div class="stat3"><div><b>${fin}</b><small>${t('stat_read')}</small></div><div><b>${pages}</b><small>${t('stat_pages')}</small></div><div><b>${S.bookmarks.length}</b><small>${t('stat_bm')}</small></div></div>
   <button class="li card" style="margin-top:18px;width:100%;border:1px solid var(--line2)" data-a="openStudio"><span class="iconbtn" style="background:var(--acc-soft);color:var(--acc-t);border:0">${ico('pen',20)}</span><div class="grow"><b>${t('open_studio')}</b><div class="mute" style="font-size:12.5px">${t('studio_desc')}</div></div>${ico('chev',18)}</button>
+  ${net.online&&S.donateOn?`<button class="li card" style="margin-top:12px;width:100%;border:1px solid var(--acc)" data-a="openDonate"><span class="iconbtn" style="background:var(--acc);color:#fff;border:0">${ico('heart',20)}</span><div class="grow"><b>${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</b><div class="mute" style="font-size:12.5px">${S.me&&S.me.patron?tr('⭐ Вы меценат, спасибо!','⭐ Siz homiysiz, rahmat!'):tr('Новые книги и развитие платформы','Yangi kitoblar va platforma rivoji')}</div></div>${ico('chev',18)}</button>`:''}
   ${net.online?`<button class="li card" style="margin-top:12px;width:100%;border:1px solid var(--line2)" data-a="openSupport"><span class="iconbtn" style="background:var(--acc-soft);color:var(--acc-t);border:0">${ico('chat',20)}</span><div class="grow"><b>${tr('Поддержка','Yordam')}</b><div class="mute" style="font-size:12.5px">${tr('Написать администратору','Administratorga yozish')}</div></div>${S.me&&S.me.supportUnread?`<span class="badge">${S.me.supportUnread}</span>`:''}${ico('chev',18)}</button>`:''}
   ${S.me&&S.me.admin?`<button class="li card" style="margin-top:12px;width:100%;border:1px solid var(--acc)" data-a="openAdmin"><span class="iconbtn" style="background:var(--acc);color:#fff;border:0">${ico('spark',20)}</span><div class="grow"><b>Админ-панель</b><div class="mute" style="font-size:12.5px">Статистика, рассылка, модерация, чат</div></div>${ico('chev',18)}</button>`:''}
   <section class="sec" style="margin-top:28px"><div class="lbl" style="margin-bottom:10px">${t('ui_lang')}</div>${seg([['ru','Русский'],['uz','Oʻzbekcha']],S.lang,'setLang')}</section>
@@ -513,7 +518,7 @@ tg.onBack(()=>{if(NAV.cur.name==='reader'&&$('#sheet').classList.contains('on'))
 const swap=(arr,v)=>arr.splice(0,arr.length,...v);
 function applyBoot(d,first){
   swap(BOOKS,d.books);swap(AUTHORS,d.authors);swap(COLLECTIONS,d.collections);swap(SEED_QUOTES,d.quotes);Object.assign(WEEKLY,d.weekly);
-  S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;
+  S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;
   S.reacts={};d.reviews.forEach(r=>{if(r.my&&(r.my.heart||r.my.insight))S.reacts[r.id]=r.my});
   S.qLikes={};d.quotes.forEach(q=>{if(q.mine)S.qLikes[q.id]=true});
   if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=Object.assign(DEFAULT(),d.state);['reviews','threads','ratings','follows','subs','me','reacts','qLikes'].forEach(k=>S[k]=loc[k])}
@@ -525,7 +530,8 @@ let banned=false;
 try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403}
 
 /* ---------- boot ---------- */
-initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
+const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
+initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
 if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Доступ ограничен','Kirish cheklangan')}</b><span>${tr('Ваш аккаунт заблокирован администратором.','Akkauntingiz administrator tomonidan bloklangan.')}</span></div>`;
 else{NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
 render(true);}

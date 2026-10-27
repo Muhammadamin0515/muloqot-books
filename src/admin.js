@@ -22,6 +22,7 @@ export function initAdmin(x){
     users:()=>load('users',()=>api('/api/admin/users?q='+encodeURIComponent(M.uq))),
     content:()=>{M.wq_book=WEEKLY.bookId;M.wq_ru=WEEKLY.q.ru||'';M.wq_uz=WEEKLY.q.uz||'';return load('adbooks',()=>api('/api/admin/books'))}
   };
+  const bodies={overview:tabOverview,broadcast:tabBroadcast,moderation:tabModeration,chat:tabChat,users:tabUsers,content:tabContent};
   AFTER.admin=()=>{
     if(!A.fresh.stats){A.fresh.stats=true;api('/api/admin/stats').then(s=>{A.stats=s;if(here('admin'))x.refresh()}).catch(()=>{})}
     if(!A.fresh[A.tab]){A.fresh[A.tab]=true;loaders[A.tab]()}
@@ -32,7 +33,7 @@ export function initAdmin(x){
   SCREENS.admin=()=>{
     const s=A.stats||{};
     const tabs=T.map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${n}${k==='moderation'?badge(s.pending):k==='chat'?badge(s.supportUnread):''}</button>`).join('');
-    const body={overview:tabOverview,broadcast:tabBroadcast,moderation:tabModeration,chat:tabChat,users:tabUsers,content:tabContent}[A.tab]();
+    const body=bodies[A.tab]();
     return `<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">Админ-панель</h2></div></header>
     <div class="hs px" style="margin-top:4px">${tabs}</div><div class="px" style="margin-top:18px">${body}</div>`;
   };
@@ -172,4 +173,7 @@ export function initAdmin(x){
   ACT.admDelThreadGo=el=>delGo(`/api/admin/threads/${el.dataset.id}/delete`,()=>{x.S.threads=x.S.threads.filter(t=>t.id!==el.dataset.id)});
   ACT.admDelComment=el=>confirmSheet('Удалить комментарий?','admDelCommentGo',`${el.dataset.t}:${el.dataset.id}`,'Удалить');
   ACT.admDelCommentGo=el=>{const [tid,cid]=el.dataset.id.split(':');delGo(`/api/admin/comments/${cid}/delete`,()=>{const th=x.S.threads.find(t=>t.id===tid);if(th)th.comments=th.comments.filter(c=>String(c.id)!==cid)})};
+
+  /* lets other modules (donations) plug their own tab into the panel */
+  return {A,M,T,bodies,loaders,load,here,reload,ago,hm,badge,loading,confirmSheet,bg};
 }

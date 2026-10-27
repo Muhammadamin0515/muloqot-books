@@ -3,6 +3,9 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS admins(user_id TEXT PRIMARY KEY,added_by TEXT,created INTEGER)',
   'CREATE TABLE IF NOT EXISTS support_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT,from_admin INTEGER DEFAULT 0,text TEXT,created INTEGER,read INTEGER DEFAULT 0)',
   'CREATE INDEX IF NOT EXISTS idx_support_user ON support_messages(user_id)',
+  'CREATE TABLE IF NOT EXISTS donations(id TEXT PRIMARY KEY,user_id TEXT,user_name TEXT,amount INTEGER,source TEXT DEFAULT \'stars\',goal_id TEXT,anon INTEGER DEFAULT 0,message TEXT,status TEXT,charge_id TEXT,note TEXT,created INTEGER,paid_at INTEGER)',
+  'CREATE INDEX IF NOT EXISTS idx_don_status ON donations(status,paid_at)',
+  'CREATE TABLE IF NOT EXISTS goals(id TEXT PRIMARY KEY,title_ru TEXT,title_uz TEXT,desc_ru TEXT,desc_uz TEXT,target INTEGER,active INTEGER DEFAULT 1,created INTEGER)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];
 const ALTERS=[

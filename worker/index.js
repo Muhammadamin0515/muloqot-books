@@ -24,6 +24,9 @@ async function verifyInitData(initData,token){
   }catch{return null}
 }
 const tgApi=(env,method,body)=>env.BOT_TOKEN?fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:J(body)}).catch(()=>null):Promise.resolve(null);
+const tgJson=async(env,method,body)=>{const r=await tgApi(env,method,body);return r?r.json().catch(()=>null):null};
+/** Derived from the bot token, so no extra secret has to be configured. */
+const webhookSecret=async env=>hex(await hmac(new TextEncoder().encode(env.BOT_TOKEN||''),new TextEncoder().encode('muloqot-webhook'))).slice(0,48);
 const openBtn=env=>env.WEBAPP_URL?{reply_markup:{inline_keyboard:[[{text:'Открыть Muloqot Books',web_app:{url:env.WEBAPP_URL}}]]}}:{};
 /** Bot message to a Telegram user (their id is the private chat id). No-op without BOT_TOKEN or for dev users. */
 const notify=(c,userId,text)=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...openBtn(c.env)}))};
@@ -50,14 +53,17 @@ const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id
 
 async function loadReviews(c,onlyId){
   const w=onlyId?' WHERE id=?':'',args=onlyId?[onlyId]:[];
-  const [rv,rp,rc,mine]=await batch(c,[
+  const patronMin=(await getDonateSettings(c)).patronMin;
+  const [rv,rp,rc,mine,pat]=await batch(c,[
     stmt(c,`SELECT * FROM reviews${w} ORDER BY created DESC LIMIT 200`,...args),
     stmt(c,'SELECT review_id,user_name,text,is_author FROM review_replies ORDER BY id'),
     stmt(c,"SELECT target,kind,COUNT(*) n FROM reacts WHERE target LIKE 'r:%' GROUP BY target,kind"),
-    stmt(c,"SELECT target,kind FROM reacts WHERE user_id=? AND target LIKE 'r:%'",c.user.id)]);
+    stmt(c,"SELECT target,kind FROM reacts WHERE user_id=? AND target LIKE 'r:%'",c.user.id),
+    stmt(c,"SELECT user_id FROM donations WHERE status='paid' AND user_id IS NOT NULL GROUP BY user_id HAVING SUM(amount)>=?",patronMin)]);
+  const patrons=new Set(pat.map(x=>x.user_id));
   const cnt={};rc.forEach(x=>cnt[x.target+x.kind]=x.n);
   return rv.map(r=>{const t='r:'+r.id;const my={};mine.filter(m=>m.target===t).forEach(m=>my[m.kind]=true);
-    return{id:r.id,bookId:r.book_id,user:r.user_name,rating:r.rating,text:r.text,date:rel(r.created),mine:r.user_id===c.user.id,
+    return{id:r.id,bookId:r.book_id,user:r.user_name,rating:r.rating,text:r.text,date:rel(r.created),mine:r.user_id===c.user.id,patron:patrons.has(r.user_id),
       likes:r.likes_base+(cnt[t+'heart']||0),insight:r.insight_base+(cnt[t+'insight']||0),my,
       replies:rp.filter(x=>x.review_id===r.id).map(x=>({user:x.user_name,text:x.text,...(x.is_author?{author:1}:{})}))}});
 }
@@ -91,7 +97,8 @@ route('GET','/api/bootstrap',async c=>{
     stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid)]);
   const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)]));
   const sup=await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid);
-  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n},
+  const don=await get(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),ds=await getDonateSettings(c),goals=await goalRows(c);
+  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n,donated:don.s,patron:don.s>=ds.patronMin},donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,
     books:books.map(b=>bookOut(b,agg)),
     authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(fol.find(f=>f.author_id===a.id)?.n||0)})),
     collections:m.collections,weekly:m.weekly,quotes:await loadQuotes(c),reviews:await loadReviews(c),threads:await loadThreads(c),
@@ -321,6 +328,95 @@ route('POST','/api/admin/collections',async c=>{
   await run(c,"INSERT INTO meta VALUES('collections',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(list));return json({ok:true});
 },true);
 
+/* ---------- donations (Telegram Stars) ---------- */
+const DEFAULT_DONATE={presets:[25,50,100,250],links:[],patronMin:50,
+  intro:{ru:'Muloqot Books независим и растёт благодаря читателям. Ваша поддержка идёт на новые книги, переводы, авторам и развитие приложения.',uz:'Muloqot Books mustaqil va o‘quvchilar hisobiga rivojlanadi. Yordamingiz yangi kitoblar, tarjimalar, mualliflar va ilova rivojiga ketadi.'},
+  thanks:{ru:'Спасибо за поддержку! Вы помогаете Muloqot Books расти 💛',uz:'Yordamingiz uchun rahmat! Siz Muloqot Books rivojiga hissa qo‘shyapsiz 💛'}};
+const getDonateSettings=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='donate'");return {...DEFAULT_DONATE,...(r?P(r.value):{})}};
+const goalRows=async(c,onlyActive=true)=>{
+  const gs=await all(c,`SELECT * FROM goals ${onlyActive?'WHERE active=1':''} ORDER BY created`);
+  const sums=await all(c,"SELECT goal_id,SUM(amount) s FROM donations WHERE status='paid' AND goal_id IS NOT NULL GROUP BY goal_id");
+  return gs.map(g=>({id:g.id,title:{ru:g.title_ru,uz:g.title_uz||g.title_ru},desc:{ru:g.desc_ru||'',uz:g.desc_uz||g.desc_ru||''},target:g.target,active:!!g.active,raised:sums.find(x=>x.goal_id===g.id)?.s||0}));
+};
+route('GET','/api/donate',async c=>{
+  const st=await getDonateSettings(c);
+  const [top,recent,mine]=await batch(c,[
+    stmt(c,"SELECT COALESCE(user_name,'') name,SUM(amount) total FROM donations WHERE status='paid' AND anon=0 GROUP BY COALESCE(user_id,id) ORDER BY total DESC LIMIT 10"),
+    stmt(c,"SELECT user_name,amount,message,paid_at,goal_id FROM donations WHERE status='paid' AND anon=0 AND message<>'' ORDER BY paid_at DESC LIMIT 8"),
+    stmt(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",c.user.id)]);
+  const total=(await get(c,"SELECT COALESCE(SUM(amount),0) s,COUNT(*) n FROM donations WHERE status='paid'"));
+  return json({settings:{presets:st.presets,links:st.links,intro:st.intro,thanks:st.thanks,patronMin:st.patronMin},goals:await goalRows(c),
+    top:top.filter(x=>x.name),recent:recent.map(r=>({name:r.user_name,amount:r.amount,message:r.message,at:r.paid_at})),
+    mine:mine[0].s,total:total.s,count:total.n,stars:!!c.env.BOT_TOKEN});
+});
+route('POST','/api/donate/invoice',async c=>{
+  if(!c.env.BOT_TOKEN)return bad(400,'payments unavailable');
+  const amount=Math.floor(+c.body.amount);if(!(amount>=1&&amount<=100000))return bad(400,'amount');
+  const goal=c.body.goalId?await get(c,'SELECT id,title_ru FROM goals WHERE id=? AND active=1',c.body.goalId):null;
+  const id='d'+id8(),message=clip(c.body.message,200);
+  await run(c,"INSERT INTO donations(id,user_id,user_name,amount,source,goal_id,anon,message,status,created) VALUES(?,?,?,?,'stars',?,?,?,'pending',?)",id,c.user.id,c.user.name,amount,goal?.id||null,c.body.anon?1:0,message,Date.now());
+  const r=await tgJson(c.env,'createInvoiceLink',{title:'Поддержка Muloqot Books',description:goal?`Цель: ${goal.title_ru}`.slice(0,250):'Развитие платформы и новые книги',payload:id,currency:'XTR',prices:[{label:'Поддержка',amount}]});
+  if(!r?.ok){await run(c,"UPDATE donations SET status='failed' WHERE id=?",id);return bad(502,r?.description||'telegram error')}
+  return json({link:r.result,id});
+});
+const thanksText=async(c,name)=>{const s=await getDonateSettings(c);return s.thanks.ru};
+/** Called from the bot webhook after Telegram confirms payment. Idempotent on the charge id. */
+async function onPaid(c,sp,fromId){
+  const id=sp.invoice_payload,d=await get(c,'SELECT * FROM donations WHERE id=?',id);if(!d||d.status==='paid')return;
+  await run(c,"UPDATE donations SET status='paid',charge_id=?,paid_at=? WHERE id=?",sp.telegram_payment_charge_id,Date.now(),id);
+  notify(c,d.user_id,await thanksText(c));
+  await notifyAdmins(c,`⭐ Новый донат: ${d.amount} Stars от ${d.anon?'анонима':d.user_name}${d.message?` — «${d.message}»`:''}`);
+}
+
+/* ---------- admin: donations ---------- */
+route('GET','/api/admin/donations',async c=>{
+  const D=864e5,now=Date.now();
+  const [sum,m30,donors,list]=await batch(c,[
+    stmt(c,"SELECT COALESCE(SUM(amount),0) s,COUNT(*) n FROM donations WHERE status='paid'"),
+    stmt(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND paid_at>?",now-30*D),
+    stmt(c,"SELECT COUNT(DISTINCT COALESCE(user_id,id)) n FROM donations WHERE status='paid'"),
+    stmt(c,"SELECT id,user_id,user_name,amount,source,goal_id,anon,message,status,note,created,paid_at FROM donations WHERE status IN ('paid','refunded') ORDER BY COALESCE(paid_at,created) DESC LIMIT 40")]);
+  let balance=null,hook=null;
+  if(c.env.BOT_TOKEN){const [b,h]=await Promise.all([tgJson(c.env,'getMyStarBalance',{}),tgJson(c.env,'getWebhookInfo',{})]);
+    if(b?.ok)balance=b.result.amount;if(h?.ok)hook={url:h.result.url,pending:h.result.pending_update_count,error:h.result.last_error_message||''}}
+  const st=await getDonateSettings(c);
+  return json({total:sum[0].s,count:sum[0].n,last30:m30[0].s,donors:donors[0].n,list:list,goals:await goalRows(c,false),settings:st,balance,hook,bot:!!c.env.BOT_TOKEN});
+},true);
+route('POST','/api/admin/webhook/setup',async c=>{
+  if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
+  const url=new URL(c.request.url).origin+'/telegram/webhook';
+  const r=await tgJson(c.env,'setWebhook',{url,secret_token:await webhookSecret(c.env),allowed_updates:['message','pre_checkout_query'],drop_pending_updates:false});
+  return json({ok:!!r?.ok,description:r?.description||'',url});
+},true);
+route('POST','/api/admin/donations/:id/refund',async(c,id)=>{
+  const d=await get(c,"SELECT * FROM donations WHERE id=? AND status='paid' AND source='stars'",id);if(!d||!d.charge_id)return bad(404);
+  const r=await tgJson(c.env,'refundStarPayment',{user_id:+d.user_id,telegram_payment_charge_id:d.charge_id});
+  if(!r?.ok)return bad(502,r?.description||'refund failed');
+  await run(c,"UPDATE donations SET status='refunded' WHERE id=?",id);return json({ok:true});
+},true);
+route('POST','/api/admin/donations/manual',async c=>{
+  const amount=Math.floor(+c.body.amount);if(!(amount>=1))return bad();
+  const goal=c.body.goalId&&await get(c,'SELECT id FROM goals WHERE id=?',c.body.goalId)?c.body.goalId:null;
+  await run(c,"INSERT INTO donations(id,user_id,user_name,amount,source,goal_id,anon,message,status,note,created,paid_at) VALUES(?,?,?,?,'manual',?,?,?,'paid',?,?,?)",'d'+id8(),null,clip(c.body.name,60)||'Поддержка',amount,goal,c.body.anon?1:0,'',clip(c.body.note,200),Date.now(),Date.now());
+  return json({ok:true});
+},true);
+route('POST','/api/admin/goals',async c=>{
+  const b=c.body,tr_=clip(b.titleRu,80),target=Math.floor(+b.target);if(!tr_||!(target>=1))return bad();
+  const vals=[tr_,clip(b.titleUz,80)||tr_,clip(b.descRu,400),clip(b.descUz,400)||clip(b.descRu,400),target,b.active===false?0:1];
+  if(b.id&&await get(c,'SELECT 1 x FROM goals WHERE id=?',b.id))await run(c,'UPDATE goals SET title_ru=?,title_uz=?,desc_ru=?,desc_uz=?,target=?,active=? WHERE id=?',...vals,b.id);
+  else await run(c,'INSERT INTO goals(title_ru,title_uz,desc_ru,desc_uz,target,active,id,created) VALUES(?,?,?,?,?,?,?,?)',...vals,'g'+id8(),Date.now());
+  return json({ok:true});
+},true);
+route('POST','/api/admin/goals/:id/delete',async(c,id)=>{await run(c,'DELETE FROM goals WHERE id=?',id);await run(c,'UPDATE donations SET goal_id=NULL WHERE goal_id=?',id);return json({ok:true})},true);
+route('POST','/api/admin/donate-settings',async c=>{
+  const b=c.body,cur=await getDonateSettings(c);
+  const presets=(Array.isArray(b.presets)?b.presets:[]).map(n=>Math.floor(+n)).filter(n=>n>=1&&n<=100000).slice(0,6);
+  const links=(Array.isArray(b.links)?b.links:[]).map(l=>({title:clip(l.title,40),url:clip(l.url,300)})).filter(l=>l.title&&/^https:\/\//.test(l.url)).slice(0,6);
+  const next={presets:presets.length?presets:cur.presets,links,patronMin:Math.max(1,Math.floor(+b.patronMin)||cur.patronMin),
+    intro:{ru:clip(b.introRu,600)||cur.intro.ru,uz:clip(b.introUz,600)||clip(b.introRu,600)||cur.intro.uz},thanks:{ru:clip(b.thanksRu,300)||cur.thanks.ru,uz:clip(b.thanksUz,300)||clip(b.thanksRu,300)||cur.thanks.uz}};
+  await run(c,"INSERT INTO meta VALUES('donate',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(next));return json({ok:true});
+},true);
+
 /* ---------- entry points ---------- */
 async function handleApi(request,env,ctx){
   const c={env,ctx,request,body:{}};
@@ -346,9 +442,16 @@ async function handleApi(request,env,ctx){
 }
 
 async function handleWebhook(request,env,ctx){
-  if(!env.WEBHOOK_SECRET||request.headers.get('x-telegram-bot-api-secret-token')!==env.WEBHOOK_SECRET)return new Response('forbidden',{status:403});
-  const u=await request.json().catch(()=>null),m=u?.message;
-  if(m?.text?.startsWith('/start'))ctx.waitUntil(tgApi(env,'sendMessage',{chat_id:m.chat.id,text:'Muloqot Books — русская и узбекская литература. Откройте приложение:',...openBtn(env)}));
+  const h=request.headers.get('x-telegram-bot-api-secret-token');
+  if(!env.BOT_TOKEN||(h!==await webhookSecret(env)&&(!env.WEBHOOK_SECRET||h!==env.WEBHOOK_SECRET)))return new Response('forbidden',{status:403});
+  const u=await request.json().catch(()=>null);if(!u)return new Response('ok');
+  const c={env,ctx};await ensureSchema(env);
+  if(u.pre_checkout_query){
+    const q=u.pre_checkout_query,d=await get(c,'SELECT status FROM donations WHERE id=?',q.invoice_payload);
+    await tgApi(env,'answerPreCheckoutQuery',d&&d.status==='pending'?{pre_checkout_query_id:q.id,ok:true}:{pre_checkout_query_id:q.id,ok:false,error_message:'Платёж не найден или уже оплачен'});
+  }else if(u.message?.successful_payment){
+    await onPaid(c,u.message.successful_payment,u.message.from?.id);
+  }else if(u.message?.text?.startsWith('/start'))ctx.waitUntil(tgApi(env,'sendMessage',{chat_id:u.message.chat.id,text:'Muloqot Books — русская и узбекская литература. Откройте приложение:',...openBtn(env)}));
   return new Response('ok');
 }
 

@@ -378,3 +378,9 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .bubble.them{align-self:flex-start;background:var(--card2);color:var(--fg);border-bottom-left-radius:6px}
 .chatform{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;padding:10px max(20px,env(safe-area-inset-right,0px)) 12px max(20px,env(safe-area-inset-left,0px));background:var(--bg);border-top:1px solid var(--line)}
 .chatform .in{border-radius:99px;min-height:46px}
+
+/* donations */
+.don-hero{border-radius:24px;padding:24px 20px;background:linear-gradient(150deg,#3a1d14,#a2431f);border:1px solid rgba(255,236,214,.16);color:#f3ece1}
+.don-card{display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border-radius:22px;border:1px solid var(--line2);background:linear-gradient(135deg,#2a1710,#5a2616);color:#f3ece1}
+.goalopt{border:1px solid var(--line)}
+.goalopt.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
