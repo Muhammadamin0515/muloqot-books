@@ -27,7 +27,10 @@ const tgApi=(env,method,body)=>env.BOT_TOKEN?fetch(`https://api.telegram.org/bot
 const tgJson=async(env,method,body)=>{const r=await tgApi(env,method,body);return r?r.json().catch(()=>null):null};
 /** Derived from the bot token, so no extra secret has to be configured. */
 const webhookSecret=async env=>hex(await hmac(new TextEncoder().encode(env.BOT_TOKEN||''),new TextEncoder().encode('muloqot-webhook'))).slice(0,48);
-const openBtn=env=>env.WEBAPP_URL?{reply_markup:{inline_keyboard:[[{text:'Открыть Muloqot Books',web_app:{url:env.WEBAPP_URL}}]]}}:{};
+let ORIGIN='';
+const openBtn=env=>{const url=env.WEBAPP_URL||ORIGIN;return url?{reply_markup:{inline_keyboard:[[{text:'📖 Открыть приложение',web_app:{url}}]]}}:{}};
+const DEFAULT_WELCOME='📚 Добро пожаловать в Muloqot Books!\n\nТвой мир книг, вдохновения и новых открытий.\n\n✨ Здесь ты сможешь:\n📖 Находить и читать книги целиком\n🌍 Открывать литературу на русском и узбекском\n⭐ Оценивать книги и делиться отзывами\n💬 Обсуждать истории с другими читателями\n❤️ Сохранять любимые книги и продолжать чтение с того места, где остановился\n\nКаждая книга — это новый мир. Найди свою историю!\n\n👇 Нажми «Открыть приложение» и начни читать.';
+const getWelcome=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='welcome'");return r?P(r.value).text:DEFAULT_WELCOME};
 /** Bot message to a Telegram user (their id is the private chat id). No-op without BOT_TOKEN or for dev users. */
 const notify=(c,userId,text)=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...openBtn(c.env)}))};
 
@@ -408,6 +411,13 @@ route('POST','/api/admin/goals',async c=>{
   return json({ok:true});
 },true);
 route('POST','/api/admin/goals/:id/delete',async(c,id)=>{await run(c,'DELETE FROM goals WHERE id=?',id);await run(c,'UPDATE donations SET goal_id=NULL WHERE goal_id=?',id);return json({ok:true})},true);
+route('GET','/api/admin/welcome',async c=>json({text:await getWelcome(c),isDefault:!await get(c,"SELECT 1 x FROM meta WHERE key='welcome'")}),true);
+route('POST','/api/admin/welcome',async c=>{
+  const text=clip(c.body.text,3500);
+  if(!text)await run(c,"DELETE FROM meta WHERE key='welcome'");
+  else await run(c,"INSERT INTO meta VALUES('welcome',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J({text}));
+  return json({ok:true});
+},true);
 route('POST','/api/admin/donate-settings',async c=>{
   const b=c.body,cur=await getDonateSettings(c);
   const presets=(Array.isArray(b.presets)?b.presets:[]).map(n=>Math.floor(+n)).filter(n=>n>=1&&n<=100000).slice(0,6);
@@ -451,7 +461,11 @@ async function handleWebhook(request,env,ctx){
     await tgApi(env,'answerPreCheckoutQuery',d&&d.status==='pending'?{pre_checkout_query_id:q.id,ok:true}:{pre_checkout_query_id:q.id,ok:false,error_message:'Платёж не найден или уже оплачен'});
   }else if(u.message?.successful_payment){
     await onPaid(c,u.message.successful_payment,u.message.from?.id);
-  }else if(u.message?.text?.startsWith('/start'))ctx.waitUntil(tgApi(env,'sendMessage',{chat_id:u.message.chat.id,text:'Muloqot Books — русская и узбекская литература. Откройте приложение:',...openBtn(env)}));
+  }else if(u.message?.text?.startsWith('/start')){
+    const m=u.message;
+    await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET blocked=0',String(m.from.id),clip([m.from.first_name,m.from.last_name].filter(Boolean).join(' '),40)||null,Date.now(),Date.now());
+    await tgApi(env,'sendMessage',{chat_id:m.chat.id,text:await getWelcome(c),...openBtn(env)});
+  }
   return new Response('ok');
 }
 
@@ -465,7 +479,7 @@ async function reminders(env,ctx){
 
 export default {
   async fetch(request,env,ctx){
-    const {pathname}=new URL(request.url);
+    const {pathname,origin}=new URL(request.url);ORIGIN=origin;
     try{
       if(pathname==='/telegram/webhook'&&request.method==='POST')return await handleWebhook(request,env,ctx);
       if(pathname.startsWith('/api/'))return await handleApi(request,env,ctx);
