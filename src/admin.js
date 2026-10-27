@@ -1,13 +1,13 @@
 /* Admin panel + support chat. Wired into the app through initAdmin(ctx); all data comes from /api/admin/*. */
 export function initAdmin(x){
   const {SCREENS,ACT,CHG,FORMS,AFTER,MODEL,go,api,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr}=x;
-  const M=MODEL.adm={bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
+  const M=MODEL.adm={nf:{support:'off',submissions:'silent',reports:'silent',donations:'silent'},bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
   const A={tab:'overview',fresh:{},stats:null,bc:null,run:null,subs:null,inbox:null,users:null,adbooks:null,chat:{uid:null,name:'',msgs:[]},sup:{msgs:[]},col:null,editId:null};
   const here=n=>NAV.cur.name===n;
   const bg=p=>p.catch(()=>toast('Ошибка запроса'));
   const T=[['overview','Обзор'],['broadcast','Рассылка'],['moderation','Модерация'],['reports','Жалобы'],['chat','Чат'],['users','Люди'],['content','Контент']];
   const ORDER=['overview','moderation','reports','chat','users','broadcast','donations','content'];
-  const ICON={overview:'📊',moderation:'🛡',reports:'🚩',chat:'💬',users:'👥',broadcast:'📣',donations:'⭐',content:'🧩'};
+  const ICON={overview:'grid',moderation:'check',reports:'flag',chat:'chat',users:'user',broadcast:'bell',donations:'heart',content:'list'};
   const HINT={overview:'Сводка по приложению: сколько людей, что популярно и что требует вашего внимания.',moderation:'Новые книги и обновления текста от авторов. Проверьте и опубликуйте или отклоните с причиной.',reports:'Жалобы читателей на отзывы, темы и комментарии. После трёх жалоб контент скрывается сам.',chat:'Сообщения от пользователей. Ваш ответ приходит им в бота и в приложение.',users:'Найдите человека, заблокируйте его или сделайте админом.',broadcast:'Сообщение всем, кто запускал бота. Сначала отправьте тест себе.',donations:'Деньги от Telegram Stars, цели сбора и настройки экрана донатов.',content:'Тексты бота, ссылка на приложение, подборки и книги.'};
   const ago=ms=>{if(!ms)return 'никогда';const m=Math.floor((Date.now()-ms)/6e4);if(m<2)return 'сейчас';if(m<60)return m+' мин назад';const h=Math.floor(m/60);if(h<24)return h+' ч назад';return Math.floor(h/24)+' дн. назад'};
   const hm=ms=>new Date(ms).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -24,7 +24,7 @@ export function initAdmin(x){
     reports:()=>load('reps',()=>api('/api/admin/reports')).then(()=>{if(A.reps)M.stopwords=A.reps.stopwords.join(', ')}),
     chat:()=>load('inbox',()=>api('/api/admin/support')),
     users:()=>load('users',()=>api('/api/admin/users?q='+encodeURIComponent(M.uq))),
-    content:()=>{api('/api/admin/welcome').then(w=>{M.welcome=w.text;M.welcomeUz=w.textUz;M.appLink=w.appLink;M.appLinkSaved=w.appLink;if(here('admin')&&A.tab==='content')x.refresh()}).catch(()=>{});M.wq_book=WEEKLY.bookId;M.wq_ru=WEEKLY.q.ru||'';M.wq_uz=WEEKLY.q.uz||'';return load('adbooks',()=>api('/api/admin/books'))}
+    content:()=>{api('/api/admin/notif-settings').then(n=>{M.nf=n;if(here('admin')&&A.tab==='content')x.refresh()}).catch(()=>{});api('/api/admin/welcome').then(w=>{M.welcome=w.text;M.welcomeUz=w.textUz;M.appLink=w.appLink;M.appLinkSaved=w.appLink;if(here('admin')&&A.tab==='content')x.refresh()}).catch(()=>{});M.wq_book=WEEKLY.bookId;M.wq_ru=WEEKLY.q.ru||'';M.wq_uz=WEEKLY.q.uz||'';return load('adbooks',()=>api('/api/admin/books'))}
   };
   const bodies={overview:tabOverview,broadcast:tabBroadcast,moderation:tabModeration,reports:tabReports,chat:tabChat,users:tabUsers,content:tabContent};
   AFTER.admin=()=>{
@@ -38,7 +38,7 @@ export function initAdmin(x){
   SCREENS.admin=()=>{
     const s=A.stats||{};
     const num={moderation:s.pending,reports:s.reports,chat:s.supportUnread};
-    const tabs=[...T].sort((a,b)=>ORDER.indexOf(a[0])-ORDER.indexOf(b[0])).map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${ICON[k]||''} ${n}${badge(num[k])}</button>`).join('');
+    const tabs=[...T].sort((a,b)=>ORDER.indexOf(a[0])-ORDER.indexOf(b[0])).map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${ICON[k]?ico(ICON[k],15):''} ${n}${badge(num[k])}</button>`).join('');
     const body=bodies[A.tab]();
     return `<div class="admhead"><header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">Админ-панель</h2></div></header><div class="admbar px">${tabs}</div></div>
     <div class="px adm" style="margin-top:8px"><p class="pagehint">${HINT[A.tab]||''}</p>${body}</div>`;
@@ -48,6 +48,13 @@ export function initAdmin(x){
 
   /* ---------- overview ---------- */
   const tile=(n,label,sub)=>`<div class="tile"><b>${n}</b><span>${label}</span>${sub?`<small>${sub}</small>`:''}</div>`;
+  function signupChart(s){
+    const days=[];for(let i=13;i>=0;i--){const d=new Date(Date.now()-i*864e5).toISOString().slice(0,10);days.push({d,n:(s.signups.find(x=>x.d===d)||{n:0}).n})}
+    const total=days.reduce((a,b)=>a+b.n,0),max=Math.max(1,...days.map(d=>d.n)),fmt=d=>d.slice(8)+'.'+d.slice(5,7);
+    return `<div class="card"><div class="row" style="justify-content:space-between;align-items:baseline"><div><b class="bignum">${total}</b> <span class="mute" style="font-size:13px">новых за 14 дней</span></div><span class="mute" style="font-size:12px">макс. ${max} в день</span></div>
+      <div class="chart">${days.map(d=>`<i class="${d.n?'':'z'}" title="${fmt(d.d)}: ${d.n}" style="height:${d.n?Math.max(10,d.n/max*100):4}%"></i>`).join('')}</div>
+      <div class="chart-x"><span>${fmt(days[0].d)}</span><span>${fmt(days[13].d)}</span></div></div>`;
+  }
   function tabOverview(){
     const s=A.stats;if(!s)return loading();
     const max=Math.max(1,...s.signups.map(d=>d.n));
@@ -56,9 +63,9 @@ export function initAdmin(x){
     return `${alerts?`<div class="sec"><div class="sec-h"><h2>Требует внимания</h2></div>${alerts}</div>`:''}
     <div class="sec"><div class="sec-h"><h2>Пользователи</h2></div><div class="tiles">${tile(s.users,'Всего',`+${s.new24} за сутки`)}${tile(s.active24,'Активны сегодня',`${s.active7} за неделю`)}${tile(s.new7,'Новых за неделю','')}${tile(s.reachable,'Доступны боту','получат рассылку')}</div>
       <p class="hint" style="margin-top:10px">Заблокировано: ${s.banned} · остановили бота: ${s.blocked}</p></div>
-    <div class="sec"><div class="sec-h"><h2>Контент</h2></div><div class="tiles">${tile(s.books,'Книг',s.hidden?`скрыто: ${s.hidden}`:'')}${tile(s.reviews,'Отзывов','')}${tile(s.threads,'Обсуждений',`комментариев: ${s.comments}`)}</div></div>
-    <div class="sec"><div class="sec-h"><h2>Регистрации за 14 дней</h2></div><div class="card">${s.signups.length?`<div class="bars">${s.signups.map(d=>`<div><i style="height:${Math.max(6,d.n/max*100)}%"></i><small>${d.n}</small><em>${esc(d.d.slice(8))}</em></div>`).join('')}</div>`:'<p class="mute">Пока нет данных</p>'}</div></div>
-    ${s.top&&s.top.length?`<div class="sec"><div class="sec-h"><h2>Популярные книги недели</h2></div><div class="list">${s.top.map(b=>`<div class="li"><span class="grow" style="font-size:14px;font-weight:600">${esc(b.title)}</span><span class="mute mono" style="font-size:12px;white-space:nowrap">👁 ${b.views} · 📖 ${b.reads} · ✅ ${b.finishes}</span></div>`).join('')}</div></div>`:''}
+    <div class="sec"><div class="sec-h"><h2>Контент</h2></div><div class="tiles">${tile(s.books,'Книг',s.hidden?`скрыто: ${s.hidden}`:'')}${tile(s.reviews,'Отзывов','')}${tile(s.threads,'Обсуждений','')}${tile(s.comments,'Комментариев','')}</div></div>
+    <div class="sec"><div class="sec-h"><h2>Регистрации за 14 дней</h2></div>${signupChart(s)}</div>
+    ${s.top&&s.top.length?`<div class="sec"><div class="sec-h"><h2>Популярные книги недели</h2></div><div class="list"><div class="tbl h"><span>Книга</span><span>Просм.</span><span>Читают</span><span>Дочитали</span></div>${s.top.map(b=>`<div class="tbl"><span class="tt">${esc(b.title)}</span><span>${b.views}</span><span>${b.reads}</span><span>${b.finishes}</span></div>`).join('')}</div></div>`:''}
     ${s.errors&&s.errors.length?`<div class="demo-banner" style="margin-top:14px;flex-direction:column"><b>Часть данных не загрузилась</b>${s.errors.map(e=>`<span>${esc(e)}</span>`).join('')}</div>`:''}`;
   }
 
@@ -98,7 +105,7 @@ export function initAdmin(x){
   function subCard(s){
     const up=!!s.update,kb=n=>Math.round(n/1000)+'k';
     return `<div class="card" style="margin-bottom:12px${up?';border-color:var(--acc)':''}">
-      <div class="row" style="justify-content:space-between;gap:8px;margin-bottom:8px"><span class="tag acc">${up?'↻ Обновление текста':'Новая книга'}</span><span class="mute" style="font-size:12px">${kb(s.chars)} знаков</span></div>
+      <div class="row" style="justify-content:space-between;gap:8px;margin-bottom:8px"><span class="tag acc">${up?'Обновление текста':'Новая книга'}</span><span class="mute" style="font-size:12px">${kb(s.chars)} знаков</span></div>
       <b style="font-size:15.5px">${esc(s.title)}</b>
       <div class="mute" style="font-size:12.5px;margin:3px 0 10px">${esc(s.author)}${up?'':` · ${s.lang.toUpperCase()} · ${x.gl(s.genre)}`}</div>
       ${up&&s.update?`<div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px"><div class="tile" style="padding:10px"><b style="font-size:20px">${s.update.oldChapters}→${s.update.newChapters}</b><small>глав</small></div><div class="tile" style="padding:10px"><b style="font-size:20px">${kb(s.update.oldChars)}→${kb(s.chars)}</b><small>знаков</small></div><div class="tile" style="padding:10px"><b style="font-size:20px">${s.chars>=s.update.oldChars?'+':'−'}${kb(Math.abs(s.chars-s.update.oldChars))}</b><small>разница</small></div></div>`:''}
@@ -195,9 +202,12 @@ export function initAdmin(x){
     const g=(title,sub,body,open)=>`<details class="dgroup" ${open?'open':''}><summary><b>${title}</b><span>${sub}</span></summary><div class="dbody">${body}</div></details>`;
     const origin=esc(location.origin);
     return `<div class="sec" style="margin-top:0"><div class="sec-h"><h2>Бот</h2></div>
-    ${g('Ссылка на мини-апп',M.appLinkSaved?'✅ задана':'⚠️ не задана: «Поделиться» не открывает книги',`<div class="field"><label for="appL">Ссылка на приложение в Telegram</label><input id="appL" class="in" data-m="adm:appLink" value="${esc(M.appLink)}" placeholder="https://t.me/muloqotbooksbot/app" autocomplete="off"><p class="hint">Друг, получивший ссылку на книгу, сразу попадает в неё. Нужна и для inline-поиска.</p></div>
+    ${g('Ссылка на мини-апп',M.appLinkSaved?'<i class="dot ok"></i>задана':'<i class="dot warn"></i>не задана: «Поделиться» не открывает книги',`<div class="field"><label for="appL">Ссылка на приложение в Telegram</label><input id="appL" class="in" data-m="adm:appLink" value="${esc(M.appLink)}" placeholder="https://t.me/muloqotbooksbot/app" autocomplete="off"><p class="hint">Друг, получивший ссылку на книгу, сразу попадает в неё. Нужна и для inline-поиска.</p></div>
       <details class="howto"><summary>Где взять ссылку?</summary><ol><li>В Telegram откройте @BotFather и отправьте <b>/newapp</b>, выберите бота.</li><li>Адрес приложения: <b>${origin}</b></li><li>Короткое имя: например <b>app</b>.</li><li>BotFather пришлёт ссылку вида <b>https://t.me/muloqotbooksbot/app</b>. Вставьте её сюда.</li></ol></details>
       <button class="btn block" data-a="linkSave">Сохранить ссылку</button>`,!M.appLinkSaved)}
+    ${g('Уведомления администратору','что бот присылает вам в чат',`${[['support','Сообщения от пользователей'],['submissions','Заявки на модерацию'],['reports','Жалобы'],['donations','Новые донаты']].map(([k,label])=>`<div class="field" style="margin-bottom:12px"><label for="nf_${k}">${label}</label><select id="nf_${k}" class="in" data-chg="nfSel" data-k="${k}">${[['off','Не присылать'],['silent','Тихо, без звука'],['on','Со звуком']].map(([v,n])=>`<option value="${v}" ${M.nf[k]===v?'selected':''}>${n}</option>`).join('')}</select></div>`).join('')}
+      <p class="hint">Сообщения пользователей всегда видны в «Админ-панель → Чат» и в счётчиках, поэтому по умолчанию они не дублируются в бота. Под уведомлением нет кнопки открытия, чтобы не засорять чат.</p>
+      <button class="btn block" style="margin-top:12px" data-a="nfSave">Сохранить</button>`)}
     ${g('Приветствие бота','сообщение на команду /start',`<div class="field"><label for="wlc">По-русски</label><textarea id="wlc" class="in" data-m="adm:welcome" style="min-height:110px">${esc(M.welcome)}</textarea></div>
       <div class="field"><label for="wlcU">O‘zbekcha</label><textarea id="wlcU" class="in" data-m="adm:welcomeUz" style="min-height:110px">${esc(M.welcomeUz)}</textarea></div>
       <p class="hint">Русский текст получают пользователи с русским Telegram, узбекский с узбекским. Пустое поле вернёт текст по умолчанию. Кнопку «Открыть приложение» бот добавляет сам.</p>
@@ -210,6 +220,8 @@ export function initAdmin(x){
     ${g('Книги',`${A.adbooks.list.length} шт.: править, скрыть, удалить, история текста`,`<div class="list">${books}</div><p class="hint">Отзывы и обсуждения удаляются в «Сообществе»: у админа рядом с ними есть значок корзины.</p>`)}</div>`;
   }
   CHG.wqBook=el=>{M.wq_book=el.value};
+  CHG.nfSel=el=>{M.nf[el.dataset.k]=el.value};
+  ACT.nfSave=()=>bg(api('/api/admin/notif-settings','POST',M.nf).then(n=>{M.nf=n;toast('Сохранено')}));
   ACT.wlcSave=()=>bg(api('/api/admin/welcome','POST',{text:M.welcome,textUz:M.welcomeUz}).then(()=>toast('Приветствие сохранено')));
   ACT.linkSave=()=>{const v=M.appLink.trim();
     api('/api/admin/welcome','POST',{appLink:v}).then(r=>{M.appLink=r.appLink||'';M.appLinkSaved=M.appLink;x.S.appLink=M.appLink;toast(M.appLink?'Ссылка сохранена':'Ссылка удалена');x.refresh()})

@@ -49,7 +49,7 @@ async function setupBot(env){
   return r.every(x=>x&&x.ok);
 }
 /** Bot message to a Telegram user (their id is the private chat id). No-op without BOT_TOKEN or for dev users. */
-const notify=(c,userId,text)=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...openBtn(c.env)}))};
+const notify=(c,userId,text,o={})=>{if(!c.env.BOT_TOKEN||!/^\d+$/.test(String(userId||'')))return;c.ctx.waitUntil(tgApi(c.env,'sendMessage',{chat_id:userId,text,...(o.silent?{disable_notification:true}:{}),...(o.button===false?{}:openBtn(c.env))}))};
 
 /* ---------- D1 helpers ---------- */
 const stmt=(c,sql,...a)=>c.env.DB.prepare(sql).bind(...a.map(x=>x===undefined?null:x));
@@ -59,7 +59,11 @@ const run=(c,sql,...a)=>stmt(c,sql,...a).run();
 const batch=async(c,list)=>(await c.env.DB.batch(list)).map(r=>r.results);
 
 const adminIds=async c=>[...new Set([...csv(c.env.ADMIN_IDS),...(await all(c,'SELECT user_id FROM admins')).map(r=>r.user_id)])];
-const notifyAdmins=async(c,text)=>{for(const a of await adminIds(c))notify(c,a,text)};
+/* Admin notifications are quiet by default: no "open" button, optionally silent, and each type can be turned off in the panel. */
+const ADMIN_NOTIF_DEFAULT={support:'off',submissions:'silent',reports:'silent',donations:'silent'};
+const getAdminNotif=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='adminNotif'");return{...ADMIN_NOTIF_DEFAULT,...(r?P(r.value):{})}};
+const notifyAdmins=async(c,type,text)=>{const mode=(await getAdminNotif(c))[type];if(mode==='off')return;for(const a of await adminIds(c))notify(c,a,text,{button:false,silent:mode==='silent'})};
+const personName=(name,id)=>/[\p{L}\p{N}]/u.test(name||'')?name:`пользователь ${id}`;
 const rel=ms=>{const m=Math.max(0,Math.floor((Date.now()-ms)/6e4));
   if(m<2)return{ru:'только что',uz:'hozirgina'};if(m<60)return{ru:`${m} мин назад`,uz:`${m} daqiqa oldin`};
   const h=Math.floor(m/60);if(h<24)return{ru:`${h} ч назад`,uz:`${h} soat oldin`};
@@ -222,7 +226,7 @@ route('POST','/api/submissions',async c=>{
   const cover=typeof b.cover==='string'&&b.cover.startsWith('data:image/')&&b.cover.length<900_000?b.cover:null;
   const id='s'+id8();
   await run(c,'INSERT INTO submissions(id,user_id,title,author_name,lang,genre,description,tags,cover,file_name,body,status,note,book_id,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,c.user.id,title,clip(b.author,60)||c.user.name,b.lang==='uz'?'uz':'ru',GENRES.includes(b.genre)?b.genre:'novel',desc,clip(b.tags,200),cover,clip(b.fileName,120),body,'moderation','',null,Date.now());
-  await notifyAdmins(c,`Новая заявка на модерацию: «${title}»`);
+  await notifyAdmins(c,'submissions',`Новая заявка на модерацию: «${title}»`);
   return json({sub:subOut(await get(c,'SELECT * FROM submissions WHERE id=?',id))});
 });
 route('GET','/api/admin/submissions',async c=>{
@@ -280,8 +284,9 @@ route('GET','/api/support',async c=>{
 route('POST','/api/support',async c=>{
   const text=clip(c.body.text,2000);if(!text)return bad();
   if((await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND created>?',c.user.id,Date.now()-6e4)).n>=10)return bad(429,'slow down');
+  const unreadBefore=(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND read=0',c.user.id)).n;
   await run(c,'INSERT INTO support_messages(user_id,from_admin,text,created,read) VALUES(?,?,?,?,0)',c.user.id,0,text,Date.now());
-  await notifyAdmins(c,`💬 Сообщение в поддержку от ${c.user.name}: «${text.slice(0,200)}»`);
+  if(!unreadBefore)await notifyAdmins(c,'support',`Новое сообщение в поддержку\n${personName(c.user.name,c.user.id)}: «${text.slice(0,200)}»`);
   return json({ok:true});
 });
 
@@ -440,7 +445,7 @@ async function onPaid(c,sp,fromId){
   const id=sp.invoice_payload,d=await get(c,'SELECT * FROM donations WHERE id=?',id);if(!d||d.status==='paid')return;
   await run(c,"UPDATE donations SET status='paid',charge_id=?,paid_at=? WHERE id=?",sp.telegram_payment_charge_id,Date.now(),id);
   notify(c,d.user_id,await thanksText(c));
-  await notifyAdmins(c,`⭐ Новый донат: ${d.amount} Stars от ${d.anon?'анонима':d.user_name}${d.message?` — «${d.message}»`:''}`);
+  await notifyAdmins(c,'donations',`Новый донат: ${d.amount} Stars от ${d.anon?'анонима':d.user_name}${d.message?` — «${d.message}»`:''}`);
 }
 
 /* ---------- admin: donations ---------- */
@@ -502,6 +507,12 @@ route('POST','/api/admin/welcome',async c=>{
   }
   return json({ok:true,appLink});
 },true);
+route('GET','/api/admin/notif-settings',async c=>json(await getAdminNotif(c)),true);
+route('POST','/api/admin/notif-settings',async c=>{
+  const cur=await getAdminNotif(c);
+  for(const k of Object.keys(ADMIN_NOTIF_DEFAULT))if(['off','silent','on'].includes(c.body[k]))cur[k]=c.body[k];
+  await run(c,"INSERT INTO meta VALUES('adminNotif',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(cur));return json(cur);
+},true);
 route('POST','/api/admin/donate-settings',async c=>{
   const b=c.body,cur=await getDonateSettings(c);
   const presets=(Array.isArray(b.presets)?b.presets:[]).map(n=>Math.floor(+n)).filter(n=>n>=1&&n<=100000).slice(0,6);
@@ -546,7 +557,7 @@ route('POST','/api/author/books/:id/update',async(c,id)=>{
   if(await get(c,"SELECT 1 x FROM submissions WHERE update_book_id=? AND status='moderation'",id))return bad(409,'pending');
   const b=P(row.data),sid='s'+id8();
   await run(c,"INSERT INTO submissions(id,user_id,title,author_name,lang,genre,description,tags,cover,file_name,body,status,note,book_id,created,update_book_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,'moderation','',?,?,?)",sid,c.user.id,b.title,c.user.name,b.lang,b.genre,clip(c.body.note,500),'',null,clip(c.body.fileName,120),body,id,Date.now(),id);
-  await notifyAdmins(c,`↻ Обновление текста книги «${b.title}» ждёт проверки. Админ-панель → Модерация.`);
+  await notifyAdmins(c,'submissions',`Обновление текста книги «${b.title}» ждёт проверки`);
   return json({ok:true});
 });
 /* ---------- inline search (@bot query in any chat) ---------- */
@@ -602,7 +613,7 @@ route('POST','/api/reports',async c=>{
   const reason=['spam','abuse','inappropriate','other'].includes(c.body.reason)?c.body.reason:'other';
   const ins=await run(c,'INSERT OR IGNORE INTO reports(kind,target,user_id,reason,created) VALUES(?,?,?,?,?)',kind,target,c.user.id,reason,Date.now());
   const n=(await get(c,"SELECT COUNT(*) n FROM reports WHERE kind=? AND target=? AND status='open'",kind,target)).n;
-  if(ins.meta.changes&&n===1)await notifyAdmins(c,`⚠️ Новая жалоба (${{review:'отзыв',thread:'тема',comment:'комментарий'}[kind]}): «${clip(row.txt,120)}». Админ-панель → Жалобы.`);
+  if(ins.meta.changes&&n===1)await notifyAdmins(c,'reports',`Новая жалоба (${{review:'отзыв',thread:'тема',comment:'комментарий'}[kind]}): «${clip(row.txt,120)}». Админ-панель → Жалобы.`);
   if(n>=3)await run(c,`UPDATE ${k[0]} SET hidden=1 WHERE id=?`,target);
   return json({ok:true});
 });
@@ -689,8 +700,9 @@ async function onBotMessage(c,m){
   if(cmd)return void await help();
   if(cmd==='/help')return;
   if((await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND created>?',uid,Date.now()-6e4)).n>=10)return;
+  const unreadBefore=(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND read=0',uid)).n;
   await run(c,'INSERT INTO support_messages(user_id,from_admin,text,created,read) VALUES(?,?,?,?,0)',uid,0,clip(text,2000),Date.now());
-  await notifyAdmins(c,`💬 Сообщение от ${name||uid}: «${clip(text,200)}»\nОтветьте в приложении: Профиль → Админ-панель → Чат.`);
+  if(!unreadBefore)await notifyAdmins(c,'support',`Новое сообщение в поддержку\n${personName(name,uid)}: «${clip(text,200)}»`);
   await tgApi(env,'sendMessage',{chat_id:chat,text:T('Спасибо! Сообщение передано администратору, ответ придёт сюда ✅','Rahmat! Xabaringiz administratorga yuborildi, javob shu yerga keladi ✅')});
 }
 
