@@ -472,3 +472,20 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .dot.ok{background:#3fb97f}.dot.warn{background:#e0a030}
 
 .tbl.h span:first-child{text-align:left}
+
+/* alignment */
+.stat3>div{text-align:center}
+.stat3 small{display:block;white-space:nowrap}
+.stat3 b{display:block}
+.cta{display:flex;gap:10px}
+.cta .btn{white-space:nowrap;padding:0 14px;min-width:0;flex:1;font-size:14.5px}
+.cta .btn:first-child{flex:1.25}
+.btn{text-align:center}
+.rend{text-align:center}
+.rend-actions{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.rend-actions .btn{width:100%}
+.rend-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rend-row.one{grid-template-columns:1fr}
+.rend-row .btn{height:46px;font-size:14px;padding:0 10px}
+.th-f{align-items:center}
+.replybox{align-items:center}

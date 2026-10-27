@@ -29,9 +29,12 @@ const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);return o};
 let saveT,syncT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250);
   if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>api('/api/state','PUT',persistable()).catch(()=>{}),1200)}}
 const ERR={rate:['Слишком часто. Подождите минуту.','Juda tez-tez. Bir daqiqa kuting.'],links:['Ссылки в сообщениях запрещены.','Xabarlarda havolalar taqiqlangan.'],duplicate:['Такое сообщение уже отправлено.','Bunday xabar allaqachon yuborilgan.'],stopword:['Сообщение содержит запрещённые слова.','Xabarda taqiqlangan so‘zlar bor.'],banned:['Ваш аккаунт заблокирован.','Akkauntingiz bloklangan.']};
-const errMsg=e=>{const m=ERR[e&&e.detail];return m?tr(m[0],m[1]):tr('Нет связи с сервером','Server bilan aloqa yo‘q')};
-/* A rejected post (spam guard, limits) is rolled back by reloading the server state. */
-const bg=(p)=>p.catch(e=>{toast(errMsg(e));if(e&&[400,422,429].includes(e.status))loadBoot().then(()=>refresh()).catch(()=>{})});
+const errMsg=e=>{const m=ERR[e&&e.detail];if(m)return tr(m[0],m[1]);
+  if(e&&e.status>=500)return tr('Ошибка сервера. Попробуйте ещё раз немного позже.','Server xatosi. Birozdan so‘ng qayta urinib ko‘ring.');
+  if(e&&e.status)return tr('Не удалось отправить. Попробуйте ещё раз.','Yuborib bo‘lmadi. Qayta urinib ko‘ring.');
+  return tr('Нет связи с сервером','Server bilan aloqa yo‘q')};
+/* A rejected post is rolled back by reloading the server state, so no phantom copy stays on screen. */
+const bg=(p)=>p.catch(e=>{toast(errMsg(e));if(e&&e.status&&e.status!==401&&e.status!==403)loadBoot().then(()=>refresh()).catch(()=>{})});
 load();
 if(!S.onboarded){const u=tg.user();if(u){if(u.first_name)S.name=u.first_name.slice(0,24);if(tg.langCode()==='uz')S.lang='uz'}}
 
@@ -278,8 +281,8 @@ CHG.rvBook=el=>{REV.bookId=el.value;REV.rating=S.ratings[el.value]||0;setSheet(r
 ACT.revStar=el=>{REV.rating=+el.dataset.v;setSheet(reviewSheet())};
 ACT.revSubmit=()=>{if(REV.text.trim().length<10||!REV.rating){REV.err=true;setSheet(reviewSheet());return}
   S.reviews.unshift({id:'ur'+Date.now(),bookId:REV.bookId,user:S.name,rating:REV.rating,date:{ru:'сегодня',uz:'bugun'},likes:0,insight:0,text:REV.text.trim(),replies:[]});
-  S.ratings[REV.bookId]=REV.rating;save();closeSheet();toast(t('rv_done'));refresh();
-  if(net.online){const mine=S.reviews[0],bid=REV.bookId;bg(api('/api/reviews','POST',{bookId:bid,rating:REV.rating,text:mine.text}).then(x=>{Object.assign(mine,x.review);Object.assign(book(bid),{rating:x.rating,count:x.count});refresh()}))}};
+  S.ratings[REV.bookId]=REV.rating;save();closeSheet();toast(t('rv_done'));softRefresh();
+  if(net.online){const mine=S.reviews[0],bid=REV.bookId;bg(api('/api/reviews','POST',{bookId:bid,rating:REV.rating,text:mine.text}).then(x=>{Object.assign(mine,x.review);Object.assign(book(bid),{rating:x.rating,count:x.count});softRefresh()}))}};
 
 /* ---------- community screen ---------- */
 function quoteCard(q,mine){
@@ -396,14 +399,29 @@ function markDay(){const d=today();if(!S.days.includes(d)){S.days.push(d);S.days
 function streak(){let n=0;const d=new Date();if(!S.days.includes(d.toISOString().slice(0,10)))d.setDate(d.getDate()-1);
   while(S.days.includes(d.toISOString().slice(0,10))){n++;d.setDate(d.getDate()-1)}return n}
 ACT.read=el=>openReader(el.dataset.id);
+const hasMyReview=id=>S.reviews.some(r=>r.bookId===id&&(r.mine||String(r.id).startsWith('ur')));
+/* End of a chapter / of the book. Once the book is marked as read, the card stops asking for it again. */
+function endCard(b,last){
+  if(!last)return `<div class="rend"><b>${esc(b.chapters[R.ch+1].t)}</b><p>${t('chapter')} ${R.ch+2}</p><div class="rend-actions"><button class="btn" data-a="rNext">${t('next_ch')} ${ico('arrow',16)}</button></div></div>`;
+  const done=S.finished.includes(b.id),reviewed=hasMyReview(b.id);
+  const donate=net.online&&S.donateOn?`<button class="btn ghost" data-a="openDonate">${ico('heart',16)} ${tr('Поддержать','Qo‘llab-quvvatlash')}</button>`:'';
+  const toBook=`<button class="btn ghost" data-a="toBook">${t('to_book')}</button>`;
+  let primary,rowBtns;
+  if(!done){primary=`<button class="btn" data-a="rFinish">${ico('check',16)} ${t('mark_finished')}</button>`;rowBtns=[toBook,donate]}
+  else if(!reviewed){primary=`<button class="btn" data-a="openReview" data-id="${esc(b.id)}">${ico('pen',16)} ${tr('Оставить отзыв','Sharh qoldirish')}</button>`;rowBtns=[toBook,donate]}
+  else{primary=`<button class="btn" data-a="toBook">${t('to_book')}</button>`;rowBtns=[donate]}
+  const row=rowBtns.filter(Boolean);
+  return `<div class="rend"><b>${done?tr('Вы прочитали эту книгу','Siz bu kitobni o‘qib chiqdingiz'):t('end_demo')}</b><p>${done?(reviewed?tr('Спасибо за отзыв!','Sharhingiz uchun rahmat!'):tr('Поделитесь впечатлением: это помогает другим читателям.','Taassurotingiz bilan o‘rtoqlashing: bu boshqa o‘quvchilarga yordam beradi.')):t('end_demo_d')}</p>
+    <div class="rend-actions">${primary}${row.length?`<div class="rend-row ${row.length===1?'one':''}">${row.join('')}</div>`:''}</div></div>`;
+}
+const redrawEnd=()=>{const el=$('.rend');if(el&&R.id&&NAV.cur.name==='reader'){const b=book(R.id);el.outerHTML=endCard(b,R.ch===b.chapters.length-1)}};
+const softRefresh=()=>NAV.cur.name==='reader'?redrawEnd():refresh();
 SCREENS.reader=({id})=>{
   const b=book(id),ch=b.chapters[R.ch],rs=S.reader,last=R.ch===b.chapters.length-1;
   const paras=ch.p.map((tx,i)=>`<p class="rp${bmFind(id,R.ch,i)?' bm':''}" data-i="${i}" data-a="rSel">${esc(tx)}</p>`).join('');
-  const end=last?`<div class="rend"><b>${t('end_demo')}</b><p>${t('end_demo_d')}</p><div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap"><button class="btn sm" data-a="rFinish">${ico('check',16)} ${t('mark_finished')}</button><button class="btn sm ghost" data-a="toBook">${t('to_book')}</button>${net.online&&S.donateOn?`<button class="btn sm ghost" data-a="openDonate">💛 ${tr('Поддержать','Qo‘llab-quvvatlash')}</button>`:''}</div></div>`
-   :`<div class="rend"><b>${esc(b.chapters[R.ch+1].t)}</b><p>${t('chapter')} ${R.ch+2}</p><button class="btn sm" data-a="rNext">${t('next_ch')} ${ico('arrow',16)}</button></div>`;
   return `<div class="reader" data-mt="${rs.theme}" style="--rs:${rs.size}px;--rlh:${rs.lh};--rf:${rs.font==='sans'?'var(--ui)':'var(--read)'}">
   <header class="rhead px"><button class="iconbtn" data-a="toBook" aria-label="${t('to_book')}">${ico('back')}</button><div class="ttl"><b>${esc(b.title)}</b><small>${t('chapter')} ${R.ch+1} · ${esc(ch.t)}</small></div><button id="bmBtn" class="iconbtn" data-a="rBm" aria-label="${t('bm_added')}">${ico('bookmark',21)}</button><button class="iconbtn" data-a="rToc" aria-label="${t('toc')}">${ico('list',21)}</button><button class="iconbtn" data-a="rSet" aria-label="${t('text_settings')}">${ico('text',22)}</button></header>
-  <div class="rwrap"><div id="rbody"><div class="chhead"><span class="eyebrow">${t('chapter')} ${R.ch+1} / ${b.chapters.length}</span><h2>${esc(ch.t)}</h2></div>${paras}${end}</div>
+  <div class="rwrap"><div id="rbody"><div class="chhead"><span class="eyebrow">${t('chapter')} ${R.ch+1} / ${b.chapters.length}</span><h2>${esc(ch.t)}</h2></div>${paras}${endCard(b,last)}</div>
   ${R.fresh?`<div id="rload" class="rload" aria-label="${t('opening')}"><div class="sk" style="height:14px;width:36%"></div><div class="sk" style="height:34px;width:78%;margin-bottom:12px"></div>${Array.from({length:9},(_,i)=>`<div class="sk" style="height:12px;width:${i%4===3?'60%':'100%'}"></div>`).join('')}</div>`:''}
   <div id="qbar" class="qbar" hidden><button data-a="rQuote">${ico('quote',16)} ${t('save_quote')}</button><button data-a="rCopy">${ico('share',16)} ${t('copy')}</button></div></div>
   <footer class="rfoot px"><button class="iconbtn" data-a="rPrev" aria-label="${t('prev_ch')}" ${R.ch===0?'disabled':''}>${ico('back',20)}</button><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="rbar" style="width:${pctRaw(id)}%"></i></div><span id="rpc" class="pc mono">${pctRaw(id)}%</span><button class="iconbtn" data-a="rNext" aria-label="${t('next_ch')}" ${last?'disabled':''}>${ico('chev',20)}</button></footer></div>`;
@@ -438,7 +456,7 @@ function gotoChapter(n){const b=book(R.id);if(n<0||n>=b.chapters.length)return;R
 ACT.rNext=()=>gotoChapter(R.ch+1);ACT.rPrev=()=>gotoChapter(R.ch-1);
 ACT.rCh=el=>{closeSheet();gotoChapter(+el.dataset.i)};
 ACT.toBook=()=>{const id=R.id;BK.tab='about';BK.syn=false;const top=NAV.stack[NAV.stack.length-1];if(top&&top.name==='book'&&top.p.id===id){back();return}replace('book',{id})};
-ACT.rFinish=()=>{track(R.id,'finish');if(!S.finished.includes(R.id))S.finished.push(R.id);save();toast(t('finished_toast'));ACT.openReview({dataset:{id:R.id}})};
+ACT.rFinish=()=>{track(R.id,'finish');if(!S.finished.includes(R.id))S.finished.push(R.id);save();toast(t('finished_toast'));redrawEnd();if(!hasMyReview(R.id))ACT.openReview({dataset:{id:R.id}})};
 ACT.rToc=()=>{const b=book(R.id);openSheet(`<h2>${t('toc')}</h2><div class="toc">${b.chapters.map((c,i)=>`<button class="${i===R.ch?'on':''}" data-a="rCh" data-i="${i}"><small>${i+1}</small><span>${esc(c.t)}</span></button>`).join('')}</div>`)};
 function setHtml(){const rs=S.reader;const seg=(arr,cur,act)=>`<div class="seg">${arr.map(([k,n])=>`<button class="${String(cur)===String(k)?'on':''}" data-a="${act}" data-v="${k}">${n}</button>`).join('')}</div>`;
   return `<div class="rset"><h2>${t('text_settings')}</h2><h3>${t('font_size')}</h3><div class="stepper"><button data-a="rSize" data-d="-1" aria-label="A−">A−</button><div class="v" aria-live="polite">${rs.size}</div><button data-a="rSize" data-d="1" aria-label="A+">A+</button></div>
@@ -554,7 +572,7 @@ SCREENS.profile=()=>{
   <div class="card" style="padding:18px">
     <div class="row" style="gap:16px"><span class="avatar" style="width:64px;height:64px;font-size:24px;background:${AVC[0]}">${hasName()?esc(S.name[0].toUpperCase()):ico('user',28)}</span>
     <div class="field grow" style="margin:0"><label for="pname">${t('reader_name')}</label><input id="pname" class="in" value="${esc(hasName()?S.name:'')}" placeholder="${tr('Как вас зовут?','Ismingiz nima?')}" maxlength="24" autocomplete="off"></div></div>
-    <div class="stat3" style="grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px"><div style="padding:12px 8px"><b style="font-size:21px">${fin}</b><small>${t('stat_read')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${pages}</b><small>${t('stat_pages')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${S.bookmarks.length}</b><small>${t('stat_bm')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${streakN}</b><small>${tr('Дней подряд','Kun ketma-ket')}</small></div></div>
+    <div class="stat3" style="grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px"><div style="padding:12px 8px"><b style="font-size:21px">${fin}</b><small>${t('stat_read')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${pages}</b><small>${t('stat_pages')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${S.bookmarks.length}</b><small>${t('stat_bm')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${streakN}</b><small>${tr('Серия','Seriya')}</small></div></div>
   </div>
   <div class="adm">
   <div class="sec" style="margin-top:24px"><div class="sec-h"><h2>${tr('Сервисы','Xizmatlar')}</h2></div>

@@ -196,7 +196,7 @@ route('POST','/api/threads',async c=>{
   const title=clip(c.body.title,200);if(!title)return bad();
   const g3=await guardPost(c,title);if(g3)return g3;
   const bookId=c.body.bookId&&await get(c,'SELECT 1 x FROM books WHERE id=?',c.body.bookId)?c.body.bookId:null;
-  const id='t'+id8();await run(c,'INSERT INTO threads VALUES(?,?,?,?,?,?,?)',id,bookId,c.user.id,c.user.name,title,'',Date.now());
+  const id='t'+id8();await run(c,'INSERT INTO threads(id,book_id,user_id,user_name,title,text,created) VALUES(?,?,?,?,?,?,?)',id,bookId,c.user.id,c.user.name,title,'',Date.now());
   return json({thread:(await loadThreads(c,id))[0]});
 });
 route('POST','/api/threads/:id/comments',async(c,id)=>{
