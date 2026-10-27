@@ -10,6 +10,6 @@ export async function api(path,method='GET',body){
   const tma=initData();
   if(tma)h.authorization='tma '+tma;else h['x-dev-user']=new URLSearchParams(location.search).get('as')||devId;
   const r=await fetch(BASE+path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body)});
-  if(!r.ok){const b=await r.json().catch(()=>({}));throw Object.assign(new Error(b.detail||'api '+r.status),{status:r.status,detail:b.detail||b.error})}
+  if(!r.ok){const b=await r.json().catch(()=>({}));throw Object.assign(new Error(b.detail||'api '+r.status),{status:r.status,detail:r.status===401&&tma?'сессия устарела: закройте и откройте приложение заново':(b.detail||b.error)})}
   return r.json();
 }

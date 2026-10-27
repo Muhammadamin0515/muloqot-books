@@ -130,6 +130,7 @@ ACT.openSearch=()=>{resetCat();CAT.focus=true;go('catalog')};
 ACT.genreFilter=el=>{resetCat();CAT.genres=[el.dataset.id];go('catalog')};
 ACT.openCollection=el=>{const c=COLLECTIONS.find(x=>x.id===el.dataset.id);resetCat();CAT.ids=c.ids;CAT.coll=c.id;go('catalog')};
 ACT.back=back;
+ACT.tgClose=()=>tg.close();
 
 /* =====================================================================
    CATALOG & SEARCH
@@ -526,12 +527,13 @@ function applyBoot(d,first){
   if(first&&!(d.state&&d.state.name)&&!localStorage.getItem(KEY)&&d.me.name)S.name=d.me.name.slice(0,24);
 }
 function loadBoot(first){return api('/api/bootstrap').then(d=>{net.online=true;applyBoot(d,first)})}
-let banned=false;
-try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403}
+let banned=false,stale=false;
+try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e.status===401&&tg.isTelegram()}
 
 /* ---------- boot ---------- */
 const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
-if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Доступ ограничен','Kirish cheklangan')}</b><span>${tr('Ваш аккаунт заблокирован администратором.','Akkauntingiz administrator tomonidan bloklangan.')}</span></div>`;
+if(stale)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Сессия устарела','Seans eskirgan')}</b><span>${tr('Закройте приложение и откройте его заново.','Ilovani yoping va qayta oching.')}</span><button class="btn" data-a="tgClose">${tr('Закрыть','Yopish')}</button></div>`;
+else if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Доступ ограничен','Kirish cheklangan')}</b><span>${tr('Ваш аккаунт заблокирован администратором.','Akkauntingiz administrator tomonidan bloklangan.')}</span></div>`;
 else{NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
 render(true);}

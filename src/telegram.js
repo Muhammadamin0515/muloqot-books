@@ -45,3 +45,4 @@ export const initData=()=>inTg?w.initData||'':'';
 /* Telegram Stars checkout. Returns false outside Telegram (or on very old clients). */
 export function openInvoice(link,cb){if(!inTg||!w.openInvoice)return false;try{w.openInvoice(link,cb);return true}catch(e){return false}}
 export function openLink(url){if(inTg&&w.openLink){try{w.openLink(url);return}catch(e){}}window.open(url,'_blank','noopener')}
+export const close=()=>{if(inTg)try{w.close()}catch(e){}};
