@@ -12,6 +12,8 @@ const DDL=[
   'CREATE INDEX IF NOT EXISTS idx_actions_user ON actions(user_id,ts)',
   'CREATE TABLE IF NOT EXISTS book_stats(book_id TEXT,day TEXT,views INTEGER DEFAULT 0,reads INTEGER DEFAULT 0,finishes INTEGER DEFAULT 0,PRIMARY KEY(book_id,day))',
   'CREATE TABLE IF NOT EXISTS book_seen(user_id TEXT,book_id TEXT,day TEXT,type TEXT,PRIMARY KEY(user_id,book_id,day,type))',
+  'CREATE TABLE IF NOT EXISTS book_versions(id INTEGER PRIMARY KEY AUTOINCREMENT,book_id TEXT,created INTEGER,data TEXT)',
+  'CREATE INDEX IF NOT EXISTS idx_versions_book ON book_versions(book_id)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];
 const ALTERS=[
@@ -22,7 +24,8 @@ const ALTERS=[
   'ALTER TABLE reviews ADD COLUMN hidden INTEGER DEFAULT 0',
   'ALTER TABLE threads ADD COLUMN hidden INTEGER DEFAULT 0',
   'ALTER TABLE comments ADD COLUMN hidden INTEGER DEFAULT 0',
-  'ALTER TABLE users ADD COLUMN reminded TEXT'
+  'ALTER TABLE users ADD COLUMN reminded TEXT',
+  'ALTER TABLE submissions ADD COLUMN update_book_id TEXT'
 ];
 let ready;
 export const ensureSchema=env=>ready||(ready=(async()=>{

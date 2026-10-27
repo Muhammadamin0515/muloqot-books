@@ -103,7 +103,7 @@ async function loadQuotes(c,onlyId){
     stmt(c,"SELECT target FROM reacts WHERE user_id=? AND target LIKE 'q:%' AND kind='heart'",c.user.id)]);
   return qs.map(q=>({id:q.id,bookId:q.book_id,text:q.text,likes:q.likes_base+(rc.find(x=>x.target==='q:'+q.id)?.n||0),mine:mine.some(x=>x.target==='q:'+q.id)}));
 }
-const subOut=s=>({id:s.id,title:s.title,status:s.status,note:s.note||'',bookId:s.book_id||null});
+const subOut=s=>({id:s.id,title:s.title,status:s.status,note:s.note||'',bookId:s.book_id||null,update:!!s.update_book_id});
 
 /* ---------- routes ---------- */
 const routes=[];
@@ -221,19 +221,39 @@ route('POST','/api/submissions',async c=>{
   if(body.trim().length<500)return bad(400,'manuscript');
   const cover=typeof b.cover==='string'&&b.cover.startsWith('data:image/')&&b.cover.length<900_000?b.cover:null;
   const id='s'+id8();
-  await run(c,'INSERT INTO submissions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,c.user.id,title,clip(b.author,60)||c.user.name,b.lang==='uz'?'uz':'ru',GENRES.includes(b.genre)?b.genre:'novel',desc,clip(b.tags,200),cover,clip(b.fileName,120),body,'moderation','',null,Date.now());
+  await run(c,'INSERT INTO submissions(id,user_id,title,author_name,lang,genre,description,tags,cover,file_name,body,status,note,book_id,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,c.user.id,title,clip(b.author,60)||c.user.name,b.lang==='uz'?'uz':'ru',GENRES.includes(b.genre)?b.genre:'novel',desc,clip(b.tags,200),cover,clip(b.fileName,120),body,'moderation','',null,Date.now());
   await notifyAdmins(c,`Новая заявка на модерацию: «${title}»`);
   return json({sub:subOut(await get(c,'SELECT * FROM submissions WHERE id=?',id))});
 });
-route('GET','/api/admin/submissions',async c=>json((await all(c,"SELECT id,title,status,note,book_id,author_name,lang,genre,description,LENGTH(body) chars,SUBSTR(body,1,900) preview,user_id FROM submissions WHERE status='moderation' ORDER BY created")).map(s=>({...subOut(s),author:s.author_name,lang:s.lang,genre:s.genre,desc:s.description,chars:s.chars,preview:s.preview,userId:s.user_id}))),true);
+route('GET','/api/admin/submissions',async c=>{
+  const rows=await all(c,"SELECT id,title,status,note,book_id,author_name,lang,genre,description,LENGTH(body) chars,SUBSTR(body,1,900) preview,user_id,update_book_id FROM submissions WHERE status='moderation' ORDER BY created");
+  const out=[];
+  for(const s of rows){
+    const o={...subOut(s),author:s.author_name,lang:s.lang,genre:s.genre,desc:s.description,chars:s.chars,preview:s.preview,userId:s.user_id};
+    if(s.update_book_id){const b=await get(c,'SELECT data FROM books WHERE id=?',s.update_book_id);
+      if(b){const d=P(b.data);o.update={bookTitle:d.title,oldChapters:d.chapters.length,oldChars:d.chapters.reduce((n,x)=>n+x.p.join('').length,0),newChapters:parseManuscript((await get(c,'SELECT body FROM submissions WHERE id=?',s.id)).body).length,note:s.description}}}
+    out.push(o);
+  }
+  return json(out);
+},true);
+
 route('POST','/api/admin/submissions/:id/reject',async(c,id)=>{
   const s=await get(c,"SELECT * FROM submissions WHERE id=? AND status='moderation'",id);if(!s)return bad(404);
   const note=clip(c.body.note,300);await run(c,"UPDATE submissions SET status='rejected',note=? WHERE id=?",note,id);
-  notify(c,s.user_id,`Заявка «${s.title}» отклонена.${note?' '+note:''}`);return json({ok:true});
+  notify(c,s.user_id,`${s.update_book_id?'Обновление книги':'Заявка'} «${s.title}» ${s.update_book_id?'отклонено':'отклонена'}.${note?' '+note:''}`);return json({ok:true});
 },true);
 route('POST','/api/admin/submissions/:id/approve',async(c,id)=>{
   const s=await get(c,"SELECT * FROM submissions WHERE id=? AND status='moderation'",id);if(!s)return bad(404);
   const chapters=parseManuscript(s.body);if(!chapters.length)return bad(400,'empty');
+  if(s.update_book_id){
+    const row=await get(c,'SELECT data FROM books WHERE id=?',s.update_book_id);if(!row)return bad(404,'book gone');
+    const book=P(row.data);
+    await snapshotBook(c,s.update_book_id,book);
+    book.chapters=chapters;book.pages=Math.max(1,Math.round(chapters.reduce((n,x)=>n+x.p.join('').length,0)/1800));book.updated=Date.now();
+    await batch(c,[stmt(c,'UPDATE books SET data=? WHERE id=?',J(book),s.update_book_id),stmt(c,"UPDATE submissions SET status='approved' WHERE id=?",s.id)]);
+    notify(c,s.user_id,`Обновлённый текст книги «${book.title}» опубликован ✅`);
+    return json({bookId:s.update_book_id});
+  }
   let a=await get(c,"SELECT * FROM authors WHERE user_id=? OR lower(json_extract(data,'$.name'))=lower(?)",s.user_id,s.author_name);
   if(!a){const aid='a'+id8();const pal=[['#2a1a14','#7a2e17'],['#10282c','#2f6672'],['#26141a','#7a3346'],['#2a1f12','#8a5a22']][aid.charCodeAt(1)%4];
     await run(c,'INSERT INTO authors VALUES(?,?,?,?)',aid,J({id:aid,name:s.author_name,city:{ru:'',uz:''},hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal,bio:{ru:'',uz:''}}),0,s.user_id);
@@ -502,8 +522,9 @@ route('GET','/api/author/stats',async c=>{
     stmt(c,`SELECT s.day,SUM(s.views) v,SUM(s.reads) r FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? AND s.day>=? GROUP BY s.day ORDER BY s.day`,c.user.id,since),
     stmt(c,`SELECT r.book_id,COUNT(*) n FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? GROUP BY r.book_id`,c.user.id)]);
   const agg=await ratingAgg(c);
+  const pend=new Set((await all(c,"SELECT update_book_id FROM submissions WHERE user_id=? AND status='moderation' AND update_book_id IS NOT NULL",c.user.id)).map(x=>x.update_book_id));
   return json({books:books.map(r=>{const b=bookOut(r,agg),t=tot.find(x=>x.book_id===r.id)||{},v=rev.find(x=>x.book_id===r.id);
-    return{id:r.id,title:b.title,rating:b.rating,count:b.count,hidden:!!r.hidden,chapters:b.chapters.length,views:t.v||0,reads:t.r||0,finishes:t.f||0,reviews:v?.n||0}}),series});
+    return{pending:pend.has(r.id),id:r.id,title:b.title,rating:b.rating,count:b.count,hidden:!!r.hidden,chapters:b.chapters.length,views:t.v||0,reads:t.r||0,finishes:t.f||0,reviews:v?.n||0}}),series});
 });
 route('POST','/api/author/books/:id/edit',async(c,id)=>{
   const row=await get(c,`SELECT b.data ${OWN} AND b.id=?`,c.user.id,id);if(!row)return bad(404);
@@ -511,6 +532,15 @@ route('POST','/api/author/books/:id/edit',async(c,id)=>{
   b.title=title;b.desc=desc;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);return json({ok:true});
 });
 
+route('POST','/api/author/books/:id/update',async(c,id)=>{
+  const row=await get(c,`SELECT b.data ${OWN} AND b.id=?`,c.user.id,id);if(!row)return bad(404);
+  const body=String(c.body.body||'').slice(0,1_200_000);if(body.trim().length<500)return bad(400,'manuscript');
+  if(await get(c,"SELECT 1 x FROM submissions WHERE update_book_id=? AND status='moderation'",id))return bad(409,'pending');
+  const b=P(row.data),sid='s'+id8();
+  await run(c,"INSERT INTO submissions(id,user_id,title,author_name,lang,genre,description,tags,cover,file_name,body,status,note,book_id,created,update_book_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,'moderation','',?,?,?)",sid,c.user.id,b.title,c.user.name,b.lang,b.genre,clip(c.body.note,500),'',null,clip(c.body.fileName,120),body,id,Date.now(),id);
+  await notifyAdmins(c,`↻ Обновление текста книги «${b.title}» ждёт проверки. Админ-панель → Модерация.`);
+  return json({ok:true});
+});
 /* ---------- inline search (@bot query in any chat) ---------- */
 const fold=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,'').replace(/ё/g,'е');
 const hesc=t=>String(t||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
@@ -525,6 +555,21 @@ async function onInline(c,q){
     ...(link?{reply_markup:{inline_keyboard:[[{text:'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})}));
   await tgApi(env,'answerInlineQuery',{inline_query_id:q.id,results,cache_time:30,is_personal:false,...(base?{button:{text:'📚 Открыть Muloqot Books',web_app:{url:base}}}:{})});
 }
+
+/* ---------- book versions (kept so an approved replacement can be rolled back) ---------- */
+async function snapshotBook(c,bookId,book){
+  await run(c,'INSERT INTO book_versions(book_id,created,data) VALUES(?,?,?)',bookId,Date.now(),J({chapters:book.chapters,pages:book.pages}));
+  await run(c,'DELETE FROM book_versions WHERE book_id=?1 AND id NOT IN (SELECT id FROM book_versions WHERE book_id=?1 ORDER BY id DESC LIMIT 5)',bookId);
+}
+route('GET','/api/admin/books/:id/versions',async(c,id)=>json({list:(await all(c,'SELECT id,created,data FROM book_versions WHERE book_id=? ORDER BY id DESC',id)).map(v=>{const d=P(v.data);return{id:v.id,created:v.created,chapters:d.chapters.length,chars:d.chapters.reduce((n,x)=>n+x.p.join('').length,0)}})}),true);
+route('POST','/api/admin/books/:id/restore',async(c,id)=>{
+  const v=await get(c,'SELECT data FROM book_versions WHERE id=? AND book_id=?',c.body.versionId,id),row=await get(c,'SELECT data FROM books WHERE id=?',id);
+  if(!v||!row)return bad(404);
+  const book=P(row.data),old=P(v.data);
+  await snapshotBook(c,id,book);
+  book.chapters=old.chapters;book.pages=old.pages;book.updated=Date.now();
+  await run(c,'UPDATE books SET data=? WHERE id=?',J(book),id);return json({ok:true});
+},true);
 
 /* ---------- reports ---------- */
 const REPORT_KINDS={review:['reviews','text'],thread:['threads','title'],comment:['comments','text']};

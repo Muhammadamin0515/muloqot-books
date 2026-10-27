@@ -342,7 +342,7 @@ SCREENS.library=()=>{
   if(LB.tab==='reading')body=rd.length?rd.map(id=>libRow(book(id),'reading')).join(''):empty('lib',t('e_reading'),t('e_reading_d'),`<button class="btn sm" data-a="tab" data-id="catalog">${t('go_catalog')}</button>`);
   if(LB.tab==='finished')body=fin.length?fin.map(id=>libRow(book(id),'finished')).join(''):empty('check',t('e_finished'),t('e_finished_d'));
   if(LB.tab==='saved')body=sv.length?sv.map(id=>libRow(book(id),'saved')).join(''):empty('bookmark',t('e_saved'),t('e_saved_d'),`<button class="btn sm" data-a="tab" data-id="catalog">${t('go_catalog')}</button>`);
-  if(LB.tab==='bookmarks')body=bm.length?bm.map(x=>{const b=book(x.bookId);return `<div class="bmrow"><div class="row" style="gap:12px"><div style="width:34px;flex:none">${cover(b,'xs')}</div><div class="grow"><b style="font-size:14px">${esc(b.title)}</b><div class="mute" style="font-size:12px">${t('chapter')} ${x.ch+1} · ${esc(b.chapters[x.ch].t)}</div></div></div><q>${esc(x.snip)}…</q><div class="row" style="gap:8px"><button class="btn sm" data-a="openBm" data-id="${x.id}">${t('open')}</button><button class="btn sm ghost" data-a="delBm" data-id="${x.id}">${ico('trash',15)} ${t('remove')}</button></div></div>`}).join(''):empty('bookmark',t('e_bm'),t('e_bm_d'));
+  if(LB.tab==='bookmarks')body=bm.length?bm.map(x=>{const b=book(x.bookId);return `<div class="bmrow"><div class="row" style="gap:12px"><div style="width:34px;flex:none">${cover(b,'xs')}</div><div class="grow"><b style="font-size:14px">${esc(b.title)}</b><div class="mute" style="font-size:12px">${t('chapter')} ${x.ch+1} · ${esc((b.chapters[x.ch]||{}).t||'')}</div></div></div><q>${esc(x.snip)}…</q><div class="row" style="gap:8px"><button class="btn sm" data-a="openBm" data-id="${x.id}">${t('open')}</button><button class="btn sm ghost" data-a="delBm" data-id="${x.id}">${ico('trash',15)} ${t('remove')}</button></div></div>`}).join(''):empty('bookmark',t('e_bm'),t('e_bm_d'));
   return `<header class="topbar px"><h2 class="display" style="font-size:26px">${t('library')}</h2></header>
   <div class="px"><div class="stat3"><div><b>${rd.length}</b><small>${t('l_reading')}</small></div><div><b>${fin.length}</b><small>${t('l_finished')}</small></div><div><b>${bm.length}</b><small>${t('l_bookmarks')}</small></div></div>
   <div class="seg" style="margin:20px 0 4px" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${LB.tab===k}" class="${LB.tab===k?'on':''}" data-a="libTab" data-v="${k}" style="padding:0 6px;font-size:12px">${n}</button>`).join('')}</div>${body}</div>`;
@@ -369,6 +369,8 @@ function loadText(id){
 async function openReader(id,opts){
   if(!hasText(book(id))){toast(t('opening'));try{await loadText(id)}catch(e){toast(tr('Не удалось загрузить книгу. Проверьте соединение.','Kitobni yuklab bo‘lmadi. Aloqani tekshiring.'));return}}
   opts=opts||{};track(id,'read');const pr=S.progress[id],fin=S.finished.includes(id);
+  const nch=book(id).chapters.length;if(pr&&pr.ch>=nch){pr.ch=Math.max(0,nch-1);pr.p=0}
+  if(opts.bm&&opts.bm.ch>=nch)opts.bm={...opts.bm,ch:Math.max(0,nch-1),para:0};
   if(opts.bm){R.ch=opts.bm.ch;R.startP=0;R.startPara=opts.bm.para}
   else if(fin||!pr){R.ch=0;R.startP=0;R.startPara=null}
   else{R.ch=pr.ch;R.startP=pr.p;R.startPara=null}
@@ -450,17 +452,32 @@ function authorBlock(){
   ${d.books.map(b=>`<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(b.title)}</b>${b.hidden?`<span class="tag">${tr('скрыта','yashirin')}</span>`:''}</div>
     <div class="stat3" style="margin:12px 0"><div><b>${b.views}</b><small>${tr('Просмотры','Ko‘rishlar')}</small></div><div><b>${b.reads}</b><small>${tr('Начали читать','O‘qiy boshladi')}</small></div><div><b>${b.finishes}</b><small>${tr('Дочитали','Tugatdi')}</small></div></div>
     <p class="mute" style="font-size:12.5px;margin-bottom:10px">⭐ ${b.rating} (${b.count}) · ${tr('отзывов','sharhlar')}: ${b.reviews} · ${tr('глав','bob')}: ${b.chapters}</p>
-    <div class="row" style="gap:8px"><button class="btn sm" data-a="openBook" data-id="${esc(b.id)}">${tr('Открыть','Ochish')}</button><button class="btn sm ghost" data-a="autEdit" data-id="${esc(b.id)}">${tr('Править','Tahrirlash')}</button></div></div>`).join('')}</div>`;
+    <div class="row" style="gap:8px"><button class="btn sm" data-a="openBook" data-id="${esc(b.id)}">${tr('Открыть','Ochish')}</button><button class="btn sm ghost" data-a="autEdit" data-id="${esc(b.id)}">${tr('Править','Tahrirlash')}</button>${b.pending?`<span class="status m">${tr('Новый текст на проверке','Yangi matn tekshiruvda')}</span>`:`<button class="btn sm ghost" data-a="autUpdate" data-id="${esc(b.id)}">${tr('Заменить текст','Matnni almashtirish')}</button>`}</div></div>`).join('')}</div>`;
 }
 ACT.autEdit=el=>{const b=book(el.dataset.id);MODEL.aut.title=b.title;MODEL.aut.desc=b.desc;
-  openSheet(`<h2>${tr('Правка книги','Kitobni tahrirlash')}</h2><div class="field"><label for="auT">${t('f_title')}</label><input id="auT" class="in" data-m="aut:title" value="${esc(b.title)}"></div><div class="field"><label for="auD">${t('f_desc')}</label><textarea id="auD" class="in" data-m="aut:desc" style="min-height:130px">${esc(b.desc)}</textarea></div><p class="mute" style="font-size:12px;margin-bottom:12px">${tr('Изменить текст книги можно через заявку на новую версию: напишите в поддержку.','Kitob matnini o‘zgartirish uchun yordamga yozing.')}</p><button class="btn block" data-a="autSave" data-id="${esc(b.id)}">${tr('Сохранить','Saqlash')}</button>`)};
+  openSheet(`<h2>${tr('Правка книги','Kitobni tahrirlash')}</h2><div class="field"><label for="auT">${t('f_title')}</label><input id="auT" class="in" data-m="aut:title" value="${esc(b.title)}"></div><div class="field"><label for="auD">${t('f_desc')}</label><textarea id="auD" class="in" data-m="aut:desc" style="min-height:130px">${esc(b.desc)}</textarea></div><button class="btn block" data-a="autSave" data-id="${esc(b.id)}">${tr('Сохранить','Saqlash')}</button>`)};
+const UPD={id:null,body:'',fileName:'',busy:false};
+MODEL.aut.note='';
+const updSheet=()=>`<h2>${tr('Заменить текст книги','Kitob matnini almashtirish')}</h2><p class="mute" style="font-size:13px;margin-bottom:14px">${tr('Новый текст пройдёт проверку модератором. До одобрения читатели видят прежнюю версию, оценки и отзывы сохранятся.','Yangi matn moderator tekshiruvidan o‘tadi. Tasdiqlanguncha o‘quvchilar eski versiyani ko‘radi, baho va sharhlar saqlanadi.')}</p>
+  <label class="drop" for="updFile">${ico('file',26)}<div class="grow"><b>${UPD.fileName?esc(UPD.fileName):t('up_file')}</b><div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">${UPD.fileName?Math.round(UPD.body.length/1000)+tr('k знаков','k belgi'):'.txt · .md · .docx'}</div></div>${ico('upload',22)}</label><input id="updFile" type="file" accept=".txt,.md,.docx,text/plain" data-chg="updFile" style="position:absolute;opacity:0;width:1px;height:1px">
+  <div class="field" style="margin-top:16px"><label for="updNote">${tr('Что изменилось (необязательно)','Nima o‘zgardi (ixtiyoriy)')}</label><textarea id="updNote" class="in" data-m="aut:note" style="min-height:80px" placeholder="${tr('Например: исправлены опечатки, добавлена глава 5','Masalan: xatolar tuzatildi, 5-bob qo‘shildi')}">${esc(MODEL.aut.note)}</textarea></div>
+  <button class="btn block" data-a="updSend" ${UPD.body.length<500||UPD.busy?'disabled':''}>${tr('Отправить на проверку','Tekshiruvga yuborish')}</button>`;
+ACT.autUpdate=el=>{UPD.id=el.dataset.id;UPD.body='';UPD.fileName='';UPD.busy=false;MODEL.aut.note='';openSheet(updSheet())};
+CHG.updFile=el=>{const f=el.files&&el.files[0];if(!f)return;
+  if(f.size>1100*1024){toast(tr('Файл больше 1 МБ','Fayl 1 MB dan katta'));return}
+  const done=txt=>{UPD.body=txt;UPD.fileName=f.name;setSheet(updSheet())};
+  if(/\.docx$/i.test(f.name)){f.arrayBuffer().then(docxToText).then(txt=>{if(txt.trim().length<50)throw 0;done(txt)}).catch(()=>toast(tr('Не удалось прочитать .docx. Сохраните как .txt.','.docx o‘qilmadi. .txt sifatida saqlang.')));return}
+  const fr=new FileReader();fr.onload=()=>done(String(fr.result));fr.readAsText(f)};
+ACT.updSend=()=>{if(UPD.busy||UPD.body.length<500)return;UPD.busy=true;setSheet(updSheet());
+  api(`/api/author/books/${UPD.id}/update`,'POST',{body:UPD.body,fileName:UPD.fileName,note:MODEL.aut.note}).then(()=>{closeSheet();toast(tr('Отправлено на проверку','Tekshiruvga yuborildi'));loadAuthor();api('/api/bootstrap').then(d=>{S.subs=d.subs;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})})
+   .catch(e=>{UPD.busy=false;setSheet(updSheet());toast(e.detail==='pending'?tr('Предыдущий текст ещё на проверке','Oldingi matn hali tekshiruvda'):tr('Не удалось отправить','Yuborib bo‘lmadi'))})};
 ACT.autSave=el=>{closeSheet();bg(api(`/api/author/books/${el.dataset.id}/edit`,'POST',{title:MODEL.aut.title,desc:MODEL.aut.desc}).then(async()=>{toast(tr('Сохранено','Saqlandi'));await loadBoot();loadAuthor()}))};
 const subLabel={draft:'status_draft',moderation:'status_mod',approved:'status_ok',rejected:'status_no'};
 const draftBook=()=>({id:'draft',title:ST.title.trim()||t('f_title'),authorName:ST.author.trim()||S.name,motif:'ornament',pal:['#2a1a14','#7a2e17','#e8742f','#140c09','#f0dfc6'],img:ST.cover});
 SCREENS.studio=()=>{
   let body='';
   if(ST.mode==='home'){
-    body=`<div class="sec" style="margin-top:8px"><div class="sec-h"><h2>${t('my_subs')}</h2></div>${S.subs.length?`<div class="list">${S.subs.map(s=>`<div class="li"><div class="grow"><b>${esc(s.title)}</b></div><span class="status ${s.status==='moderation'||s.status==='approved'?'m':''}">${t(subLabel[s.status]||'status_draft')}</span></div>`).join('')}</div>`:''}</div>
+    body=`<div class="sec" style="margin-top:8px"><div class="sec-h"><h2>${t('my_subs')}</h2></div>${S.subs.length?`<div class="list">${S.subs.map(s=>`<div class="li"><div class="grow"><b>${s.update?'↻ ':''}${esc(s.title)}</b>${s.update?`<div class="mute" style="font-size:12px">${tr('Обновление текста','Matn yangilanishi')}</div>`:''}${s.status==='rejected'&&s.note?`<div class="mute" style="font-size:12px">${esc(s.note)}</div>`:''}</div><span class="status ${s.status==='moderation'||s.status==='approved'?'m':''}">${t(subLabel[s.status]||'status_draft')}</span></div>`).join('')}</div>`:''}</div>
     <button class="btn block" style="margin-top:20px" data-a="stNew">${ico('plus',18)} ${t('add_title')}</button>${authorBlock()}`;
   }else{
     const steps=[t('st1'),t('st2'),t('st3'),t('st4')];
