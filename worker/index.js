@@ -67,7 +67,9 @@ const rel=ms=>{const m=Math.max(0,Math.floor((Date.now()-ms)/6e4));
   const w=Math.floor(d/7);return{ru:`${w} нед. назад`,uz:`${w} hafta oldin`}};
 
 /* ---------- serializers (bulk, a handful of queries per request) ---------- */
-function bookOut(row,agg){const b=P(row.data);const a=agg[row.id]||{n:0,s:0};const count=b.count+a.n;return{...b,count,rating:Math.round((b.rating*b.count+a.s)/count*100)/100}}
+function bookOut(row,agg){const b=P(row.data);const a=agg[row.id]||{n:0,s:0};const count=b.count+a.n;
+  /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/text) and covers are served as images (/api/cover/:id). */
+  return{...b,chapters:b.chapters.map(ch=>({t:ch.t})),...(b.img?{img:`/api/cover/${row.id}?v=${b.img.length}`}:{}),count,rating:Math.round((b.rating*b.count+a.s)/count*100)/100}}
 const ratingAgg=async c=>{const o={};(await all(c,'SELECT book_id,COUNT(*) n,SUM(value) s FROM ratings GROUP BY book_id')).forEach(r=>o[r.book_id]={n:r.n,s:r.s});return o};
 const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id=?',id);if(!row)return null;const a=await get(c,'SELECT COUNT(*) n,COALESCE(SUM(value),0) s FROM ratings WHERE book_id=?',id);return bookOut(row,{[id]:a})};
 
@@ -123,6 +125,11 @@ route('GET','/api/bootstrap',async c=>{
     authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(fol.find(f=>f.author_id===a.id)?.n||0)})),
     collections:m.collections,weekly:m.weekly,quotes:await loadQuotes(c),reviews:await loadReviews(c),threads:await loadThreads(c),
     ratings:Object.fromEntries(my1.map(r=>[r.book_id,r.value])),follows:my2.map(r=>r.author_id),subs:sub.map(subOut),state:P(usr[0]?.state||'{}')});
+});
+route('GET','/api/books/:id/text',async(c,id)=>{
+  const row=await get(c,'SELECT data,hidden FROM books WHERE id=?',id);
+  if(!row||(row.hidden&&!c.user.admin))return bad(404);
+  return new Response(J({chapters:P(row.data).chapters}),{headers:{'content-type':'application/json','cache-control':'private, max-age=3600'}});
 });
 route('PUT','/api/state',async c=>{
   const s={...c.body};LOCAL.forEach(k=>delete s[k]);const txt=J(s);
@@ -215,7 +222,7 @@ route('POST','/api/admin/submissions/:id/approve',async(c,id)=>{
   const h=[...s.id].reduce((x,ch)=>x+ch.charCodeAt(0),0);
   const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
   const book={id:bid,a:a.id,title:s.title,lang:s.lang,genre:s.genre,rating:4,count:0,pages:Math.max(1,Math.round(chars/1800)),year:new Date().getFullYear(),added,motif:motifs[h%motifs.length],pal:pals[h%pals.length],desc:s.description,chapters,...(s.cover?{img:s.cover}:{})};
-  await batch(c,[stmt(c,'INSERT INTO books VALUES(?,?,?)',bid,J(book),added),stmt(c,"UPDATE submissions SET status='approved',book_id=? WHERE id=?",bid,id)]);
+  await batch(c,[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added),stmt(c,"UPDATE submissions SET status='approved',book_id=? WHERE id=?",bid,id)]);
   notify(c,s.user_id,`Книга «${s.title}» опубликована в каталоге!`);
   for(const f of await all(c,'SELECT f.user_id,u.state FROM follows f JOIN users u ON u.id=f.user_id WHERE f.author_id=?',a.id))
     if(P(f.state||'{}').notif?.authors!==false)notify(c,f.user_id,`Новая книга автора ${s.author_name}: «${s.title}»`);
@@ -524,6 +531,14 @@ export default {
   async fetch(request,env0,ctx){
     const env=clean(env0);
     const {pathname,origin}=new URL(request.url);ORIGIN=origin;
+    const cv=/^\/api\/cover\/([\w-]+)$/.exec(pathname);
+    if(cv&&request.method==='GET'){
+      const row=await env.DB.prepare('SELECT data FROM books WHERE id=?').bind(cv[1]).first();const img=row&&P(row.data).img;
+      const m=img&&/^data:(image\/[\w.+-]+);base64,(.+)$/.exec(img);
+      if(!m)return new Response('not found',{status:404});
+      const bin=atob(m[2]),bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
+      return new Response(bytes,{headers:{'content-type':m[1],'cache-control':'public, max-age=86400'}});
+    }
     if(pathname==='/api/health'){const t=env.BOT_TOKEN;return json({bot:!!t,botId:t.split(':')[0]||null,format:/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(t),db:!!env.DB,admins:csv(env.ADMIN_IDS).length})}
     try{
       if(pathname==='/telegram/webhook'&&request.method==='POST')return await handleWebhook(request,env,ctx);

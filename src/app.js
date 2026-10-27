@@ -125,7 +125,7 @@ SCREENS.home=()=>{
   <section class="sec"><div class="sec-h px"><h2>${t('authors')}</h2></div><div class="hs px">${AUTHORS.slice(0,10).map(a=>`<button class="au" data-a="openAuthor" data-id="${a.id}"><div class="pt">${portrait(a)}</div><b>${esc(a.name)}</b><small>${esc(L(a.city))}</small></button>`).join('')}</div></section>`;
 };
 ACT.tab=el=>{if(NAV.tab===el.dataset.id&&NAV.cur.name===el.dataset.id){$('#screen').scrollTo({top:0,behavior:'smooth'});return}go(el.dataset.id)};
-ACT.openBook=el=>{BK.tab='about';BK.syn=false;go('book',{id:el.dataset.id})};
+ACT.openBook=el=>{BK.tab='about';BK.syn=false;go('book',{id:el.dataset.id});loadText(el.dataset.id).catch(()=>{})};
 ACT.openAuthor=el=>go('author',{id:el.dataset.id});
 ACT.openSearch=()=>{resetCat();CAT.focus=true;go('catalog')};
 ACT.genreFilter=el=>{resetCat();CAT.genres=[el.dataset.id];go('catalog')};
@@ -350,7 +350,16 @@ ACT.openBm=el=>{const x=S.bookmarks.find(b=>b.id===el.dataset.id);openReader(x.b
    ===================================================================== */
 const R={id:null,ch:0,startP:0,startPara:null,sel:null,fresh:false};
 const bmFind=(id,ch,para)=>S.bookmarks.find(x=>x.bookId===id&&x.ch===ch&&x.para===para);
-function openReader(id,opts){
+const TEXT={},LOADING={};
+const hasText=b=>b.chapters.length>0&&b.chapters.every(c=>Array.isArray(c.p));
+/* Chapter text is fetched when needed; the catalog only carries chapter titles. */
+function loadText(id){
+  const b=book(id);if(!b||hasText(b))return Promise.resolve();
+  if(TEXT[id]){b.chapters=TEXT[id];return Promise.resolve()}
+  return LOADING[id]||(LOADING[id]=api(`/api/books/${id}/text`).then(r=>{TEXT[id]=r.chapters;book(id).chapters=r.chapters}).finally(()=>{delete LOADING[id]}));
+}
+async function openReader(id,opts){
+  if(!hasText(book(id))){toast(t('opening'));try{await loadText(id)}catch(e){toast(tr('Не удалось загрузить книгу. Проверьте соединение.','Kitobni yuklab bo‘lmadi. Aloqani tekshiring.'));return}}
   opts=opts||{};const pr=S.progress[id],fin=S.finished.includes(id);
   if(opts.bm){R.ch=opts.bm.ch;R.startP=0;R.startPara=opts.bm.para}
   else if(fin||!pr){R.ch=0;R.startP=0;R.startPara=null}
@@ -519,7 +528,7 @@ tg.onBack(()=>{if(NAV.cur.name==='reader'&&$('#sheet').classList.contains('on'))
 /* ---------- server sync ---------- */
 const swap=(arr,v)=>arr.splice(0,arr.length,...v);
 function applyBoot(d,first){
-  swap(BOOKS,d.books);swap(AUTHORS,d.authors);swap(COLLECTIONS,d.collections);swap(SEED_QUOTES,d.quotes);Object.assign(WEEKLY,d.weekly);
+  swap(BOOKS,d.books);BOOKS.forEach(b=>{if(TEXT[b.id])b.chapters=TEXT[b.id]});swap(AUTHORS,d.authors);swap(COLLECTIONS,d.collections);swap(SEED_QUOTES,d.quotes);Object.assign(WEEKLY,d.weekly);
   S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;S.appLink=d.appLink;
   S.reacts={};d.reviews.forEach(r=>{if(r.my&&(r.my.heart||r.my.insight))S.reacts[r.id]=r.my});
   S.qLikes={};d.quotes.forEach(q=>{if(q.mine)S.qLikes[q.id]=true});
@@ -528,6 +537,7 @@ function applyBoot(d,first){
   if(first&&!(d.state&&d.state.name)&&!localStorage.getItem(KEY)&&d.me.name)S.name=d.me.name.slice(0,24);
 }
 function loadBoot(first){return api('/api/bootstrap').then(d=>{net.online=true;applyBoot(d,first)})}
+$('#screen').innerHTML=`<div class="splash"><div class="display" style="font-size:30px">Muloqot Books</div><div class="bar" style="width:120px;margin-top:22px"><i style="width:40%;animation:splashbar 1.1s ease-in-out infinite alternate"></i></div></div>`;
 let banned=false,stale=false;
 try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e.status===401&&tg.isTelegram()}
 
@@ -547,4 +557,5 @@ else{
   else if(target==='donate')ACT.openDonate();
   else if(target==='support')ACT.openSupport();
   else if(target)go(target);
+  const rd0=readingIds();if(net.online&&rd0[0])loadText(rd0[0]).catch(()=>{});
 }

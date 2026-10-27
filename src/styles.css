@@ -391,3 +391,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .dgroup summary b{font-size:14.5px}.dgroup summary span{font-size:12.5px;color:var(--mute)}
 .dgroup[open] summary{border-bottom:1px solid var(--line)}
 .dgroup .dbody{padding:14px 16px 4px}
+
+/* splash */
+.splash{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--fg)}
+@keyframes splashbar{from{transform:translateX(-60%)}to{transform:translateX(160%)}}
