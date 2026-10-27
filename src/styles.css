@@ -395,3 +395,8 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 /* splash */
 .splash{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--fg)}
 @keyframes splashbar{from{transform:translateX(-60%)}to{transform:translateX(160%)}}
+.howto{margin:0 0 14px;border:1px dashed var(--line2);border-radius:12px;padding:10px 14px}
+.howto summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--acc-t);list-style:none}
+.howto summary::-webkit-details-marker{display:none}
+.howto ol{margin:10px 0 2px;padding-left:20px;font-size:13px;line-height:1.55;color:var(--fg)}
+.howto li{margin-bottom:4px}

@@ -1,7 +1,7 @@
 /* Admin panel + support chat. Wired into the app through initAdmin(ctx); all data comes from /api/admin/*. */
 export function initAdmin(x){
   const {SCREENS,ACT,CHG,FORMS,AFTER,MODEL,go,api,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr}=x;
-  const M=MODEL.adm={bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',welcome:'',welcomeUz:'',appLink:''};
+  const M=MODEL.adm={bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
   const A={tab:'overview',fresh:{},stats:null,bc:null,run:null,subs:null,inbox:null,users:null,adbooks:null,chat:{uid:null,name:'',msgs:[]},sup:{msgs:[]},col:null,editId:null};
   const here=n=>NAV.cur.name===n;
   const bg=p=>p.catch(()=>toast('Ошибка запроса'));
@@ -21,7 +21,7 @@ export function initAdmin(x){
     reports:()=>load('reps',()=>api('/api/admin/reports')).then(()=>{if(A.reps)M.stopwords=A.reps.stopwords.join(', ')}),
     chat:()=>load('inbox',()=>api('/api/admin/support')),
     users:()=>load('users',()=>api('/api/admin/users?q='+encodeURIComponent(M.uq))),
-    content:()=>{api('/api/admin/welcome').then(w=>{M.welcome=w.text;M.welcomeUz=w.textUz;M.appLink=w.appLink;if(here('admin')&&A.tab==='content')x.refresh()}).catch(()=>{});M.wq_book=WEEKLY.bookId;M.wq_ru=WEEKLY.q.ru||'';M.wq_uz=WEEKLY.q.uz||'';return load('adbooks',()=>api('/api/admin/books'))}
+    content:()=>{api('/api/admin/welcome').then(w=>{M.welcome=w.text;M.welcomeUz=w.textUz;M.appLink=w.appLink;M.appLinkSaved=w.appLink;if(here('admin')&&A.tab==='content')x.refresh()}).catch(()=>{});M.wq_book=WEEKLY.bookId;M.wq_ru=WEEKLY.q.ru||'';M.wq_uz=WEEKLY.q.uz||'';return load('adbooks',()=>api('/api/admin/books'))}
   };
   const bodies={overview:tabOverview,broadcast:tabBroadcast,moderation:tabModeration,reports:tabReports,chat:tabChat,users:tabUsers,content:tabContent};
   AFTER.admin=()=>{
@@ -165,19 +165,27 @@ export function initAdmin(x){
     if(!A.adbooks)return loading();
     const cols=COLLECTIONS.map(c=>`<div class="li"><div class="grow"><b style="font-size:14px">${esc(c.t.ru)}</b><div class="mute" style="font-size:12px">${c.ids.length} книг</div></div><button class="btn sm ghost" data-a="colEdit" data-id="${esc(c.id)}">Править</button></div>`).join('');
     const books=A.adbooks.list.map(b=>`<div class="li" style="align-items:flex-start"><div class="grow" style="min-width:0"><b style="font-size:14px">${esc(b.title)}</b>${b.hidden?' <span class="tag">скрыта</span>':''}<div class="mute" style="font-size:12px">${b.lang.toUpperCase()} · глав: ${b.chapters}</div><div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm ghost" data-a="bEdit" data-id="${esc(b.id)}">Править</button><button class="btn sm ghost" data-a="bVers" data-id="${esc(b.id)}">История текста</button><button class="btn sm ghost" data-a="bHide" data-id="${esc(b.id)}" data-on="${b.hidden?0:1}">${b.hidden?'Показать':'Скрыть'}</button><button class="btn sm ghost" data-a="bDel" data-id="${esc(b.id)}">Удалить</button></div></div></div>`).join('');
-    return `<div class="sec" style="margin-top:0"><div class="sec-h"><h2>Бот</h2></div><div class="card"><p class="mute" style="font-size:12.5px;margin-bottom:12px">Приветствие, которое бот отправляет на /start. Русский вариант получают пользователи с русским Telegram, узбекский с узбекским. Пустое поле вернёт текст по умолчанию.</p>
-      <div class="field"><label for="wlc">Приветствие (русский)</label><textarea id="wlc" class="in" data-m="adm:welcome" style="min-height:170px">${esc(M.welcome)}</textarea></div>
-      <div class="field"><label for="wlcU">Salomlashish (o‘zbekcha)</label><textarea id="wlcU" class="in" data-m="adm:welcomeUz" style="min-height:170px">${esc(M.welcomeUz)}</textarea></div>
-      <div class="field"><label for="appL">Ссылка на мини-апп</label><input id="appL" class="in" data-m="adm:appLink" value="${esc(M.appLink)}" placeholder="https://t.me/muloqotbooksbot/app">${'<p class="hint">Нужна для кнопки «Поделиться»: друг получает ссылку и сразу попадает в книгу. Формат: https://t.me/имя_бота/короткое_имя_приложения (короткое имя вы задали в @BotFather при /newapp).</p>'}</div>
-      <button class="btn block" data-a="wlcSave">Сохранить</button></div></div>
-    <div class="sec"><div class="sec-h"><h2>Вопрос недели</h2></div><div class="card"><div class="field"><label for="wqBook">Книга</label><select id="wqBook" class="in" data-chg="wqBook">${BOOKS.map(b=>`<option value="${esc(b.id)}" ${b.id===M.wq_book?'selected':''}>${esc(b.title)}</option>`).join('')}</select></div>
+    const g=(title,sub,body,open)=>`<details class="dgroup" ${open?'open':''}><summary><b>${title}</b><span>${sub}</span></summary><div class="dbody">${body}</div></details>`;
+    const origin=esc(location.origin);
+    return `<div class="sec" style="margin-top:0"><div class="sec-h"><h2>Бот</h2></div>
+    ${g('Ссылка на мини-апп',M.appLinkSaved?'✅ задана':'⚠️ не задана: «Поделиться» не открывает книги',`<div class="field"><label for="appL">Ссылка на приложение в Telegram</label><input id="appL" class="in" data-m="adm:appLink" value="${esc(M.appLink)}" placeholder="https://t.me/muloqotbooksbot/app" autocomplete="off"><p class="hint">Друг, получивший ссылку на книгу, сразу попадает в неё. Нужна и для inline-поиска.</p></div>
+      <details class="howto"><summary>Где взять ссылку?</summary><ol><li>В Telegram откройте @BotFather и отправьте <b>/newapp</b>, выберите бота.</li><li>Адрес приложения: <b>${origin}</b></li><li>Короткое имя: например <b>app</b>.</li><li>BotFather пришлёт ссылку вида <b>https://t.me/muloqotbooksbot/app</b>. Вставьте её сюда.</li></ol></details>
+      <button class="btn block" data-a="linkSave">Сохранить ссылку</button>`,!M.appLinkSaved)}
+    ${g('Приветствие бота','сообщение на команду /start',`<div class="field"><label for="wlc">По-русски</label><textarea id="wlc" class="in" data-m="adm:welcome" style="min-height:110px">${esc(M.welcome)}</textarea></div>
+      <div class="field"><label for="wlcU">O‘zbekcha</label><textarea id="wlcU" class="in" data-m="adm:welcomeUz" style="min-height:110px">${esc(M.welcomeUz)}</textarea></div>
+      <p class="hint">Русский текст получают пользователи с русским Telegram, узбекский с узбекским. Пустое поле вернёт текст по умолчанию. Кнопку «Открыть приложение» бот добавляет сам.</p>
+      <button class="btn block" style="margin-top:12px" data-a="wlcSave">Сохранить приветствие</button>`)}</div>
+    <div class="sec"><div class="sec-h"><h2>Приложение</h2></div>
+    ${g('Вопрос недели','показывается в «Сообщество → Обсуждения»',`<div class="field"><label for="wqBook">О какой книге</label><select id="wqBook" class="in" data-chg="wqBook">${BOOKS.map(b=>`<option value="${esc(b.id)}" ${b.id===M.wq_book?'selected':''}>${esc(b.title)}</option>`).join('')}</select></div>
       <div class="field"><label for="wqRu">Вопрос (русский)</label><textarea id="wqRu" class="in" data-m="adm:wq_ru" style="min-height:80px">${esc(M.wq_ru)}</textarea></div>
-      <div class="field"><label for="wqUz">Savol (o‘zbekcha)</label><textarea id="wqUz" class="in" data-m="adm:wq_uz" style="min-height:80px">${esc(M.wq_uz)}</textarea></div><button class="btn block" data-a="wqSave">Сохранить</button></div></div>
-    <div class="sec"><div class="sec-h"><h2>Подборки</h2><button class="link acc" data-a="colNew">+ Новая</button></div><div class="list">${cols||'<div class="li mute">Подборок нет</div>'}</div></div>
-    <div class="sec"><div class="sec-h"><h2>Книги</h2></div><div class="list">${books}</div><p class="mute" style="font-size:12.5px;margin-top:10px">Отзывы и обсуждения удаляются прямо в разделе «Сообщество»: у админа рядом с ними есть значок корзины.</p></div>`;
+      <div class="field"><label for="wqUz">Savol (o‘zbekcha)</label><textarea id="wqUz" class="in" data-m="adm:wq_uz" style="min-height:80px">${esc(M.wq_uz)}</textarea></div><button class="btn block" data-a="wqSave">Сохранить вопрос</button>`)}
+    ${g('Подборки',`${COLLECTIONS.length} шт. на главной`,`<div class="list" style="margin-bottom:12px">${cols||'<div class="li mute">Подборок нет</div>'}</div><button class="btn block ghost" data-a="colNew">+ Новая подборка</button>`)}
+    ${g('Книги',`${A.adbooks.list.length} шт.: править, скрыть, удалить, история текста`,`<div class="list">${books}</div><p class="hint">Отзывы и обсуждения удаляются в «Сообществе»: у админа рядом с ними есть значок корзины.</p>`)}</div>`;
   }
   CHG.wqBook=el=>{M.wq_book=el.value};
-  ACT.wlcSave=()=>bg(api('/api/admin/welcome','POST',{text:M.welcome,textUz:M.welcomeUz,appLink:M.appLink}).then(()=>toast('Сохранено')));
+  ACT.wlcSave=()=>bg(api('/api/admin/welcome','POST',{text:M.welcome,textUz:M.welcomeUz}).then(()=>toast('Приветствие сохранено')));
+  ACT.linkSave=()=>{const v=M.appLink.trim();if(v&&!/^https:\/\/t\.me\/\w+(\/\w+)?$/.test(v)){toast('Ссылка должна выглядеть так: https://t.me/имя_бота/имя_приложения');return}
+    bg(api('/api/admin/welcome','POST',{appLink:v}).then(()=>{M.appLinkSaved=v;toast(v?'Ссылка сохранена':'Ссылка удалена');x.refresh()}))};
   ACT.wqSave=()=>bg(api('/api/admin/weekly','POST',{bookId:M.wq_book,ru:M.wq_ru,uz:M.wq_uz}).then(async()=>{await loadBoot();toast('Вопрос недели обновлён')}));
   ACT.bHide=el=>bg(api(`/api/admin/books/${el.dataset.id}/hide`,'POST',{on:el.dataset.on==='1'}).then(async()=>{await loadBoot();toast('Готово');reload('content')}));
   ACT.bDel=el=>confirmSheet('Удалить книгу вместе с отзывами?','bDelGo',el.dataset.id,'Удалить');

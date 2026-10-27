@@ -490,8 +490,9 @@ route('GET','/api/admin/welcome',async c=>{
 },true);
 route('POST','/api/admin/welcome',async c=>{
   const save=async(key,val)=>{if(val)await run(c,"INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",key,J(key==='applink'?val:{text:val}));else await run(c,'DELETE FROM meta WHERE key=?',key)};
-  await save('welcome',clip(c.body.text,3500));await save('welcomeUz',clip(c.body.textUz,3500));
-  const link=clip(c.body.appLink,200);await save('applink',/^https:\/\/t\.me\/[\w]+(\/[\w]+)?$/.test(link)?link:'');
+  if(c.body.text!==undefined)await save('welcome',clip(c.body.text,3500));
+  if(c.body.textUz!==undefined)await save('welcomeUz',clip(c.body.textUz,3500));
+  if(c.body.appLink!==undefined){const link=clip(c.body.appLink,200);await save('applink',/^https:\/\/t\.me\/[\w]+(\/[\w]+)?$/.test(link)?link:'')}
   return json({ok:true});
 },true);
 route('POST','/api/admin/donate-settings',async c=>{
