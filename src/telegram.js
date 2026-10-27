@@ -46,3 +46,6 @@ export const initData=()=>inTg?w.initData||'':'';
 export function openInvoice(link,cb){if(!inTg||!w.openInvoice)return false;try{w.openInvoice(link,cb);return true}catch(e){return false}}
 export function openLink(url){if(inTg&&w.openLink){try{w.openLink(url);return}catch(e){}}window.open(url,'_blank','noopener')}
 export const close=()=>{if(inTg)try{w.close()}catch(e){}};
+/* Rich "share a prepared card" flow (Mini Apps 8.0+). Returns false when the client cannot do it, so callers can fall back to a plain link. */
+export const canShareMessage=()=>!!(inTg&&w.shareMessage&&(!w.isVersionAtLeast||w.isVersionAtLeast('8.0')));
+export function shareMessage(id,cb){if(!canShareMessage())return false;try{w.shareMessage(id,cb);return true}catch(e){return false}}

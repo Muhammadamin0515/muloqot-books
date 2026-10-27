@@ -238,7 +238,12 @@ ACT.bookTab=el=>{BK.tab=el.dataset.v;refresh()};
 ACT.toggleSyn=()=>{BK.syn=!BK.syn;refresh()};
 ACT.rate=el=>{tg.notify('success');const id=el.dataset.id;S.ratings[id]=+el.dataset.v;save();toast(tr('Оценка сохранена','Baho saqlandi'));
   if(net.online)bg(api(`/api/books/${id}/rate`,'POST',{value:S.ratings[id]}).then(r=>{Object.assign(book(id),r);refresh()}));else refresh()};
-ACT.shareBook=el=>{const b=book(el.dataset.id);{const txt=`${b.title} — ${authorOf(b).name}`,link=S.appLink?`${S.appLink}?startapp=book_${b.id}`:'';if(!tg.share(txt,link))copyText(link?`${txt}\n${link}`:txt,t('share_copied'))}};
+ACT.shareBook=async el=>{const id=el.dataset.id,b=book(id),st=stat(b);
+  /* Preferred: a rich card prepared by the bot (title, author, rating, description, "Read" button). */
+  if(net.online&&tg.canShareMessage()){try{const r=await api(`/api/books/${id}/prepared`,'POST',{lang:S.lang});if(tg.shareMessage(r.id))return}catch(e){}}
+  /* Fallback for older clients: a link with a readable caption. */
+  const txt=`📖 ${b.title}\n${authorOf(b).name} · ⭐ ${st.avg}`,link=S.appLink?`${S.appLink}?startapp=book_${b.id}`:'';
+  if(!tg.share(txt,link))copyText(link?`${txt}\n${link}`:txt,t('share_copied'))};
 
 /* =====================================================================
    REVIEWS / COMMUNITY actions

@@ -552,17 +552,30 @@ route('POST','/api/author/books/:id/update',async(c,id)=>{
 /* ---------- inline search (@bot query in any chat) ---------- */
 const fold=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,'').replace(/ё/g,'е');
 const hesc=t=>String(t||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
-async function onInline(c,q){
-  const env=c.env,qs=fold(q.query).trim(),base=baseUrl(env);
-  const rows=await all(c,"SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,json_extract(b.data,'$.img') IS NOT NULL img,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE b.hidden=0 OR b.hidden IS NULL LIMIT 500");
-  const al=await get(c,"SELECT value FROM meta WHERE key='applink'"),link=al?P(al.value):'';
-  const list=(qs?rows.filter(b=>fold(b.t+' '+b.an).includes(qs)):rows.slice().sort((x,y)=>(y.n||0)-(x.n||0))).slice(0,10);
-  const results=list.map(b=>({type:'article',id:b.id,title:b.t,description:`${b.an||''} · ⭐ ${Math.round(b.r*10)/10}`,
+const BOOK_ROW_SQL="SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,json_extract(b.data,'$.img') IS NOT NULL img,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE (b.hidden=0 OR b.hidden IS NULL)";
+/** One book as a Telegram inline result: used by inline search and by the prepared "share" card. */
+function bookCard(b,{base,link,lang}){
+  const rating=Math.round(b.r*10)/10,d=String(b.d||'');
+  return{type:'article',id:b.id,title:b.t,description:`${b.an||''} · ⭐ ${rating}`,
     ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
-    input_message_content:{message_text:`📖 <b>${hesc(b.t)}</b>\n${hesc(b.an)} · ⭐ ${Math.round(b.r*10)/10}\n\n${hesc(String(b.d||'').slice(0,200))}${String(b.d||'').length>200?'…':''}`,parse_mode:'HTML'},
-    ...(link?{reply_markup:{inline_keyboard:[[{text:'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})}));
-  await tgApi(env,'answerInlineQuery',{inline_query_id:q.id,results,cache_time:30,is_personal:false,...(base?{button:{text:'📚 Открыть Muloqot Books',web_app:{url:base}}}:{})});
+    input_message_content:{message_text:`📖 <b>${hesc(b.t)}</b>\n${hesc(b.an)} · ⭐ ${rating}\n\n${hesc(d.slice(0,200))}${d.length>200?'…':''}`,parse_mode:'HTML'},
+    ...(link?{reply_markup:{inline_keyboard:[[{text:lang==='uz'?'📖 Ilovada o‘qish':'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
 }
+const getAppLink=async c=>{const al=await get(c,"SELECT value FROM meta WHERE key='applink'");return al?P(al.value):''};
+async function onInline(c,q){
+  const env=c.env,qs=fold(q.query).trim(),base=baseUrl(env),lang=(q.from?.language_code||'').startsWith('uz')?'uz':'ru';
+  const rows=await all(c,BOOK_ROW_SQL+' LIMIT 500'),link=await getAppLink(c);
+  const list=(qs?rows.filter(b=>fold(b.t+' '+b.an).includes(qs)):rows.slice().sort((x,y)=>(y.n||0)-(x.n||0))).slice(0,10);
+  await tgApi(env,'answerInlineQuery',{inline_query_id:q.id,results:list.map(b=>bookCard(b,{base,link,lang})),cache_time:30,is_personal:false,...(base?{button:{text:'📚 Открыть Muloqot Books',web_app:{url:base}}}:{})});
+}
+/* "Share" from the app: the bot prepares a rich card and the Mini App hands it to Telegram's chat picker (Telegram.WebApp.shareMessage). */
+route('POST','/api/books/:id/prepared',async(c,id)=>{
+  if(!c.env.BOT_TOKEN||!/^\d+$/.test(c.user.id))return bad(400,'unavailable');
+  const row=await get(c,BOOK_ROW_SQL+' AND b.id=?',id);if(!row)return bad(404);
+  const r=await tgJson(c.env,'savePreparedInlineMessage',{user_id:+c.user.id,result:bookCard(row,{base:baseUrl(c.env),link:await getAppLink(c),lang:c.body.lang==='uz'?'uz':'ru'}),allow_user_chats:true,allow_group_chats:true,allow_channel_chats:true,allow_bot_chats:false});
+  if(!r?.ok||!r.result?.id)return bad(502,r?.description||'telegram error');
+  return json({id:r.result.id});
+});
 
 /* ---------- book versions (kept so an approved replacement can be rolled back) ---------- */
 async function snapshotBook(c,bookId,book){
