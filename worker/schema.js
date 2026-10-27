@@ -10,6 +10,8 @@ const DDL=[
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_uniq ON reports(kind,target,user_id)',
   'CREATE TABLE IF NOT EXISTS actions(user_id TEXT,ts INTEGER)',
   'CREATE INDEX IF NOT EXISTS idx_actions_user ON actions(user_id,ts)',
+  'CREATE TABLE IF NOT EXISTS book_stats(book_id TEXT,day TEXT,views INTEGER DEFAULT 0,reads INTEGER DEFAULT 0,finishes INTEGER DEFAULT 0,PRIMARY KEY(book_id,day))',
+  'CREATE TABLE IF NOT EXISTS book_seen(user_id TEXT,book_id TEXT,day TEXT,type TEXT,PRIMARY KEY(user_id,book_id,day,type))',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];
 const ALTERS=[

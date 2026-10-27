@@ -23,7 +23,7 @@ async function verifyInitData(initData,token){
     return JSON.parse(p.get('user')||'null');
   }catch{return null}
 }
-const tgApi=(env,method,body)=>env.BOT_TOKEN?fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:J(body)}).catch(()=>null):Promise.resolve(null);
+const tgApi=(env,method,body)=>env.BOT_TOKEN?fetch(`${env.TG_API||'https://api.telegram.org'}/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:J(body)}).catch(()=>null):Promise.resolve(null);
 const tgJson=async(env,method,body)=>{const r=await tgApi(env,method,body);return r?r.json().catch(()=>null):null};
 /** Derived from the bot token, so no extra secret has to be configured. */
 const webhookSecret=async env=>hex(await hmac(new TextEncoder().encode(env.BOT_TOKEN||''),new TextEncoder().encode('muloqot-webhook'))).slice(0,48);
@@ -69,7 +69,7 @@ const rel=ms=>{const m=Math.max(0,Math.floor((Date.now()-ms)/6e4));
 /* ---------- serializers (bulk, a handful of queries per request) ---------- */
 function bookOut(row,agg){const b=P(row.data);const a=agg[row.id]||{n:0,s:0};const count=b.count+a.n;
   /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/text) and covers are served as images (/api/cover/:id). */
-  return{...b,chapters:b.chapters.map(ch=>({t:ch.t})),...(b.img?{img:`/api/cover/${row.id}?v=${b.img.length}`}:{}),count,rating:Math.round((b.rating*b.count+a.s)/count*100)/100}}
+  return{...b,chapters:b.chapters.map(ch=>({t:ch.t})),...(b.img?{img:`/api/cover/${row.id}?v=${b.img.length}`}:{}),count,rating:count?Math.round((b.rating*b.count+a.s)/count*100)/100:0}}
 const ratingAgg=async c=>{const o={};(await all(c,'SELECT book_id,COUNT(*) n,SUM(value) s FROM ratings GROUP BY book_id')).forEach(r=>o[r.book_id]={n:r.n,s:r.s});return o};
 const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id=?',id);if(!row)return null;const a=await get(c,'SELECT COUNT(*) n,COALESCE(SUM(value),0) s FROM ratings WHERE book_id=?',id);return bookOut(row,{[id]:a})};
 
@@ -282,6 +282,9 @@ route('GET','/api/admin/stats',async c=>{
   /* each metric is isolated, so one failing query cannot blank the whole overview */
   await Promise.all(Q.map(async([k,sql,...a])=>{try{out[k]=(await get(c,sql,...a)).n}catch(e){out[k]=0;out.errors.push(k+': '+String(e.message||e).slice(0,120))}}));
   try{out.signups=await all(c,"SELECT date(created/1000,'unixepoch') d,COUNT(*) n FROM users WHERE created>? GROUP BY d ORDER BY d",now-14*D)}catch(e){out.errors.push('signups: '+String(e.message||e).slice(0,120))}
+  try{const since=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
+    const top=await all(c,"SELECT s.book_id,SUM(s.views) v,SUM(s.reads) r,SUM(s.finishes) f,json_extract(b.data,'$.title') t FROM book_stats s JOIN books b ON b.id=s.book_id WHERE s.day>=? GROUP BY s.book_id ORDER BY v DESC LIMIT 5",since);
+    out.top=top.map(x=>({id:x.book_id,title:x.t,views:x.v,reads:x.r,finishes:x.f}))}catch(e){out.top=[];out.errors.push('top: '+String(e.message||e).slice(0,100))}
   return json(out);
 },true);
 
@@ -437,7 +440,7 @@ route('GET','/api/admin/donations',async c=>{
 route('POST','/api/admin/webhook/setup',async c=>{
   if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
   const url=new URL(c.request.url).origin+'/telegram/webhook';
-  const r=await tgJson(c.env,'setWebhook',{url,secret_token:await webhookSecret(c.env),allowed_updates:['message','pre_checkout_query','callback_query'],drop_pending_updates:false});
+  const r=await tgJson(c.env,'setWebhook',{url,secret_token:await webhookSecret(c.env),allowed_updates:['message','pre_checkout_query','callback_query','inline_query'],drop_pending_updates:false});
   const bot=await setupBot(c.env);
   return json({ok:!!r?.ok,description:r?.description||'',url,bot});
 },true);
@@ -479,6 +482,49 @@ route('POST','/api/admin/donate-settings',async c=>{
     intro:{ru:clip(b.introRu,600)||cur.intro.ru,uz:clip(b.introUz,600)||clip(b.introRu,600)||cur.intro.uz},thanks:{ru:clip(b.thanksRu,300)||cur.thanks.ru,uz:clip(b.thanksUz,300)||clip(b.thanksRu,300)||cur.thanks.uz}};
   await run(c,"INSERT INTO meta VALUES('donate',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(next));return json({ok:true});
 },true);
+
+/* ---------- author stats & book events ---------- */
+route('POST','/api/books/:id/event',async(c,id)=>{
+  const col={view:'views',read:'reads',finish:'finishes'}[c.body.type];
+  if(!col||!await get(c,'SELECT 1 x FROM books WHERE id=?',id))return bad();
+  const day=new Date().toISOString().slice(0,10);
+  const r=await run(c,'INSERT OR IGNORE INTO book_seen(user_id,book_id,day,type) VALUES(?,?,?,?)',c.user.id,id,day,c.body.type);
+  if(r.meta.changes)await run(c,`INSERT INTO book_stats(book_id,day,${col}) VALUES(?,?,1) ON CONFLICT(book_id,day) DO UPDATE SET ${col}=${col}+1`,id,day);
+  if(Math.random()<0.02)await run(c,'DELETE FROM book_seen WHERE day<?',new Date(Date.now()-60*864e5).toISOString().slice(0,10));
+  return json({ok:true});
+});
+const OWN="FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?";
+route('GET','/api/author/stats',async c=>{
+  const since=new Date(Date.now()-13*864e5).toISOString().slice(0,10);
+  const [books,tot,series,rev]=await batch(c,[
+    stmt(c,`SELECT b.id,b.data,b.hidden ${OWN} ORDER BY b.added DESC`,c.user.id),
+    stmt(c,`SELECT s.book_id,SUM(s.views) v,SUM(s.reads) r,SUM(s.finishes) f FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? GROUP BY s.book_id`,c.user.id),
+    stmt(c,`SELECT s.day,SUM(s.views) v,SUM(s.reads) r FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? AND s.day>=? GROUP BY s.day ORDER BY s.day`,c.user.id,since),
+    stmt(c,`SELECT r.book_id,COUNT(*) n FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? GROUP BY r.book_id`,c.user.id)]);
+  const agg=await ratingAgg(c);
+  return json({books:books.map(r=>{const b=bookOut(r,agg),t=tot.find(x=>x.book_id===r.id)||{},v=rev.find(x=>x.book_id===r.id);
+    return{id:r.id,title:b.title,rating:b.rating,count:b.count,hidden:!!r.hidden,chapters:b.chapters.length,views:t.v||0,reads:t.r||0,finishes:t.f||0,reviews:v?.n||0}}),series});
+});
+route('POST','/api/author/books/:id/edit',async(c,id)=>{
+  const row=await get(c,`SELECT b.data ${OWN} AND b.id=?`,c.user.id,id);if(!row)return bad(404);
+  const b=P(row.data),title=clip(c.body.title,120),desc=clip(c.body.desc,3000);if(title.length<2||desc.length<20)return bad();
+  b.title=title;b.desc=desc;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);return json({ok:true});
+});
+
+/* ---------- inline search (@bot query in any chat) ---------- */
+const fold=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,'').replace(/ё/g,'е');
+const hesc=t=>String(t||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+async function onInline(c,q){
+  const env=c.env,qs=fold(q.query).trim(),base=baseUrl(env);
+  const rows=await all(c,"SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,json_extract(b.data,'$.img') IS NOT NULL img,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE b.hidden=0 OR b.hidden IS NULL LIMIT 500");
+  const al=await get(c,"SELECT value FROM meta WHERE key='applink'"),link=al?P(al.value):'';
+  const list=(qs?rows.filter(b=>fold(b.t+' '+b.an).includes(qs)):rows.slice().sort((x,y)=>(y.n||0)-(x.n||0))).slice(0,10);
+  const results=list.map(b=>({type:'article',id:b.id,title:b.t,description:`${b.an||''} · ⭐ ${Math.round(b.r*10)/10}`,
+    ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
+    input_message_content:{message_text:`📖 <b>${hesc(b.t)}</b>\n${hesc(b.an)} · ⭐ ${Math.round(b.r*10)/10}\n\n${hesc(String(b.d||'').slice(0,200))}${String(b.d||'').length>200?'…':''}`,parse_mode:'HTML'},
+    ...(link?{reply_markup:{inline_keyboard:[[{text:'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})}));
+  await tgApi(env,'answerInlineQuery',{inline_query_id:q.id,results,cache_time:30,is_personal:false,...(base?{button:{text:'📚 Открыть Muloqot Books',web_app:{url:base}}}:{})});
+}
 
 /* ---------- reports ---------- */
 const REPORT_KINDS={review:['reviews','text'],thread:['threads','title'],comment:['comments','text']};
@@ -592,7 +638,8 @@ async function handleWebhook(request,env,ctx){
     await tgApi(env,'answerPreCheckoutQuery',d&&d.status==='pending'?{pre_checkout_query_id:q.id,ok:true}:{pre_checkout_query_id:q.id,ok:false,error_message:'Платёж не найден или уже оплачен'});
   }else if(u.message?.successful_payment){
     await onPaid(c,u.message.successful_payment,u.message.from?.id);
-  }else if(u.callback_query)await onCallback(c,u.callback_query);
+  }else if(u.inline_query)await onInline(c,u.inline_query);
+  else if(u.callback_query)await onCallback(c,u.callback_query);
   else if(u.message?.text&&u.message.chat?.type==='private')await onBotMessage(c,u.message);
   return new Response('ok');
 }
