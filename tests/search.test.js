@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {search,suggest,key,dist} from '../src/search.js';
+const docs=[{id:'1',title:'Преступление и наказание',author:'Фёдор Достоевский'},{id:'2',title:'O‘tkan kunlar',author:'Abdulla Qodiriy'},{id:'3',title:'Дом на улице Тополей',author:'Ирина Вальцева'},{id:'4',title:'Kecha va kunduz',author:'Cho‘lpon'},{id:'5',title:'Xamsa',author:'Alisher Navoiy'}];
+const ids=q=>search(q,docs).map(r=>r.id);
+test('exact, prefix and case',()=>{assert.deepEqual(ids('ДОСТОЕВСКИЙ'),['1']);assert.deepEqual(ids('прест'),['1']);assert.deepEqual(ids('дом улице'),['3'])});
+test('Cyrillic and Latin spellings meet',()=>{assert.equal(key('Навоий'),key('Navoiy'));assert.deepEqual(ids('навоий'),['5']);assert.deepEqual(ids('хамса'),['5']);assert.deepEqual(ids('чолпон'),['4']);assert.deepEqual(ids('otkan'),['2'])});
+test('typos and endings',()=>{assert.deepEqual(ids('Достаевский'),['1']);assert.deepEqual(ids('dostoevski'),['1']);assert.deepEqual(ids('тополя'),['3']);assert.equal(search('Достаевский',docs)[0].fuzzy,true)});
+test('every word must match, nonsense finds nothing',()=>{assert.deepEqual(ids('дом навоий'),[]);assert.deepEqual(ids('zzzz'),[])});
+test('empty query keeps everything',()=>assert.equal(search('',docs).length,5));
+test('suggest corrects a misspelt word',()=>{assert.equal(suggest('Достаевскй',docs),'Достоевский');assert.equal(suggest('qwertyu',docs),null)});
+test('distance',()=>{assert.equal(dist('abc','abd'),1);assert.equal(dist('ab','ba'),1);assert.ok(dist('abcdef','uvwxyz',2)>2)});

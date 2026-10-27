@@ -2,7 +2,7 @@
 import {cover} from './art.js';
 import {COVER_STYLES} from '../worker/covers.js';
 import {compressImage} from './image.js';
-import {readManuscript,analyze,detectLang,titleFromFile,textBytes,MAX_FILE,MAX_TEXT_BYTES} from './manuscript.js';
+import {readManuscript,readManuscriptFull,analyze,detectLang,titleFromFile,textBytes,MAX_FILE,MAX_TEXT_BYTES} from './manuscript.js';
 
 const DRAFT_KEY='muloqot.draft';
 const hasLetters=s=>/[\p{L}\p{N}]/u.test(s||'');
@@ -41,9 +41,13 @@ export function initStudio(x){
     toolarge:tr('Текст слишком большой для публикации. Разделите книгу на два тома.','Matn juda katta. Kitobni ikki jildga bo‘ling.'),
     coverlarge:tr('Не удалось уменьшить обложку. Выберите другую картинку.','Muqovani kichraytirib bo‘lmadi. Boshqa rasm tanlang.'),
     coverformat:tr('Обложка должна быть картинкой JPG, PNG или WebP','Muqova JPG, PNG yoki WebP bo‘lishi kerak'),
+    ratelimit:tr('Сегодня отправлено слишком много заявок. Попробуйте завтра.','Bugun juda ko‘p ariza yuborildi. Ertaga urinib ko‘ring.'),
     pending:tr('Предыдущий текст ещё на проверке','Oldingi matn hali tekshiruvda'),
     scan:tr('В этом PDF нет текста: похоже, это скан или фотографии страниц. Сохраните книгу из Word/Google Docs как PDF с текстом или загрузите .docx.','Bu PDFda matn yo‘q: skan yoki sahifa rasmlariga o‘xshaydi. Kitobni Word/Google Docs dan matnli PDF qilib saqlang yoki .docx yuklang.'),
-    format:tr('Этот формат не поддерживается. Сохраните книгу как .docx, .pdf или .txt.','Bu format qo‘llab-quvvatlanmaydi. Kitobni .docx, .pdf yoki .txt qilib saqlang.'),
+    drm:tr('Этот EPUB защищён (DRM). Мы не можем его прочитать: загрузите книгу без защиты.','Bu EPUB himoyalangan (DRM). O‘qib bo‘lmaydi: himoyasiz faylni yuklang.'),
+    epub:tr('Файл не похож на EPUB. Проверьте, что книга сохранена целиком.','Fayl EPUBga o‘xshamaydi. Kitob to‘liq saqlanganini tekshiring.'),
+    zip:tr('Файл повреждён или не является книгой.','Fayl shikastlangan yoki kitob emas.'),
+    format:tr('Этот формат не поддерживается. Сохраните книгу как .docx, .pdf, .epub или .txt.','Bu format qo‘llab-quvvatlanmaydi. Kitobni .docx, .pdf, .epub yoki .txt qilib saqlang.'),
     big:tr('Файл больше 25 МБ. Уберите картинки из документа или разделите книгу.','Fayl 25 MB dan katta. Hujjatdan rasmlarni olib tashlang yoki kitobni bo‘ling.'),
     read:tr('Не удалось прочитать файл. Попробуйте сохранить его как .docx или .txt.','Faylni o‘qib bo‘lmadi. Uni .docx yoki .txt qilib saqlab ko‘ring.'),
     empty:tr('В файле не нашлось текста','Faylda matn topilmadi'),
@@ -91,9 +95,9 @@ export function initStudio(x){
 
   function stepFile(){
     const drop=`<label class="drop" for="wzFile">${ico(W.reading?'clock':'file',26)}<div class="grow"><b>${W.reading?esc(W.prog||tr('Читаем файл…','Fayl o‘qilmoqda…')):(W.fileName?tr('Выбрать другой файл','Boshqa fayl tanlash'):tr('Выбрать файл с книгой','Kitob faylini tanlash'))}</b>
-      <div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">.docx · .pdf · .txt · .md</div></div>${ico('upload',22)}</label>
-      <input id="wzFile" type="file" accept=".docx,.pdf,.txt,.md,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-chg="wzFile" style="position:absolute;opacity:0;width:1px;height:1px">`;
-    return `<h2 class="wz-h">${tr('Загрузите книгу','Kitobni yuklang')}</h2><p class="mute wz-p">${tr('Подойдёт файл из Word, Google Docs или PDF. Главы мы определим сами.','Word, Google Docs yoki PDF fayli mos keladi. Boblarni o‘zimiz aniqlaymiz.')}</p>
+      <div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">.docx · .pdf · .epub · .txt · .md</div></div>${ico('upload',22)}</label>
+      <input id="wzFile" type="file" accept=".docx,.pdf,.epub,.txt,.md,application/pdf,application/epub+zip,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-chg="wzFile" style="position:absolute;opacity:0;width:1px;height:1px">`;
+    return `<h2 class="wz-h">${tr('Загрузите книгу','Kitobni yuklang')}</h2><p class="mute wz-p">${tr('Подойдёт файл из Word, Google Docs, PDF или EPUB. Главы мы определим сами.','Word, Google Docs, PDF yoki EPUB fayli mos keladi. Boblarni o‘zimiz aniqlaymiz.')}</p>
       ${drop}${W.reading?'<div class="bar" style="margin-top:14px"><i style="width:100%;opacity:.5"></i></div>':''}
       ${W.err?`<p class="err" style="margin-top:12px">${esc(W.err)}</p>`:''}${W.info?infoCard():''}
       <button class="wz-link" data-a="wzTip">${ico('info',16)} ${tr('Как оформить главы','Boblarni qanday rasmiylashtirish')}</button>`;
@@ -220,13 +224,15 @@ export function initStudio(x){
     if(f.size>MAX_FILE){W.err=ERR.big;refresh();return}
     W.reading=true;W.prog=tr('Читаем файл…','Fayl o‘qilmoqda…');refresh();
     try{
-      const text=await readManuscript(f,(p,n)=>{W.prog=n?tr(`Читаем PDF: страница ${p} из ${n}`,`PDF o‘qilmoqda: ${p}/${n}-bet`):W.prog;const b=document.querySelector('.drop b');if(b)b.textContent=W.prog});
+      const {text,meta}=await readManuscriptFull(f,(p,n)=>{W.prog=n?tr(`Читаем PDF: страница ${p} из ${n}`,`PDF o‘qilmoqda: ${p}/${n}-bet`):W.prog;const b=document.querySelector('.drop b');if(b)b.textContent=W.prog});
       const info=analyze(text);
       if(!info.chapters.length||text.trim().length<500)throw Object.assign(new Error('short'),{code:'manuscript'});
       if(textBytes(text)>MAX_TEXT_BYTES)throw Object.assign(new Error('big'),{code:'toolarge'});
       W.body=text;W.info=info;W.fileName=f.name;
-      if(!W.title.trim())W.title=titleFromFile(f.name);
-      W.lang=detectLang(text);
+      if(!W.title.trim())W.title=meta.title||titleFromFile(f.name);
+      if(!W.author.trim()&&meta.author)W.author=meta.author.slice(0,60);
+      if(!W.desc.trim()&&meta.description)W.desc=meta.description.slice(0,1500);
+      W.lang=meta.lang==='uz'||meta.lang==='ru'?meta.lang:detectLang(text);
       draftSave();
     }catch(e){
       W.err=ERR[e.code]||(e.message==='short'?ERR.empty:ERR.read);
@@ -329,8 +335,8 @@ export function initStudio(x){
   ACT.autSave=el=>{closeSheet();x.bg(api(`/api/author/books/${el.dataset.id}/edit`,'POST',{title:MODEL.aut.title,desc:MODEL.aut.desc}).then(async()=>{toast(tr('Сохранено','Saqlandi'));await loadBoot();loadAuthor()}))};
 
   const updSheet=()=>`<h2>${tr('Заменить текст книги','Kitob matnini almashtirish')}</h2><p class="mute" style="font-size:13px;margin-bottom:14px">${tr('Новый текст пройдёт проверку модератором. До одобрения читатели видят прежнюю версию, оценки и отзывы сохранятся.','Yangi matn moderator tekshiruvidan o‘tadi. Tasdiqlanguncha o‘quvchilar eski versiyani ko‘radi, baho va sharhlar saqlanadi.')}</p>
-    <label class="drop" for="updFile">${x.ico(UPD.reading?'clock':'file',26)}<div class="grow"><b>${UPD.reading?tr('Читаем файл…','Fayl o‘qilmoqda…'):(UPD.fileName?esc(UPD.fileName):t('up_file'))}</b><div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">${UPD.fileName&&!UPD.reading?Math.round(UPD.body.length/1000)+tr('k знаков','k belgi'):'.docx · .pdf · .txt · .md'}</div></div>${ico('upload',22)}</label>
-    <input id="updFile" type="file" accept=".docx,.pdf,.txt,.md,application/pdf,text/plain" data-chg="updFile" style="position:absolute;opacity:0;width:1px;height:1px">
+    <label class="drop" for="updFile">${x.ico(UPD.reading?'clock':'file',26)}<div class="grow"><b>${UPD.reading?tr('Читаем файл…','Fayl o‘qilmoqda…'):(UPD.fileName?esc(UPD.fileName):t('up_file'))}</b><div class="mute" style="font-size:12.5px;font-weight:500;margin-top:3px">${UPD.fileName&&!UPD.reading?Math.round(UPD.body.length/1000)+tr('k знаков','k belgi'):'.docx · .pdf · .epub · .txt · .md'}</div></div>${ico('upload',22)}</label>
+    <input id="updFile" type="file" accept=".docx,.pdf,.epub,.txt,.md,application/pdf,application/epub+zip,text/plain" data-chg="updFile" style="position:absolute;opacity:0;width:1px;height:1px">
     ${UPD.err?`<p class="err" style="margin-top:10px">${esc(UPD.err)}</p>`:''}
     <div class="field" style="margin-top:16px"><label for="updNote">${tr('Что изменилось (необязательно)','Nima o‘zgardi (ixtiyoriy)')}</label><textarea id="updNote" class="in" data-m="aut:note" style="min-height:80px" placeholder="${tr('Например: исправлены опечатки, добавлена глава 5','Masalan: xatolar tuzatildi, 5-bob qo‘shildi')}">${esc(MODEL.aut.note)}</textarea></div>
     <button class="btn block" data-a="updSend" ${UPD.body.length<500||UPD.busy||UPD.reading?'disabled':''}>${UPD.busy?tr('Отправляем…','Yuborilmoqda…'):tr('Отправить на проверку','Tekshiruvga yuborish')}</button>`;
@@ -338,7 +344,7 @@ export function initStudio(x){
   CHG.updFile=async el=>{const f=el.files&&el.files[0];el.value='';if(!f)return;
     if(f.size>MAX_FILE){UPD.err=ERR.big;setSheet(updSheet());return}
     UPD.err=null;UPD.reading=true;setSheet(updSheet());
-    try{const text=await readManuscript(f);if(text.trim().length<500)throw Object.assign(new Error('short'),{code:'manuscript'});if(textBytes(text)>MAX_TEXT_BYTES)throw Object.assign(new Error('big'),{code:'toolarge'});UPD.body=text;UPD.fileName=f.name}
+    try{const {text}=await readManuscriptFull(f);if(text.trim().length<500)throw Object.assign(new Error('short'),{code:'manuscript'});if(textBytes(text)>MAX_TEXT_BYTES)throw Object.assign(new Error('big'),{code:'toolarge'});UPD.body=text;UPD.fileName=f.name}
     catch(e){UPD.err=ERR[e.code]||ERR.read}
     UPD.reading=false;setSheet(updSheet())};
   ACT.updSend=async()=>{if(UPD.busy||UPD.body.length<500)return;UPD.busy=true;setSheet(updSheet());

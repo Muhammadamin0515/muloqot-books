@@ -5,8 +5,12 @@ import * as tg from './telegram.js';
 import {api,net} from './api.js';
 import {initAdmin} from './admin.js';
 import {initDonate} from './donate.js';
+import {initCatalogAdmin} from './catalog-admin.js';
 import {initStudio} from './studio.js';
 import {initAchievements} from './achievements.js';
+import {search as fuzzySearch,suggest as suggestWord,key as skey} from './search.js';
+import {recommend} from './reco.js';
+import {initAudio} from './audio.js';
 
 const KEY='muloqot.proto.v1';
 const $=(s,el=document)=>el.querySelector(s);
@@ -47,7 +51,7 @@ const tr=(ru,uz)=>S.lang==='ru'?ru:uz;
 
 /* ---------- helpers ---------- */
 function stat(b){if(net.online)return{avg:Math.round(b.rating*10)/10,n:b.count};const u=S.ratings[b.id];const n=b.count+(u?1:0);const avg=u?(b.rating*b.count+u)/n:b.rating;return{avg:Math.round(avg*10)/10,n}}
-function pctRaw(id){const pr=S.progress[id];if(!pr)return 0;const n=book(id).chapters.length;return Math.min(100,Math.round(100*(pr.ch+pr.p)/n))}
+function pctRaw(id){const pr=S.progress[id];if(!pr)return 0;const n=book(id).chapters.length;if(!n)return 0;return Math.min(100,Math.round(100*(pr.ch+pr.p)/n))}
 function pctOf(id){return S.finished.includes(id)?100:Math.min(99,pctRaw(id))}
 const readingIds=()=>Object.keys(S.progress).filter(id=>!S.finished.includes(id)&&book(id)).sort((a,b)=>(S.progress[b].ts||0)-(S.progress[a].ts||0));
 const stars=(v,s=14)=>`<span class="stars" role="img" aria-label="${v}/5">${[1,2,3,4,5].map(i=>ico('star',s,i<=Math.round(v)?'f':'e')).join('')}</span>`;
@@ -110,7 +114,10 @@ ACT.obSkip=finishOnb;
 /* =====================================================================
    HOME
    ===================================================================== */
-const bkCard=(b,badge)=>{const st=stat(b);return `<button class="bk" data-a="openBook" data-id="${b.id}">${badge?`<span class="newtag">${badge}</span>`:''}${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${ico('star',13,'f')}<b style="color:var(--fg)">${st.avg}</b><span class="tag">${b.lang.toUpperCase()}</span></span></button>`};
+/* No rating is shown until someone has actually rated the book. */
+const rateBit=st=>st.n>0?`${ico('star',13,'f')}<b style="color:var(--fg)">${st.avg}</b>`:`<span class="mute">${tr('Нет оценок','Baho yo‘q')}</span>`;
+const kindBit=b=>`${b.audio>0?`<span class="kind">${ico('headphones',13)}</span>`:''}${b.fullText===false?`<span class="kind dim" title="${tr('Только описание','Faqat tavsif')}">${ico('info',13)}</span>`:''}`;
+const bkCard=(b,badge)=>{const st=stat(b);return `<button class="bk" data-a="openBook" data-id="${b.id}">${badge?`<span class="newtag">${badge}</span>`:''}${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${rateBit(st)}<span class="tag">${b.lang.toUpperCase()}</span>${kindBit(b)}</span></button>`};
 const colCard=c=>{const bs=c.ids.slice(0,3).map(book);return `<button class="col" data-a="openCollection" data-id="${c.id}" style="background:linear-gradient(135deg,${c.pal[0]},${c.pal[1]})"><div class="stack">${bs.map((b,i)=>`<div style="position:absolute;left:${i*28}px;top:${i*9}px;width:62px;z-index:${3-i}">${cover(b,'sm')}</div>`).join('')}</div><div class="tx"><b>${esc(L(c.t))}</b><small>${c.ids.length} ${t('books_n')}</small></div></button>`};
 const donCard=()=>{const g=S.donateGoal,pct=g?Math.min(100,Math.round(g.raised/g.target*100)):0;
   return `<div class="px" style="margin-top:30px"><button class="don-card cine" data-a="openDonate"><span class="don-ico">${ico('heart',22)}</span><div class="grow" style="min-width:0;text-align:left"><span class="eyebrow" style="color:#f4a07c">${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</span><b class="don-t">${g?esc(L(g.title)):tr('Помогите создавать новые книги','Yangi kitoblar yaratishga yordam bering')}</b>${g?`<div class="bar" style="margin:9px 0 5px"><i style="width:${pct}%"></i></div><span class="mono" style="font-size:12px;color:#c8bcae">⭐ ${g.raised} / ${g.target}</span>`:''}</div>${ico('chev',18)}</button></div>`};
@@ -119,19 +126,24 @@ SCREENS.home=()=>{
   const rd=readingIds(),cb=rd.length?book(rd[0]):null;
   const cont=cb?`<button class="cont cine" data-a="read" data-id="${cb.id}"><div class="bgc">${cover(cb,'sm')}</div><div class="fade"></div><div class="in-"><div class="cv">${cover(cb)}</div><div class="grow" style="display:flex;flex-direction:column;justify-content:center;min-width:0"><span class="eyebrow" style="color:#f4a07c">${t('continue')}</span><h3>${esc(cb.title)}</h3><span style="color:#c8bcae;font-size:13px">${esc(authorOf(cb).name)}</span><div class="bar"><i style="width:${pctOf(cb.id)}%"></i></div><div class="row" style="justify-content:space-between;gap:8px"><span class="mono" style="font-size:12px;color:#c8bcae;white-space:nowrap">${pctOf(cb.id)}% · ${S.progress[cb.id].ch+1}/${cb.chapters.length}</span><span class="btn sm">${t('resume')} ${ico('arrow',15)}</span></div></div></div></button>`
    :`<div class="card">${empty('lib',t('empty_cont'),t('empty_cont_d'),`<button class="btn sm" data-a="tab" data-id="catalog">${t('pick_book')}</button>`)}</div>`;
-  const pop=BOOKS.slice().sort((a,b)=>stat(b).n-stat(a).n).slice(0,8);
+  /* Popular = real activity (reads, finishes, views, ratings of the last 30 days). With no activity yet the block is simply not shown. */
+  const pop=BOOKS.slice().sort((a,b)=>(b.pop||0)-(a.pop||0)||stat(b).n-stat(a).n).filter(b=>!net.online||b.pop>0||b.count>0).slice(0,8);
+  const recs=recommend({books:BOOKS,progress:S.progress,finished:S.finished,saved:S.saved,ratings:S.ratings,follows:S.follows,limit:8});
+  const why=r=>r.why.book?(r.why.kind==='author'?tr('Тот же автор, что «','Muallif bir xil: «'):tr('Похоже на «','O‘xshash: «'))+r.why.book.title+'»':'';
   const nw=BOOKS.slice().sort((a,b)=>b.added-a.added).slice(0,8);
   const gc=g=>BOOKS.filter(b=>b.genre===g).length;
   const head=(title,link)=>`<div class="sec-h px"><h2>${title}</h2>${link||''}</div>`;
   return `<header class="hello px"><div class="grow"><p class="eyebrow">${t(g)}</p><h1 class="display">${esc(dispName())}</h1><span class="streak">${ico('flame',14)} ${streak()?`${streak()} ${tr('дн. подряд','kun ketma-ket')}`:tr('Начните серию сегодня','Bugun boshlang')}</span></div><button class="avatar" data-a="tab" data-id="profile" aria-label="${t('nav_profile')}" style="background:${AVC[0]}">${hasName()?esc(S.name[0].toUpperCase()):ico('user',20)}</button></header>
   <div class="px" style="margin-top:18px"><button class="fakesearch" data-a="openSearch">${ico('search',20)}<span>${t('search_ph')}</span></button></div>
+  ${BOOKS.length?'':`<div class="px" style="margin-top:20px"><div class="card">${empty('lib',tr('Каталог пока пуст','Katalog hozircha bo‘sh'),tr('Книги появятся здесь после добавления администратором или авторами.','Kitoblar administrator yoki mualliflar qo‘shgach shu yerda paydo bo‘ladi.'))}</div></div>`}
   <div class="px" style="margin-top:20px">${cont}</div>
-  <section class="sec">${head(t('collections'))}<div class="hs px">${COLLECTIONS.map(colCard).join('')}</div></section>
-  <section class="sec">${head(t('popular'),`<button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button>`)}<div class="hs px">${pop.map(b=>bkCard(b)).join('')}</div></section>
+  ${COLLECTIONS.length?`<section class="sec">${head(t('collections'))}<div class="hs px">${COLLECTIONS.map(colCard).join('')}</div></section>`:''}
+  ${recs.length?`<section class="sec">${head(tr('Для вас','Siz uchun'))}<div class="hs px">${recs.map(r=>`<div class="recw">${bkCard(r.book)}<small class="why">${esc(why(r))}</small></div>`).join('')}</div></section>`:''}
+  ${pop.length?`<section class="sec">${head(t('popular'),`<button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button>`)}<div class="hs px">${pop.map(b=>bkCard(b)).join('')}</div></section>`:''}
   ${net.online&&S.donateOn?donCard():''}
   <section class="sec">${head(t('new_rel'),`<button class="link acc" data-a="openNew">${t('all')}</button>`)}<div class="hs px">${nw.map(b=>bkCard(b,t('new'))).join('')}</div></section>
   <section class="sec">${head(t('genres'))}<div class="hs px">${GENRES.map(g=>`<button class="chip" data-a="genreFilter" data-id="${g}">${gl(g)} <span class="mute">${gc(g)}</span></button>`).join('')}</div></section>
-  <section class="sec">${head(t('authors'))}<div class="hs px">${AUTHORS.slice(0,10).map(a=>`<button class="au" data-a="openAuthor" data-id="${a.id}"><div class="pt">${portrait(a)}</div><b>${esc(a.name)}</b><small>${esc(L(a.city))}</small></button>`).join('')}</div></section>`;
+  <section class="sec">${head(t('authors'))}<div class="hs px">${AUTHORS.filter(a=>BOOKS.some(b=>b.a===a.id)).slice(0,10).map(a=>`<button class="au" data-a="openAuthor" data-id="${a.id}"><div class="pt">${portrait(a)}</div><b>${esc(a.name)}</b><small>${esc(L(a.city))}</small></button>`).join('')}</div></section>`;
 };
 ACT.tab=el=>{if(NAV.tab===el.dataset.id&&NAV.cur.name===el.dataset.id){$('#screen').scrollTo({top:0,behavior:'smooth'});return}go(el.dataset.id)};
 ACT.openBook=el=>{BK.tab='about';BK.syn=false;go('book',{id:el.dataset.id});loadText(el.dataset.id).catch(()=>{});track(el.dataset.id,'view')};
@@ -146,21 +158,36 @@ ACT.tgClose=()=>tg.close();
 /* =====================================================================
    CATALOG & SEARCH
    ===================================================================== */
-const CAT={q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false};
+const CAT={q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false,only:'all'};
 MODEL.cat=CAT;
-function resetCat(){Object.assign(CAT,{q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false})}
+function resetCat(){Object.assign(CAT,{q:'',lang:'all',genres:[],sort:'pop',ids:null,coll:null,focus:false,only:'all'})}
+/* Search index: one small document per book, built once and reused while typing. */
+const DOCS=new Map();
+const docOf=b=>{const key=b.title+'|'+b.a+'|'+b.series,d=DOCS.get(b.id);if(d&&d.k===key)return d;
+  const nd={k:key,id:b.id,title:b.title,author:authorOf(b).name,extra:[I18N.ru['g_'+b.genre],I18N.uz['g_'+b.genre],b.series||'',b.originalTitle||'',b.lang==='ru'?'русский russian':'oʻzbekcha uzbek ozbek'].join(' ')};DOCS.set(b.id,nd);return nd};
+let lastSuggest=null;
 function catList(){
   let l=BOOKS.slice();
   if(CAT.ids)l=l.filter(b=>CAT.ids.includes(b.id));
   if(CAT.lang!=='all')l=l.filter(b=>b.lang===CAT.lang);
   if(CAT.genres.length)l=l.filter(b=>CAT.genres.includes(b.genre));
-  const q=fold(CAT.q.trim());
-  if(q)l=l.filter(b=>fold([b.title,authorOf(b).name,I18N.ru['g_'+b.genre],I18N.uz['g_'+b.genre],b.lang==='ru'?'русский russian':'oʻzbekcha uzbek'].join(' ')).includes(q));
-  const cmp={pop:(a,b)=>stat(b).n-stat(a).n,rating:(a,b)=>stat(b).avg-stat(a).avg||stat(b).n-stat(a).n,new:(a,b)=>b.added-a.added,az:(a,b)=>a.title.localeCompare(b.title,S.lang==='ru'?'ru':'uz')};
+  if(CAT.only==='text')l=l.filter(b=>b.fullText!==false);
+  if(CAT.only==='audio')l=l.filter(b=>b.audio>0);
+  const q=CAT.q.trim();lastSuggest=null;
+  if(q){
+    const docs=l.map(docOf),hits=fuzzySearch(q,docs),rank=new Map(hits.map((h,i)=>[h.id,i]));
+    l=l.filter(b=>rank.has(b.id)).sort((a,b)=>rank.get(a.id)-rank.get(b.id));
+    if(!l.length)lastSuggest=suggestWord(q,BOOKS.map(docOf));
+    return l;
+  }
+  const pop=b=>(b.pop||0);
+  const cmp={pop:(a,b)=>pop(b)-pop(a)||stat(b).n-stat(a).n,rating:(a,b)=>stat(b).avg-stat(a).avg||stat(b).n-stat(a).n,new:(a,b)=>b.added-a.added,az:(a,b)=>a.title.localeCompare(b.title,S.lang==='ru'?'ru':'uz')};
   return l.sort(cmp[CAT.sort]);
 }
-const cardBk=b=>{const st=stat(b),sv=S.saved.includes(b.id);return `<div class="cardwrap"><button class="fab ${sv?'on':''}" data-a="toggleSave" data-id="${b.id}" aria-label="${t('add_lib')}" aria-pressed="${sv}">${ico('bookmark',17)}</button><button class="cardbk" data-a="openBook" data-id="${b.id}">${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${ico('star',13,'f')}<b style="color:var(--fg)">${st.avg}</b><span class="tag">${b.lang.toUpperCase()}</span><span>${gl(b.genre)}</span></span></button></div>`};
-function catResults(l){return l.length?`<div class="grid2">${l.map(cardBk).join('')}</div>`:empty('search',t('nothing'),t('nothing_d'),`<button class="btn sm ghost" data-a="resetFilters">${t('reset')}</button>`)}
+const cardBk=b=>{const st=stat(b),sv=S.saved.includes(b.id);return `<div class="cardwrap"><button class="fab ${sv?'on':''}" data-a="toggleSave" data-id="${b.id}" aria-label="${t('add_lib')}" aria-pressed="${sv}">${ico('bookmark',17)}</button><button class="cardbk" data-a="openBook" data-id="${b.id}">${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(authorOf(b).name)}</span><span class="meta">${rateBit(st)}<span class="tag">${b.lang.toUpperCase()}</span><span>${gl(b.genre)}</span>${kindBit(b)}</span></button></div>`};
+function catResults(l){return l.length?`<div class="grid2">${l.map(cardBk).join('')}</div>`:empty('search',t('nothing'),t('nothing_d'),`${lastSuggest?`<button class="btn sm" style="margin-bottom:10px" data-a="useSuggest" data-v="${esc(lastSuggest)}">${tr('Искать','Qidirish')}: «${esc(lastSuggest)}»</button>`:''}<button class="btn sm ghost" data-a="resetFilters">${t('reset')}</button>`)}
+ACT.useSuggest=el=>{CAT.q=el.dataset.v;const q=$('#q');if(q)q.value=CAT.q;const x=$('.searchbox .x');if(x)x.hidden=false;updateCatalog()};
+ACT.catOnly=el=>{CAT.only=CAT.only===el.dataset.v?'all':el.dataset.v;$$('[data-a="catOnly"]').forEach(b=>b.classList.toggle('on',b.dataset.v===CAT.only));updateCatalog()};
 let catT;
 function updateCatalog(){
   const res=$('#catRes');if(!res)return;
@@ -173,7 +200,7 @@ SCREENS.catalog=()=>{const l=catList();
   <div class="px"><div class="searchbox">${ico('search',20)}<input id="q" class="in" type="search" data-m="cat:q" value="${esc(CAT.q)}" placeholder="${t('search_ph')}" autocomplete="off" enterkeyhint="search" aria-label="${t('search_ph')}"><button class="iconbtn flat x" data-a="clearQ" aria-label="${t('close')}" ${CAT.q?'':'hidden'}>${ico('x',18)}</button></div>
   ${CAT.coll?`<div style="margin-top:12px"><button class="chip on" data-a="clearColl">${esc(L(COLLECTIONS.find(c=>c.id===CAT.coll).t))} ${ico('x',14)}</button></div>`:''}
   <div class="seg" style="margin-top:14px" role="group" aria-label="${t('language')}">${seg.map(([k,n])=>`<button class="${CAT.lang===k?'on':''}" data-a="catLang" data-v="${k}">${n}</button>`).join('')}</div></div>
-  <div class="hs px" style="margin-top:14px">${GENRES.map(g=>`<button class="chip ${CAT.genres.includes(g)?'on':''}" data-a="catGenre" data-id="${g}" aria-pressed="${CAT.genres.includes(g)}">${gl(g)}</button>`).join('')}</div>
+  <div class="hs px" style="margin-top:14px"><button class="chip ${CAT.only==='text'?'on':''}" data-a="catOnly" data-v="text">${ico('text',15)} ${tr('Читать целиком','To‘liq o‘qish')}</button>${BOOKS.some(b=>b.audio>0)?`<button class="chip ${CAT.only==='audio'?'on':''}" data-a="catOnly" data-v="audio">${ico('headphones',15)} ${tr('Аудио','Audio')}</button>`:''}${GENRES.filter(g=>BOOKS.some(b=>b.genre===g)).map(g=>`<button class="chip ${CAT.genres.includes(g)?'on':''}" data-a="catGenre" data-id="${g}" aria-pressed="${CAT.genres.includes(g)}">${gl(g)}</button>`).join('')}</div>
   <div class="px"><div class="sortrow"><span id="catCount" class="mute" style="font-size:13px;font-weight:600">${t('found')}: ${l.length}</span><select class="in" data-chg="catSort" aria-label="${t('sort')}">${[['pop','s_pop'],['rating','s_rating'],['new','s_new'],['az','s_az']].map(([k,n])=>`<option value="${k}" ${CAT.sort===k?'selected':''}>${t(n)}</option>`).join('')}</select></div>
   <div id="catRes">${catResults(l)}</div></div>`};
 AFTER.catalog=()=>{if(CAT.focus){CAT.focus=false;const q=$('#q');if(q)q.focus()}};
@@ -217,19 +244,39 @@ function threadCard(th){
   return `<article class="thread"><button class="th" data-a="toggleThread" data-id="${th.id}" aria-expanded="${open}"><div class="row" style="margin-bottom:8px;flex-wrap:wrap">${avatar(th.user,1)}<span class="mute" style="font-size:12.5px">${esc(th.user)}</span>${b?`<span class="tag acc">${esc(b.title)}</span>`:''}</div><h3>${esc(th.title)}</h3>${th.text?`<p class="mute" style="margin-top:6px;font-size:14px">${esc(th.text)}</p>`:''}<div class="meta">${ico('chat',14)} ${n} ${t('replies')}</div></button><div class="th-f">${net.online&&!th.mine?`<button class="link" data-a="report" data-k="thread" data-id="${th.id}">${ico('flag',13)} ${tr('Пожаловаться','Shikoyat')}</button>`:''}${S.me&&S.me.admin?`<button class="link" data-a="admDelThread" data-id="${th.id}">${ico('trash',13)} ${tr('Удалить','O‘chirish')}</button>`:''}</div>${open?threadBody(th):''}</article>`;
 }
 const topicForm=bid=>`<form class="replybox" data-f="topicNew" data-book="${bid||''}" style="margin:0 0 6px"><input class="in" name="t" placeholder="${t('topic_ph')}" aria-label="${t('new_topic')}" autocomplete="off"><button class="btn sm" style="height:42px">${t('post')}</button></form>`;
+const RIGHTS_LABEL={public_domain:['Общественное достояние','Ommaviy mulk'],author:['Публикует автор','Muallif nashr etgan'],licensed:['По лицензии','Litsenziya asosida'],permission:['С разрешения правообладателя','Huquq egasi ruxsati bilan'],demo:['Тестовые данные','Test ma’lumotlari'],unverified:['Права не подтверждены','Huquqlar tasdiqlanmagan']};
+const rightsText=b=>{const r=b.rights;if(!r)return '';const l=RIGHTS_LABEL[r.status];return l?tr(l[0],l[1]):''};
+/** Facts about the work, only the ones that are known. */
+function detailRows(b){
+  const r=[[t('d_lang'),t(b.lang)],[t('d_genre'),gl(b.genre)]];
+  if(b.series)r.push([tr('Серия','Seriya'),esc(b.series)+(b.seriesNo?` · №${b.seriesNo}`:'')]);
+  if(b.originalTitle)r.push([tr('Оригинал','Asl nomi'),esc(b.originalTitle)]);
+  if(b.translator)r.push([tr('Перевод','Tarjimon'),esc(b.translator)]);
+  if(b.pages>0)r.push([t('d_pages'),b.pages]);
+  if(b.year)r.push([t('d_year'),b.year]);
+  if(b.chapters.length)r.push([t('d_chapters'),b.chapters.length]);
+  if(b.publisher)r.push([tr('Издатель','Nashriyot'),esc(b.publisher)]);
+  if(b.isbn)r.push(['ISBN',esc(b.isbn)]);
+  r.push([tr('Формат','Format'),[b.fullText?tr('Текст','Matn'):tr('Только описание','Faqat tavsif'),b.audio?tr('Аудио','Audio'):''].filter(Boolean).join(' + ')]);
+  if(b.rights&&b.rights.status!=='demo'){r.push([tr('Права','Huquqlar'),esc(rightsText(b))+(b.rights.license?` (${esc(b.rights.license)})`:'')]);if(b.rights.source)r.push([tr('Источник','Manba'),esc(b.rights.source)])}
+  return r;
+}
+const availability=b=>b.fullText!==false?'':`<section class="px sec" style="margin-top:18px"><div class="card avail">${ico('info',20)}<div><b>${tr('Полный текст недоступен','To‘liq matn mavjud emas')}</b><p>${tr('Мы публикуем книги целиком только при подтверждённых правах на распространение. Здесь пока только описание. Книгу можно добавить в библиотеку, чтобы не потерять.','Kitoblarni faqat tarqatish huquqi tasdiqlangan bo‘lsagina to‘liq e’lon qilamiz. Hozircha faqat tavsif. Kitobni kutubxonaga qo‘shib qo‘yishingiz mumkin.')}</p></div></div></section>`;
 SCREENS.book=({id})=>{
   const b=book(id),a=authorOf(b),st=stat(b),sv=S.saved.includes(id),pr=S.progress[id],fin=S.finished.includes(id);
-  const cta=fin?t('read_again'):pr?`${t('resume')} · ${pctOf(id)}%`:t('read_now');
+  const cta=fin?t('read_again'):pr?`${t('resume')} · ${pctOf(id)}%`:t('read_now'),canRead=b.fullText!==false;
   const revs=S.reviews.filter(r=>r.bookId===id);
-  const dist=st.avg>=4.6?[64,24,8,3,1]:st.avg>=4.4?[54,28,12,4,2]:[42,32,16,7,3];
-  const rel=BOOKS.filter(x=>x.id!==id).sort((x,y)=>((y.genre===b.genre)*2+(y.lang===b.lang))-((x.genre===b.genre)*2+(x.lang===b.lang))||stat(y).n-stat(x).n).slice(0,6);
+  /* The distribution is counted from real ratings. Only the offline demo catalog, which has no ratings table, uses a sample. */
+  const dsum=b.dist?b.dist.reduce((x,y)=>x+y,0):0;
+  const dist=b.dist?[4,3,2,1,0].map(i=>dsum?Math.round(b.dist[i]/dsum*100):0):(st.avg>=4.6?[64,24,8,3,1]:st.avg>=4.4?[54,28,12,4,2]:[42,32,16,7,3]);
+  const rel=BOOKS.filter(x=>x.id!==id&&(x.genre===b.genre||x.lang===b.lang||x.a===b.a)).sort((x,y)=>((y.genre===b.genre)*2+(y.lang===b.lang))-((x.genre===b.genre)*2+(x.lang===b.lang))||stat(y).n-stat(x).n).slice(0,6);
   const my=S.ratings[id]||0;
   let body='';
   if(BK.tab==='about')body=`<section class="px sec" style="margin-top:6px"><h2 class="display" style="font-size:20px;margin-bottom:12px">${t('synopsis')}</h2><p class="syn ${BK.syn?'':'clamp'}">${esc(b.desc)}</p><button class="link acc" data-a="toggleSyn">${BK.syn?t('less'):t('more')}</button></section>
    <section class="px sec" style="margin-top:22px"><div class="card" style="text-align:center"><b style="font-size:14px">${t('your_rating')}</b>${starInput(my,'rate',id)}<span class="mute" style="font-size:12.5px">${my?`${my}/5`:t('tap_rate')}</span></div></section>
-   <section class="px sec" style="margin-top:22px"><h2 class="display" style="font-size:20px;margin-bottom:6px">${t('details')}</h2><div class="kv"><div>${t('d_lang')}</div><div>${t(b.lang)}</div><div>${t('d_genre')}</div><div>${gl(b.genre)}</div><div>${t('d_pages')}</div><div>${b.pages}</div><div>${t('d_year')}</div><div>${b.year}</div><div>${t('d_chapters')}</div><div>${b.chapters.length}</div></div></section>
+   <section class="px sec" style="margin-top:22px"><h2 class="display" style="font-size:20px;margin-bottom:6px">${t('details')}</h2><div class="kv">${detailRows(b).map(([k,v])=>`<div>${k}</div><div>${v}</div>`).join('')}</div></section>${availability(b)}
    <section class="sec"><div class="sec-h px"><h2>${t('related')}</h2></div><div class="hs px">${rel.map(bkCard).join('')}</div></section>`;
-  if(BK.tab==='reviews')body=`<section class="px sec" style="margin-top:6px"><div class="row" style="gap:22px;align-items:flex-start"><div style="text-align:center"><div class="big-r">${st.avg}</div>${stars(st.avg,15)}<div class="mute" style="font-size:12px;margin-top:6px">${st.n} ${t('ratings_n')}</div></div>
+  if(BK.tab==='reviews')body=`<section class="px sec" style="margin-top:6px"><div class="row" style="gap:22px;align-items:flex-start"><div style="text-align:center"><div class="big-r">${st.n>0?st.avg:'–'}</div>${st.n>0?stars(st.avg,15):''}<div class="mute" style="font-size:12px;margin-top:6px">${st.n} ${t('ratings_n')}</div></div>
    <div class="dist grow">${[5,4,3,2,1].map((n,i)=>`<span>${n}</span><div class="bar"><i style="width:${dist[i]}%"></i></div><span>${dist[i]}%</span>`).join('')}</div></div>
    <button class="btn block ghost" style="margin:20px 0 6px" data-a="openReview" data-id="${id}">${ico('pen',18)} ${t('write_review')}</button>
    ${revs.length?revs.map(r=>reviewCard(r,false)).join(''):empty('chat',t('no_reviews'),t('no_reviews_d'))}</section>`;
@@ -237,12 +284,14 @@ SCREENS.book=({id})=>{
   return `<div class="bhero"><div class="bgc">${cover(b,'sm')}</div><div class="fade"></div>
   <div class="topline px"><button class="iconbtn" data-a="back" aria-label="${t('back')}">${ico('back')}</button><button class="iconbtn" data-a="shareBook" data-id="${id}" aria-label="${t('share')}">${ico('share',20)}</button></div>
   <div class="px" style="padding-top:62px"><div class="cv">${cover(b)}</div><h1 class="display">${esc(b.title)}</h1><button class="au-link" data-a="openAuthor" data-id="${a.id}">${esc(a.name)}</button>
-  <div class="facts"><span class="tag acc">${b.lang.toUpperCase()}</span><span class="tag">${gl(b.genre)}</span><span class="tag">${b.pages} ${t('pages')}</span><span class="tag">${b.year}</span></div>
-  <div class="row" style="justify-content:center;margin-top:14px;gap:8px">${stars(st.avg,17)}<b>${st.avg}</b><span class="mute" style="font-size:12.5px">· ${st.n} ${t('ratings_n')}</span></div>
-  <div class="cta"><button class="btn" data-a="read" data-id="${id}">${cta} ${ico('arrow',18)}</button><button class="btn ghost" data-a="toggleSave" data-id="${id}" aria-pressed="${sv}">${ico(sv?'check':'plus',18)} ${sv?t('in_lib'):t('add_lib')}</button></div></div></div>
+  ${b.series?`<button class="au-link" style="margin-top:2px;font-size:13px" data-a="openSeries" data-v="${esc(b.series)}">${tr('Серия','Seriya')}: ${esc(b.series)}${b.seriesNo?` · №${b.seriesNo}`:''}</button>`:''}
+  <div class="facts"><span class="tag acc">${b.lang.toUpperCase()}</span><span class="tag">${gl(b.genre)}</span>${b.pages>0?`<span class="tag">${b.pages} ${t('pages')}</span>`:''}${b.year?`<span class="tag">${b.year}</span>`:''}<span class="tag ${canRead?'':'dim'}">${canRead?tr('Текст полностью','Matn to‘liq'):tr('Только описание','Faqat tavsif')}</span>${b.audio?`<span class="tag acc">${tr('Аудио','Audio')}</span>`:''}</div>
+  <div class="row" style="justify-content:center;margin-top:14px;gap:8px">${st.n>0?`${stars(st.avg,17)}<b>${st.avg}</b><span class="mute" style="font-size:12.5px">· ${st.n} ${t('ratings_n')}</span>`:`<span class="mute" style="font-size:13px">${tr('Оценок пока нет. Будьте первым!','Hali baho yo‘q. Birinchi bo‘ling!')}</span>`}</div>
+  <div class="cta">${canRead?`<button class="btn" data-a="read" data-id="${id}">${cta} ${ico('arrow',18)}</button>`:''}${b.audio?`<button class="btn ${canRead?'ghost':''}" data-a="audioOpen" data-id="${id}">${ico('headphones',18)} ${tr('Слушать','Tinglash')}</button>`:''}<button class="btn ghost" data-a="toggleSave" data-id="${id}" aria-pressed="${sv}">${ico(sv?'check':'plus',18)} ${sv?t('in_lib'):t('add_lib')}</button></div></div></div>
   <div class="px" style="margin:2px 0 18px"><div class="seg" role="tablist">${[['about',t('about')],['reviews',`${t('reviews')} ${revs.length}`],['discussion',t('discussion')]].map(([k,n])=>`<button role="tab" aria-selected="${BK.tab===k}" class="${BK.tab===k?'on':''}" data-a="bookTab" data-v="${k}">${n}</button>`).join('')}</div></div>${body}`;
 };
 ACT.bookTab=el=>{BK.tab=el.dataset.v;refresh()};
+ACT.openSeries=el=>{resetCat();CAT.q=el.dataset.v;go('catalog')};
 ACT.toggleSyn=()=>{BK.syn=!BK.syn;refresh()};
 ACT.rate=el=>{tg.notify('success');const id=el.dataset.id;S.ratings[id]=+el.dataset.v;save();toast(tr('Оценка сохранена','Baho saqlandi'));
   if(net.online)bg(api(`/api/books/${id}/rate`,'POST',{value:S.ratings[id]}).then(r=>{Object.assign(book(id),r);refresh()}));else refresh()};
@@ -299,7 +348,7 @@ SCREENS.community=()=>{
     body=`<button class="compose" data-a="openReview">${avatar(S.name,1)}<span>${t('compose_ph')}</span></button>
     <div class="fchips" style="margin-top:16px;align-items:center"><span class="lbl" style="margin-right:4px">${tr('Отзывы','Sharhlar')} ${list.length}</span><span class="sp"></span>${[['new',tr('Новые','Yangi')],['top',tr('Популярные','Mashhur')]].map(([k,n])=>`<button class="chip ${CM.sort===k?'on':''}" data-a="revSort" data-v="${k}">${n}</button>`).join('')}</div>
     <div>${list.map(r=>reviewCard(r,true)).join('')}</div>`}
-  else if(CM.tab==='discuss'){const wb=book(WEEKLY.bookId);body=`<div class="weekly cine"><span class="eyebrow" style="color:#f4a07c">${t('weekly')}</span><h3>${esc(L(WEEKLY.q))}</h3><button class="btn sm" data-a="openThread" data-id="t1">${t('discuss_this')} ${ico('arrow',15)}</button></div>
+  else if(CM.tab==='discuss'){body=`${WEEKLY.bookId&&book(WEEKLY.bookId)?`<div class="weekly cine"><span class="eyebrow" style="color:#f4a07c">${t('weekly')}</span><h3>${esc(L(WEEKLY.q))}</h3><button class="btn sm" data-a="weeklyTopic">${t('discuss_this')} ${ico('arrow',15)}</button></div>`:''}
     <div class="card" style="margin-top:16px"><div class="lbl" style="margin-bottom:10px">${t('new_topic')}</div>${topicForm('')}</div>
     <div class="lbl" style="margin:22px 0 12px">${tr('Обсуждения','Muhokamalar')} ${S.threads.length}</div><div>${S.threads.map(threadCard).join('')}</div>`}
   else{const mine=CM.qv==='mine';const all=mine?S.myQuotes:SEED_QUOTES;
@@ -309,6 +358,10 @@ SCREENS.community=()=>{
 };
 ACT.commTab=el=>{CM.tab=el.dataset.v;refresh()};
 ACT.quoteView=el=>{CM.qv=el.dataset.v;refresh()};
+/* The weekly question lives in a normal discussion thread, created the first time somebody opens it. */
+ACT.weeklyTopic=()=>{const q=L(WEEKLY.q),ex=S.threads.find(x=>x.title===q);
+  if(ex){ACT.openThread({dataset:{id:ex.id}});return}
+  const f={t:{value:q},dataset:{book:WEEKLY.bookId}};FORMS.topicNew(f)};
 ACT.openThread=el=>{CM.open[el.dataset.id]=true;CM.tab='discuss';refresh();setTimeout(()=>{const x=$('.thread');if(x)x.scrollIntoView({behavior:'smooth',block:'start'})},60)};
 ACT.likeQuote=el=>{const id=el.dataset.id;S.qLikes[id]=!S.qLikes[id];save();
   const q=findQuote(id);if(net.online&&SEED_QUOTES.some(x=>x.id===id)){q.likes+=S.qLikes[id]?1:-1;refresh();bg(api(`/api/quotes/${id}/like`,'POST',{on:!!S.qLikes[id]}).then(x=>{q.likes=x.likes;refresh()}))}else refresh()};
@@ -384,13 +437,15 @@ function loadText(id){
   return LOADING[id]||(LOADING[id]=api(`/api/books/${id}/text`).then(r=>{TEXT[id]=r.chapters;book(id).chapters=r.chapters}).finally(()=>{delete LOADING[id]}));
 }
 async function openReader(id,opts){
-  if(!hasText(book(id))){toast(t('opening'));try{await loadText(id)}catch(e){toast(tr('Не удалось загрузить книгу. Проверьте соединение.','Kitobni yuklab bo‘lmadi. Aloqani tekshiring.'));return}}
+  if(!book(id))return;
+  if(book(id).fullText===false){toast(tr('Полный текст этой книги недоступен','Bu kitobning to‘liq matni mavjud emas'));return}
+  if(!hasText(book(id))){toast(t('opening'));try{await loadText(id)}catch(e){if(e&&e.detail==='rights'){book(id).fullText=false;toast(tr('Полный текст этой книги недоступен','Bu kitobning to‘liq matni mavjud emas'));refresh()}else toast(tr('Не удалось загрузить книгу. Проверьте соединение.','Kitobni yuklab bo‘lmadi. Aloqani tekshiring.'));return}}
   opts=opts||{};track(id,'read');const pr=S.progress[id],fin=S.finished.includes(id);
   const nch=book(id).chapters.length;if(pr&&pr.ch>=nch){pr.ch=Math.max(0,nch-1);pr.p=0}
   if(opts.bm&&opts.bm.ch>=nch)opts.bm={...opts.bm,ch:Math.max(0,nch-1),para:0};
   if(opts.bm){R.ch=opts.bm.ch;R.startP=0;R.startPara=opts.bm.para}
   else if(fin||!pr){R.ch=0;R.startP=0;R.startPara=null}
-  else{R.ch=pr.ch;R.startP=pr.p;R.startPara=null}
+  else{R.ch=pr.ch;R.startP=pr.p;R.startPara=pr.para!=null?pr.para:null}
   R.id=id;R.sel=null;R.fresh=true;markDay();
   if(!pr&&!fin){S.progress[id]={ch:R.ch,p:0,ts:Date.now()};save()}
   if(NAV.cur.name==='reader')replace('reader',{id});else go('reader',{id});
@@ -438,7 +493,7 @@ AFTER.reader=()=>{
   updateBm();
 };
 let rraf=0;
-function onRScroll(){if(rraf)return;rraf=requestAnimationFrame(()=>{rraf=0;const body=$('#rbody');if(!body||NAV.cur.name!=='reader')return;const max=body.scrollHeight-body.clientHeight;const p=max>0?Math.min(1,body.scrollTop/max):1;S.progress[R.id]={ch:R.ch,p,ts:Date.now()};save();const v=pctRaw(R.id);const bar=$('#rbar'),pc=$('#rpc');if(bar)bar.style.width=v+'%';if(pc)pc.textContent=v+'%';updateBm()})}
+function onRScroll(){if(rraf)return;rraf=requestAnimationFrame(()=>{rraf=0;const body=$('#rbody');if(!body||NAV.cur.name!=='reader')return;const max=body.scrollHeight-body.clientHeight;const p=max>0?Math.min(1,body.scrollTop/max):1;S.progress[R.id]={ch:R.ch,p,para:curPara(),ts:Date.now()};save();const v=pctRaw(R.id);const bar=$('#rbar'),pc=$('#rpc');if(bar)bar.style.width=v+'%';if(pc)pc.textContent=v+'%';updateBm()})}
 function curPara(){const body=$('#rbody');if(!body)return 0;const top=body.getBoundingClientRect().top;const ps=$$('.rp',body);for(const p of ps){if(p.getBoundingClientRect().bottom>top+60)return +p.dataset.i}return Math.max(0,ps.length-1)}
 function updateBm(){const b=$('#bmBtn');if(b)b.classList.toggle('on',!!bmFind(R.id,R.ch,curPara()))}
 function markBm(){$$('#rbody .rp').forEach(p=>p.classList.toggle('bm',!!bmFind(R.id,R.ch,+p.dataset.i)));updateBm()}
@@ -547,12 +602,21 @@ tg.onBack(()=>{if(NAV.cur.name==='reader'&&$('#sheet').classList.contains('on'))
 
 /* ---------- server sync ---------- */
 const swap=(arr,v)=>arr.splice(0,arr.length,...v);
+/* Reading on two devices: progress is per book (the newer one wins), lists are merged, so nothing read offline is lost. */
+function mergeState(loc,rem){
+  const out=rem,lp=loc.progress||{},rp=rem.progress||{};
+  out.progress={...rp};for(const [id,v] of Object.entries(lp))if(!rp[id]||(v.ts||0)>(rp[id].ts||0))out.progress[id]=v;
+  const uni=(a,b,k)=>{const seen=new Set((a||[]).map(k)),r=[...(a||[])];(b||[]).forEach(x=>{if(!seen.has(k(x))){seen.add(k(x));r.push(x)}});return r};
+  out.finished=uni(rem.finished,loc.finished,x=>x);out.saved=uni(rem.saved,loc.saved,x=>x);out.days=uni(rem.days,loc.days,x=>x).sort().slice(-400);
+  out.bookmarks=uni(rem.bookmarks,loc.bookmarks,x=>x.id);out.myQuotes=uni(rem.myQuotes,loc.myQuotes,x=>x.id);
+  return out;
+}
 function applyBoot(d,first){
-  swap(BOOKS,d.books);BOOKS.forEach(b=>{if(TEXT[b.id])b.chapters=TEXT[b.id]});swap(AUTHORS,d.authors);swap(COLLECTIONS,d.collections);swap(SEED_QUOTES,d.quotes);Object.assign(WEEKLY,d.weekly);
+  swap(BOOKS,d.books);BOOKS.forEach(b=>{if(TEXT[b.id])b.chapters=TEXT[b.id]});swap(AUTHORS,d.authors);swap(COLLECTIONS,d.collections);swap(SEED_QUOTES,d.quotes);if(d.weekly)Object.assign(WEEKLY,d.weekly);else{WEEKLY.bookId=null}S.demo=!!d.demo;
   S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;S.appLink=d.appLink;
   S.reacts={};d.reviews.forEach(r=>{if(r.my&&(r.my.heart||r.my.insight))S.reacts[r.id]=r.my});
   S.qLikes={};d.quotes.forEach(q=>{if(q.mine)S.qLikes[q.id]=true});
-  if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=Object.assign(DEFAULT(),d.state);SHARED.forEach(k=>S[k]=loc[k])}
+  if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=mergeState(loc,Object.assign(DEFAULT(),d.state));SHARED.forEach(k=>S[k]=loc[k]);if(net.online)save()}
   else if(first)api('/api/state','PUT',persistable()).catch(()=>{});
   if(first&&!(d.state&&d.state.name)&&!localStorage.getItem(KEY)&&d.me.name)S.name=d.me.name.slice(0,24);
 }
@@ -564,8 +628,10 @@ try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e
 /* ---------- boot ---------- */
 const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
+initCatalogAdmin({SCREENS,ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,refresh},admApi);
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
 initAchievements(ctx2);
+initAudio(ctx2);
 initStudio(ctx2);
 /* things that can unlock an achievement ask the server to re-check shortly after they happen */
 ['toggleSave','revSubmit','follow','rQuote','rFinish'].forEach(n=>{const f=ACT[n];if(f)ACT[n]=function(){const r=f.apply(this,arguments);ctx2.checkAch();return r}});

@@ -537,3 +537,19 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .ach-d{font-size:12px;color:var(--mute);line-height:1.35}
 .ach-b{width:100%;margin:6px 0 0}
 .ach-t{font-size:11.5px;color:var(--mute)}
+
+/* ---- catalog: real data states ---- */
+.kind{display:inline-flex;align-items:center;color:var(--acc-t)}.kind.dim{color:var(--mute)}
+.tag.dim{opacity:.7}
+.avail{display:flex;gap:12px;align-items:flex-start;font-size:13.5px}.avail svg{flex:none;color:var(--acc-t);margin-top:2px}.avail p{color:var(--mute);margin-top:4px;line-height:1.5}
+.recw{display:flex;flex-direction:column;gap:6px;flex:none}.recw .why{max-width:132px;color:var(--mute);font-size:11.5px;line-height:1.35}
+
+/* ---- audiobook player ---- */
+.aud{text-align:center}.aud-cv{width:168px;margin:6px auto 0}
+.aud-t{margin:18px 0 10px;font-weight:700;font-size:15px}
+.aud-seek{width:100%;accent-color:var(--acc);height:28px}
+.aud-time{display:flex;justify-content:space-between;font-size:12px;color:var(--mute);margin-top:-2px}
+.aud-ctl{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 0 10px}
+.aud-play{width:68px;height:68px;border-radius:50%;border:0;background:var(--acc);color:#fff;display:grid;place-items:center}
+.aud-ctl .iconbtn:disabled{opacity:.35}
+.li.on{background:var(--acc-soft)}

@@ -9,9 +9,14 @@ export const textBytes=t=>new TextEncoder().encode(t).length;
 function decodeText(buf){
   try{return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^﻿/,'')}catch(e){return new TextDecoder('windows-1251').decode(buf)}
 }
+/** Reads a file and returns {text, meta}; meta (title, author, language, description) is filled for .epub only. */
+export async function readManuscriptFull(file,onProgress){
+  if(/\.epub$/i.test(file.name)){const {epubToBook}=await import('./epub.js');return epubToBook(await file.arrayBuffer())}
+  return{text:await readManuscript(file,onProgress),meta:{}};
+}
 export async function readManuscript(file,onProgress){
   const name=file.name.toLowerCase();
-  if(/\.(doc|rtf|odt|epub|fb2|mobi)$/.test(name))throw Object.assign(new Error('format'),{code:'format'});
+  if(/\.(doc|rtf|odt|fb2|mobi|azw3?)$/.test(name))throw Object.assign(new Error('format'),{code:'format'});
   const buf=await file.arrayBuffer();
   if(name.endsWith('.docx'))return docxToText(buf);
   if(name.endsWith('.pdf'))return (await import('./pdf.js')).pdfToText(buf,onProgress);

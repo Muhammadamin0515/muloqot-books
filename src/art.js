@@ -29,6 +29,9 @@ export const IC={
  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
  flame:'<path d="M12 3c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 .3 1.2 1 2 2 2 0-3-1-5 1-8z"/>',
  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+ play:'<path d="M8 5.5v13l11-6.5z"/>',pause:'<path d="M8 5v14M16 5v14"/>',prev:'<path d="M6 5v14M18 6v12l-9-6z"/>',next:'<path d="M18 5v14M6 6v12l9-6z"/>',
+ back15:'<path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4"/>',fwd30:'<path d="M20 12a8 8 0 1 1-3-6.2M20 4v4h-4"/>',
+ headphones:'<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14h3v6H5a1 1 0 0 1-1-1zM20 14h-3v6h2a1 1 0 0 0 1-1z"/>',
  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'
 };
 export const ico=(n,s=22,cls='')=>`<svg class="ico ${cls}" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]||''}</svg>`;

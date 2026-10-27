@@ -15,6 +15,9 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS book_versions(id INTEGER PRIMARY KEY AUTOINCREMENT,book_id TEXT,created INTEGER,data TEXT)',
   'CREATE INDEX IF NOT EXISTS idx_versions_book ON book_versions(book_id)',
   'CREATE TABLE IF NOT EXISTS achievements(user_id TEXT,key TEXT,ts INTEGER,seen INTEGER DEFAULT 0,PRIMARY KEY(user_id,key))',
+  'CREATE TABLE IF NOT EXISTS audio_tracks(id INTEGER PRIMARY KEY AUTOINCREMENT,book_id TEXT,idx INTEGER,title TEXT,url TEXT,duration INTEGER DEFAULT 0,created INTEGER)',
+  'CREATE INDEX IF NOT EXISTS idx_audio_book ON audio_tracks(book_id,idx)',
+  'CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts INTEGER,user_id TEXT,action TEXT,target TEXT,detail TEXT)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];
 const ALTERS=[
@@ -27,10 +30,23 @@ const ALTERS=[
   'ALTER TABLE comments ADD COLUMN hidden INTEGER DEFAULT 0',
   'ALTER TABLE users ADD COLUMN reminded TEXT',
   'ALTER TABLE submissions ADD COLUMN update_book_id TEXT',
-  'ALTER TABLE submissions ADD COLUMN style INTEGER'
+  'ALTER TABLE submissions ADD COLUMN style INTEGER',
+  'ALTER TABLE reviews ADD COLUMN demo INTEGER',
+  'ALTER TABLE threads ADD COLUMN demo INTEGER',
+  'ALTER TABLE quotes ADD COLUMN demo INTEGER'
+];
+/* Test data shipped in migrations/0002_seed.sql has short ids (b1, a1, r1, t1, q1); everything created later has 8+ characters.
+   Mark the seed rows once, so real and demo content can be separated without deleting anything. Idempotent. */
+const BACKFILL=[
+  "UPDATE books SET data=json_set(data,'$.demo',1) WHERE length(id)<=3 AND json_extract(data,'$.demo') IS NULL",
+  "UPDATE authors SET data=json_set(data,'$.demo',1) WHERE length(id)<=3 AND json_extract(data,'$.demo') IS NULL",
+  'UPDATE reviews SET demo=CASE WHEN length(id)<=3 THEN 1 ELSE 0 END WHERE demo IS NULL',
+  'UPDATE threads SET demo=CASE WHEN length(id)<=3 THEN 1 ELSE 0 END WHERE demo IS NULL',
+  'UPDATE quotes SET demo=CASE WHEN length(id)<=3 THEN 1 ELSE 0 END WHERE demo IS NULL'
 ];
 let ready;
 export const ensureSchema=env=>ready||(ready=(async()=>{
   for(const s of DDL)await env.DB.prepare(s).run();
   for(const s of ALTERS)try{await env.DB.prepare(s).run()}catch(e){if(!/duplicate column/i.test(String(e.message||e)))throw e}
+  for(const s of BACKFILL)await env.DB.prepare(s).run();
 })().catch(e=>{ready=null;throw e}));

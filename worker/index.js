@@ -1,11 +1,11 @@
 import {parseManuscript} from './parse.js';
 import {ensureSchema} from './schema.js';
 import {COVER_STYLES} from './covers.js';
+import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,rightsOf,publicRights,validateImport,fetchCover,popularity,isDemo,checkTextRights,cleanRights,httpsUrl} from './catalog.js';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
 const clip=(s,n)=>String(s??'').trim().slice(0,n);
 const id8=()=>crypto.randomUUID().slice(0,8);
-const GENRES=['novel','detective','historical','adventure','drama','stories','modern'];
 const LOCAL=['state','reviews','threads','subs','reacts','qLikes','follows','ratings'];
 const csv=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
 
@@ -72,14 +72,20 @@ const rel=ms=>{const m=Math.max(0,Math.floor((Date.now()-ms)/6e4));
   const w=Math.floor(d/7);return{ru:`${w} нед. назад`,uz:`${w} hafta oldin`}};
 
 /* ---------- serializers (bulk, a handful of queries per request) ---------- */
-function bookOut(row,agg){const b=P(row.data);const a=agg[row.id]||{n:0,s:0};const count=b.count+a.n;
+function bookOut(row,agg,extra={}){const b=P(row.data);const a=agg[row.id]||{n:0,s:0};
+  /* Real ratings only. The base numbers stored with the test (demo) books are used for demo books and never mixed into real ones. */
+  const base=isDemo(b)?b.count||0:0,count=base+a.n,rating=count?Math.round(((isDemo(b)?b.rating*base:0)+a.s)/count*100)/100:0;
+  const full=canRead(b);
   /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/text) and covers are served as images (/api/cover/:id). */
-  return{...b,chapters:b.chapters.map(ch=>({t:ch.t})),...(b.img?{img:`/api/cover/${row.id}?v=${b.img.length}`}:{}),count,rating:count?Math.round((b.rating*b.count+a.s)/count*100)/100:0}}
-const ratingAgg=async c=>{const o={};(await all(c,'SELECT book_id,COUNT(*) n,SUM(value) s FROM ratings GROUP BY book_id')).forEach(r=>o[r.book_id]={n:r.n,s:r.s});return o};
-const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id=?',id);if(!row)return null;const a=await get(c,'SELECT COUNT(*) n,COALESCE(SUM(value),0) s FROM ratings WHERE book_id=?',id);return bookOut(row,{[id]:a})};
+  const {rights,chapters,img,...rest}=b;
+  return{...rest,chapters:full?chapters.map(ch=>({t:ch.t})):[],fullText:full&&chapters.length>0,rights:publicRights(b),...(img?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,dist:a.d||[0,0,0,0,0]}}
+const DIST=',SUM(value=1) c1,SUM(value=2) c2,SUM(value=3) c3,SUM(value=4) c4,SUM(value=5) c5';
+const distOf=r=>[r.c1,r.c2,r.c3,r.c4,r.c5].map(x=>x||0);
+const ratingAgg=async c=>{const o={};(await all(c,`SELECT book_id,COUNT(*) n,SUM(value) s${DIST} FROM ratings GROUP BY book_id`)).forEach(r=>o[r.book_id]={n:r.n,s:r.s,d:distOf(r)});return o};
+const bookById=async(c,id)=>{const row=await get(c,'SELECT * FROM books WHERE id=?',id);if(!row)return null;const a=await get(c,`SELECT COUNT(*) n,COALESCE(SUM(value),0) s${DIST} FROM ratings WHERE book_id=?`,id);return bookOut(row,{[id]:{n:a.n,s:a.s,d:distOf(a)}})};
 
-async function loadReviews(c,onlyId){
-  const w=onlyId?' WHERE id=?':' WHERE hidden=0 OR hidden IS NULL',args=onlyId?[onlyId]:[];
+async function loadReviews(c,onlyId,realOnly){
+  const w=onlyId?' WHERE id=?':` WHERE (hidden=0 OR hidden IS NULL)${realOnly?` AND demo IS NOT 1 AND book_id IN ${REAL_BOOK}`:''}`,args=onlyId?[onlyId]:[];
   const patronMin=(await getDonateSettings(c)).patronMin;
   const [rv,rp,rc,mine,pat]=await batch(c,[
     stmt(c,`SELECT * FROM reviews${w} ORDER BY created DESC LIMIT 200`,...args),
@@ -94,16 +100,16 @@ async function loadReviews(c,onlyId){
       likes:r.likes_base+(cnt[t+'heart']||0),insight:r.insight_base+(cnt[t+'insight']||0),my,
       replies:rp.filter(x=>x.review_id===r.id).map(x=>({user:x.user_name,text:x.text,...(x.is_author?{author:1}:{})}))}});
 }
-async function loadThreads(c,onlyId){
-  const w=onlyId?' WHERE id=?':' WHERE hidden=0 OR hidden IS NULL',args=onlyId?[onlyId]:[];
+async function loadThreads(c,onlyId,realOnly){
+  const w=onlyId?' WHERE id=?':` WHERE (hidden=0 OR hidden IS NULL)${realOnly?` AND demo IS NOT 1 AND (book_id IS NULL OR book_id IN ${REAL_BOOK})`:''}`,args=onlyId?[onlyId]:[];
   const [th,cs]=await batch(c,[stmt(c,`SELECT * FROM threads${w} ORDER BY created DESC LIMIT 100`,...args),stmt(c,onlyId?'SELECT * FROM comments WHERE thread_id=? AND (hidden=0 OR hidden IS NULL) ORDER BY id':'SELECT * FROM comments WHERE hidden=0 OR hidden IS NULL ORDER BY id',...args)]);
   return th.map(t=>{const mine=cs.filter(x=>x.thread_id===t.id);
     return{id:t.id,bookId:t.book_id,title:t.title,user:t.user_name,text:t.text,mine:t.user_id===c.user.id,
       comments:mine.filter(x=>!x.parent_id).map(x=>({id:x.id,user:x.user_name,text:x.text,mine:x.user_id===c.user.id,replies:mine.filter(y=>y.parent_id===x.id).map(y=>({user:y.user_name,text:y.text}))}))}});
 }
-async function loadQuotes(c,onlyId){
+async function loadQuotes(c,onlyId,realOnly){
   const [qs,rc,mine]=await batch(c,[
-    stmt(c,`SELECT * FROM quotes${onlyId?' WHERE id=?':''}`,...(onlyId?[onlyId]:[])),
+    stmt(c,`SELECT * FROM quotes${onlyId?' WHERE id=?':(realOnly?` WHERE demo IS NOT 1 AND book_id IN ${REAL_BOOK}`:'')}`,...(onlyId?[onlyId]:[])),
     stmt(c,"SELECT target,COUNT(*) n FROM reacts WHERE target LIKE 'q:%' AND kind='heart' GROUP BY target"),
     stmt(c,"SELECT target FROM reacts WHERE user_id=? AND target LIKE 'q:%' AND kind='heart'",c.user.id)]);
   return qs.map(q=>({id:q.id,bookId:q.book_id,text:q.text,likes:q.likes_base+(rc.find(x=>x.target==='q:'+q.id)?.n||0),mine:mine.some(x=>x.target==='q:'+q.id)}));
@@ -116,25 +122,41 @@ const route=(method,path,fn,admin)=>routes.push({method,re:new RegExp('^'+path.r
 const json=(o,status=200)=>new Response(J(o),{status,headers:{'content-type':'application/json'}});
 const bad=(s=400,e='invalid')=>json({error:e},s);
 
+/** Test (demo) content is hidden once the catalog has real books; the admin can force it on or off. */
+const demoVisible=async c=>{
+  const r=await get(c,"SELECT value FROM meta WHERE key='showDemo'"),v=r?P(r.value):'auto';
+  if(v===true||v===false)return v;
+  return !(await get(c,"SELECT 1 x FROM books WHERE json_extract(data,'$.demo') IS NOT 1 AND (hidden=0 OR hidden IS NULL) LIMIT 1"));
+};
+const REAL_BOOK="(SELECT id FROM books WHERE json_extract(data,'$.demo') IS NOT 1)";
 route('GET','/api/bootstrap',async c=>{
-  const uid=c.user.id;
-  const [books,authors,fol,meta,sub,usr,my1,my2]=await batch(c,[
-    stmt(c,'SELECT * FROM books WHERE hidden=0 OR hidden IS NULL'),stmt(c,'SELECT * FROM authors'),stmt(c,'SELECT author_id,COUNT(*) n FROM follows GROUP BY author_id'),
+  const uid=c.user.id,demo=await demoVisible(c),since=new Date(Date.now()-29*864e5).toISOString().slice(0,10);
+  const [books,authors,fol,meta,sub,usr,my1,my2,stats,aud]=await batch(c,[
+    stmt(c,`SELECT * FROM books WHERE (hidden=0 OR hidden IS NULL)${demo?'':" AND json_extract(data,'$.demo') IS NOT 1"}`),
+    stmt(c,`SELECT * FROM authors${demo?'':" WHERE json_extract(data,'$.demo') IS NOT 1"}`),stmt(c,'SELECT author_id,COUNT(*) n FROM follows GROUP BY author_id'),
     stmt(c,'SELECT key,value FROM meta'),stmt(c,"SELECT * FROM submissions WHERE user_id=? AND status<>'withdrawn' ORDER BY created DESC",uid),
-    stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid)]);
+    stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid),
+    stmt(c,'SELECT book_id,SUM(views) v,SUM(reads) r,SUM(finishes) f FROM book_stats WHERE day>=? GROUP BY book_id',since),
+    stmt(c,'SELECT book_id,COUNT(*) n FROM audio_tracks GROUP BY book_id')]);
   const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)]));
   const sup=await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid);
   const don=await get(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),ds=await getDonateSettings(c),goals=await goalRows(c);
-  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n,donated:don.s,patron:don.s>=ds.patronMin},donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,appLink:m.applink||'',
-    books:books.map(b=>bookOut(b,agg)),
+  const st=Object.fromEntries(stats.map(x=>[x.book_id,{views:x.v,reads:x.r,finishes:x.f}])),au=Object.fromEntries(aud.map(x=>[x.book_id,x.n]));
+  const out=books.map(b=>bookOut(b,agg,{pop:popularity(st[b.id]||{},agg[b.id]?.n),audio:au[b.id]||0})),ids=new Set(out.map(b=>b.id));
+  const collections=(m.collections||[]).map(x=>({...x,ids:x.ids.filter(i=>ids.has(i))})).filter(x=>x.ids.length);
+  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n,donated:don.s,patron:don.s>=ds.patronMin},donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,appLink:m.applink||'',demo,
+    books:out,
     authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(fol.find(f=>f.author_id===a.id)?.n||0)})),
-    collections:m.collections,weekly:m.weekly,quotes:await loadQuotes(c),reviews:await loadReviews(c),threads:await loadThreads(c),
+    collections,weekly:m.weekly&&ids.has(m.weekly.bookId)?m.weekly:null,quotes:await loadQuotes(c,null,!demo),reviews:await loadReviews(c,null,!demo),threads:await loadThreads(c,null,!demo),
     ratings:Object.fromEntries(my1.map(r=>[r.book_id,r.value])),follows:my2.map(r=>r.author_id),subs:sub.map(subOut),state:P(usr[0]?.state||'{}')});
 });
+/* Full text is served only for books whose distribution rights are confirmed (or demo books). Admins can always preview. */
 route('GET','/api/books/:id/text',async(c,id)=>{
   const row=await get(c,'SELECT data,hidden FROM books WHERE id=?',id);
   if(!row||(row.hidden&&!c.user.admin))return bad(404);
-  return new Response(J({chapters:P(row.data).chapters}),{headers:{'content-type':'application/json','cache-control':'private, max-age=3600'}});
+  const b=P(row.data);
+  if(!canRead(b)&&!c.user.admin)return bad(403,'rights');
+  return new Response(J({chapters:b.chapters}),{headers:{'content-type':'application/json','cache-control':'private, max-age=3600'}});
 });
 route('PUT','/api/state',async c=>{
   const s={...c.body};LOCAL.forEach(k=>delete s[k]);const txt=J(s);
@@ -220,7 +242,6 @@ route('POST','/api/quotes',async c=>{
   return json({quote:(await loadQuotes(c,id))[0]});
 });
 
-const MAX_TEXT_BYTES=1_400_000,MAX_COVER_CHARS=450_000;
 const byteLen=t=>new TextEncoder().encode(t).length;
 route('POST','/api/submissions',async c=>{
   const b=c.body,title=clip(b.title,120),desc=clip(b.desc,1500),body=String(b.body||'');
@@ -230,6 +251,7 @@ route('POST','/api/submissions',async c=>{
   if(body.trim().length<500)return bad(400,'manuscript');
   if(byteLen(body)>MAX_TEXT_BYTES)return bad(413,'toolarge');
   if(!parseManuscript(body).length)return bad(400,'manuscript');
+  if((await get(c,"SELECT COUNT(*) n FROM submissions WHERE user_id=? AND created>?",c.user.id,Date.now()-864e5)).n>=8)return bad(429,'ratelimit');
   let cover=null;
   if(typeof b.cover==='string'&&b.cover){
     if(!/^data:image\/(jpeg|png|webp);base64,/.test(b.cover))return bad(400,'coverformat');
@@ -299,7 +321,7 @@ route('POST','/api/admin/submissions/:id/approve',async(c,id)=>{
   const bid='b'+id8(),chars=chapters.reduce((n,x)=>n+x.p.join('').length,0);
   const h=[...s.id].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[Number.isInteger(s.style)&&s.style>=0&&s.style<COVER_STYLES.length?s.style:h%COVER_STYLES.length];
   const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
-  const book={id:bid,a:a.id,title:s.title,lang:s.lang,genre:s.genre,rating:4,count:0,pages:Math.max(1,Math.round(chars/1800)),year:new Date().getFullYear(),added,motif:st.motif,pal:st.pal,desc:s.description,chapters,...(s.cover?{img:s.cover}:{})};
+  const book={id:bid,a:a.id,title:s.title,lang:s.lang,genre:s.genre,rating:4,count:0,pages:Math.max(1,Math.round(chars/1800)),year:new Date().getFullYear(),added,motif:st.motif,pal:st.pal,desc:s.description,chapters,format:'text',rights:{status:'author',license:'author-original',source:{name:'Автор (загрузка в студии)',url:''},attestedBy:s.user_id,attestedAt:s.created,approvedBy:c.user.id,approvedAt:Date.now()},...(s.cover?{img:s.cover}:{})};
   await batch(c,[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added),stmt(c,"UPDATE submissions SET status='approved',book_id=? WHERE id=?",bid,id)]);
   notify(c,s.user_id,`Ваша книга «${s.title}» опубликована в каталоге. Поздравляем!`,{open:'book_'+bid});
   for(const f of await all(c,'SELECT f.user_id,u.state FROM follows f JOIN users u ON u.id=f.user_id WHERE f.author_id=?',a.id))
@@ -417,7 +439,8 @@ route('POST','/api/admin/admins',async c=>{
 },true);
 
 /* ---------- admin: content ---------- */
-route('GET','/api/admin/books',async c=>json({list:(await all(c,'SELECT id,data,added,hidden FROM books ORDER BY added DESC')).map(r=>{const b=P(r.data);return{id:r.id,title:b.title,desc:b.desc,author:b.a,lang:b.lang,hidden:!!r.hidden,chapters:b.chapters.length}})}),true);
+route('GET','/api/admin/books',async c=>json({list:(await all(c,'SELECT id,data,added,hidden FROM books ORDER BY added DESC')).map(r=>{const b=P(r.data),ri=rightsOf(b);return{id:r.id,title:b.title,desc:b.desc,author:b.a,lang:b.lang,hidden:!!r.hidden,chapters:b.chapters.length,demo:isDemo(b),fullText:canRead(b)&&b.chapters.length>0,
+  rights:{status:ri.status,license:ri.license||'',evidenceUrl:ri.evidenceUrl||'',note:ri.note||'',source:ri.source?.name||'',sourceUrl:ri.source?.url||'',legacy:!!ri.legacy,authorDeathYear:ri.authorDeathYear||null}}})}),true);
 route('POST','/api/admin/books/:id/hide',async(c,id)=>{await run(c,'UPDATE books SET hidden=? WHERE id=?',c.body.on?1:0,id);return json({ok:true})},true);
 route('POST','/api/admin/books/:id/delete',async(c,id)=>{
   await batch(c,[stmt(c,'DELETE FROM books WHERE id=?',id),stmt(c,'DELETE FROM ratings WHERE book_id=?',id),stmt(c,'DELETE FROM reviews WHERE book_id=?',id)]);return json({ok:true});
@@ -426,6 +449,77 @@ route('POST','/api/admin/books/:id/edit',async(c,id)=>{
   const row=await get(c,'SELECT data FROM books WHERE id=?',id);if(!row)return bad(404);
   const b=P(row.data),title=clip(c.body.title,120),desc=clip(c.body.desc,3000);if(title.length<2)return bad();
   b.title=title;if(desc)b.desc=desc;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);return json({ok:true});
+},true);
+/* ---------- catalog administration: import, rights, demo content, audio ---------- */
+const audit=(c,action,target,detail)=>run(c,'INSERT INTO audit_log(ts,user_id,action,target,detail) VALUES(?,?,?,?,?)',Date.now(),c.user.id,action,target,J(detail||{}).slice(0,2000));
+route('GET','/api/admin/audit',async c=>json({list:await all(c,'SELECT ts,user_id,action,target,detail FROM audit_log ORDER BY id DESC LIMIT 60')}),true);
+/** Imports up to 8 records. Text is stored only when the rights check passes; otherwise the record can only be a metadata-only card. */
+route('POST','/api/admin/import',async c=>{
+  const recs=Array.isArray(c.body.records)?c.body.records.slice(0,8):[];if(!recs.length)return bad(400,'empty');
+  const results=[];
+  for(const r of recs){
+    const v=validateImport(r);if(v.error){results.push({title:clip(r?.title,60),error:v.error});continue}
+    const dup=await get(c,"SELECT b.id FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE lower(json_extract(b.data,'$.title'))=lower(?) AND lower(json_extract(a.data,'$.name'))=lower(?)",v.book.title,v.author.name);
+    if(dup){results.push({title:v.book.title,error:'duplicate',id:dup.id});continue}
+    let cover=null;
+    if(/^data:image\/(jpeg|png|webp);base64,/.test(v.cover)&&v.cover.length<=MAX_COVER_CHARS)cover=v.cover;
+    else if(v.coverUrl)try{cover=await fetchCover(v.coverUrl)}catch{cover=null}
+    let a=await get(c,"SELECT id FROM authors WHERE lower(json_extract(data,'$.name'))=lower(?)",v.author.name);
+    const aid=a?.id||'a'+id8(),bid='b'+id8(),h=[...bid].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];
+    const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
+    const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover}:{}),imported:{by:c.user.id,at:Date.now()}};
+    const ops=[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added)];
+    if(!a)ops.push(stmt(c,'INSERT INTO authors(id,data,followers_base,user_id) VALUES(?,?,0,NULL)',aid,J({id:aid,name:v.author.name,city:v.author.city,hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal:[['#2a1a14','#7a2e17'],['#10282c','#2f6672'],['#26141a','#7a3346'],['#2a1f12','#8a5a22']][h%4],bio:v.author.bio,...(v.author.deathYear?{deathYear:v.author.deathYear}:{})})));
+    await batch(c,ops);await audit(c,'import',bid,{title:v.book.title,rights:v.book.rights.status,fullText:v.book.chapters.length>0});
+    results.push({title:v.book.title,id:bid,fullText:v.book.chapters.length>0,cover:!!cover});
+  }
+  return json({results});
+},true);
+/** Confirms or revokes the right to publish the full text. Revoking hides the text from readers immediately. */
+route('POST','/api/admin/books/:id/rights',async(c,id)=>{
+  const row=await get(c,'SELECT data FROM books WHERE id=?',id);if(!row)return bad(404);
+  const b=P(row.data),r=cleanRights(c.body),death=Number.isInteger(c.body.authorDeathYear)?c.body.authorDeathYear:(b.rights?.authorDeathYear??null);
+  if(death!==null)r.authorDeathYear=death;
+  r.source={name:clip(c.body.sourceName,80)||b.rights?.source?.name||'',url:httpsUrl(c.body.sourceUrl)||b.rights?.source?.url||''};
+  if(b.chapters.length&&RIGHTS_OK.includes(r.status)){const e=checkTextRights(r,death,J(b.chapters),new Date().getFullYear());if(e&&e!=='toolarge')return bad(422,e)}
+  const before=b.rights?.status||'legacy';
+  b.rights={...r,verifiedBy:c.user.id,verifiedAt:Date.now()};
+  await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);await audit(c,'rights',id,{from:before,to:r.status,license:r.license,evidence:r.evidenceUrl});
+  return json({ok:true});
+},true);
+/** Adds the full text to a metadata-only book, under the same rights check as an import. */
+route('POST','/api/admin/books/:id/text',async(c,id)=>{
+  const row=await get(c,'SELECT data FROM books WHERE id=?',id);if(!row)return bad(404);
+  const b=P(row.data),text=String(c.body.text||''),r=cleanRights(c.body.rights),death=Number.isInteger(c.body.authorDeathYear)?c.body.authorDeathYear:null;
+  if(death!==null)r.authorDeathYear=death;
+  r.source={name:clip(c.body.sourceName,80)||b.rights?.source?.name||'',url:httpsUrl(c.body.sourceUrl)||b.rights?.source?.url||''};
+  if(!r.source.name)return bad(422,'source');
+  const e=checkTextRights(r,death,text);if(e)return bad(e==='toolarge'?413:422,e);
+  const chapters=parseManuscript(text);if(!chapters.length)return bad(400,'manuscript');
+  await snapshotBook(c,id,b);
+  b.chapters=chapters;b.pages=Math.max(1,Math.round(chapters.reduce((n,x)=>n+x.p.join('').length,0)/1800));b.rights={...r,verifiedBy:c.user.id,verifiedAt:Date.now()};b.updated=Date.now();
+  await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);await audit(c,'text',id,{rights:r.status,chapters:chapters.length});
+  return json({ok:true,chapters:chapters.length});
+},true);
+route('POST','/api/admin/demo',async c=>{
+  const v=c.body.show===true||c.body.show===false?c.body.show:'auto';
+  await run(c,"INSERT INTO meta(key,value) VALUES('showDemo',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(v));await audit(c,'demo',null,{show:v});return json({ok:true});
+},true);
+route('GET','/api/admin/demo',async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='showDemo'");return json({show:r?P(r.value):'auto',visible:await demoVisible(c),
+  counts:await get(c,"SELECT SUM(CASE WHEN json_extract(data,'$.demo')=1 THEN 1 ELSE 0 END) demo,SUM(CASE WHEN json_extract(data,'$.demo') IS NOT 1 THEN 1 ELSE 0 END) real FROM books")})},true);
+/* Audio: the player needs real files. Tracks are links to audio the admin is entitled to distribute (https only); the same rights rule as text applies. */
+route('GET','/api/books/:id/audio',async(c,id)=>{
+  const row=await get(c,'SELECT data,hidden FROM books WHERE id=?',id);if(!row||(row.hidden&&!c.user.admin))return bad(404);
+  if(!canRead(P(row.data))&&!c.user.admin)return bad(403,'rights');
+  return json({tracks:(await all(c,'SELECT id,idx,title,url,duration FROM audio_tracks WHERE book_id=? ORDER BY idx,id',id))});
+});
+route('POST','/api/admin/books/:id/audio',async(c,id)=>{
+  const row=await get(c,'SELECT data FROM books WHERE id=?',id);if(!row)return bad(404);
+  if(!canRead(P(row.data)))return bad(422,'rights_required');
+  const list=(Array.isArray(c.body.tracks)?c.body.tracks:[]).slice(0,200).map((t,i)=>({title:clip(t.title,120)||`Часть ${i+1}`,url:httpsUrl(t.url),duration:Math.max(0,Math.min(86400,Math.round(+t.duration)||0))}));
+  if(list.some(t=>!t.url))return bad(422,'url');
+  await batch(c,[stmt(c,'DELETE FROM audio_tracks WHERE book_id=?',id),...list.map((t,i)=>stmt(c,'INSERT INTO audio_tracks(book_id,idx,title,url,duration,created) VALUES(?,?,?,?,?,?)',id,i,t.title,t.url,t.duration,Date.now()))]);
+  await audit(c,'audio',id,{tracks:list.length});return json({ok:true,tracks:list.length});
 },true);
 route('POST','/api/admin/reviews/:id/delete',async(c,id)=>{await batch(c,[stmt(c,'DELETE FROM reviews WHERE id=?',id),stmt(c,'DELETE FROM review_replies WHERE review_id=?',id)]);return json({ok:true})},true);
 route('POST','/api/admin/threads/:id/delete',async(c,id)=>{await batch(c,[stmt(c,'DELETE FROM threads WHERE id=?',id),stmt(c,'DELETE FROM comments WHERE thread_id=?',id)]);return json({ok:true})},true);
@@ -738,7 +832,8 @@ route('POST','/api/admin/stopwords',async c=>{
 /* ---------- entry points ---------- */
 async function handleApi(request,env,ctx){
   const c={env,ctx,request,body:{}};
-  const dev=!env.BOT_TOKEN;let u=null;const h=request.headers.get('authorization')||'';
+  /* The x-dev-user shortcut exists for local development only: it must never work on a deployed host, even if BOT_TOKEN is missing. */
+  const host=new URL(request.url).hostname,dev=!env.BOT_TOKEN&&(host==='localhost'||host==='127.0.0.1'||host==='[::1]');let u=null;const h=request.headers.get('authorization')||'';
   if(h.startsWith('tma '))u=await verifyInitData(h.slice(4),env.BOT_TOKEN||'');
   else if(dev&&request.headers.get('x-dev-user'))u={id:clip(request.headers.get('x-dev-user'),32).replace(/[^\w-]/g,''),first_name:'Dev'};
   if(!u||!u.id)return bad(401,'unauthorized');
@@ -751,7 +846,7 @@ async function handleApi(request,env,ctx){
   for(const r of routes){
     if(r.method!==request.method)continue;const m=r.re.exec(url.pathname);if(!m)continue;
     if(r.admin&&!c.user.admin)return bad(403,'forbidden');
-    if(request.method!=='GET'){try{c.body=await request.json()}catch{c.body={}}}
+    if(request.method!=='GET'){if(+request.headers.get('content-length')>4_500_000)return bad(413,'toolarge');try{c.body=await request.json()}catch{c.body={}}}
     await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=COALESCE(users.name,excluded.name),last_seen=excluded.last_seen,blocked=0',id,name,Date.now(),Date.now());
     if((await get(c,'SELECT banned FROM users WHERE id=?',id))?.banned&&!c.user.superadmin)return bad(403,'banned');
     return r.fn(c,...m.slice(1));

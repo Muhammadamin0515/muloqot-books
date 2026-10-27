@@ -3,4 +3,4 @@ dist
 .env*
 .dev.vars
 .wrangler
-data
+data/catalog.enriched.json
