@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 /* Read-only discovery: what Uzbek-language works exist on uz.wikisource.org (and what the API says about their size and licence).
    Prints a report; changes nothing. Run in GitHub Actions (the development sandbox cannot reach these hosts). */
-const API='https://uz.wikisource.org/w/api.php',UA={'user-agent':'MuloqotBooks-discovery/1.0 (project owner contact via GitHub)'};
-const q=async p=>{const u=API+'?format=json&origin=*&'+new URLSearchParams(p);const r=await fetch(u,{headers:UA});if(!r.ok)throw new Error(r.status+' '+u);return r.json()};
+const API='https://uz.wikisource.org/w/api.php',UA={'user-agent':'MuloqotBooks/1.0 (https://github.com/Muhammadamin0515/muloqot-books; read-only catalogue discovery) node-fetch','accept':'application/json'};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+/* Wikimedia asks for a descriptive User-Agent and a gentle request rate: one request per 1.5 s, retry on 429 */
+const q=async p=>{const u=API+'?format=json&maxlag=5&'+new URLSearchParams(p);
+  for(let i=0;i<4;i++){await sleep(1500*(i+1));const r=await fetch(u,{headers:UA}),t=await r.text();
+    if(r.status===429){continue}
+    try{return JSON.parse(t)}catch{throw new Error(r.status+' not JSON: '+t.slice(0,120).replace(/\s+/g,' '))}}
+  throw new Error('429 after retries')};
 const authors=['Abdulla Qodiriy','Cho‘lpon','Alisher Navoiy','Zahiriddin Muhammad Bobur','Abdulla Avloniy','Hamza Hakimzoda Niyoziy','Abdurauf Fitrat','Muqimiy','Furqat','Behbudiy','Erkin Vohidov','Oybek','Abdulla Qahhor','G‘afur G‘ulom','Hamid Olimjon','Said Ahmad','O‘tkir Hoshimov','Tog‘ay Murod'];
 try{
   const s=await q({action:'query',meta:'siteinfo',siprop:'statistics|general'});
