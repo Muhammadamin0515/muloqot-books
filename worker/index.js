@@ -374,25 +374,49 @@ route('GET','/api/admin/stats',async c=>{
 },true);
 
 /* ---------- admin: broadcasts ---------- */
-const bcOut=b=>({id:b.id,text:b.text,audience:b.audience,status:b.status,total:b.total,sent:b.sent,failed:b.failed,created:b.created});
+const bcOut=(b,votes)=>({id:b.id,text:b.text,audience:b.audience,status:b.status,total:b.total,sent:b.sent,failed:b.failed,created:b.created,kind:b.kind||'message',photo:b.photo||'',button:b.button?P(b.button):{type:'app'},options:b.options?P(b.options):[],lang:b.lang||'all',...(votes?{votes}:{})});
 const recipientsSql="id GLOB '[0-9]*' AND banned=0 AND blocked=0";
-route('GET','/api/admin/broadcasts',async c=>json({list:(await all(c,'SELECT * FROM broadcasts ORDER BY created DESC LIMIT 20')).map(bcOut),bot:!!c.env.BOT_TOKEN}),true);
+/** Audience filter: everybody, or only readers whose app language is Russian or Uzbek. */
+const audSql=lang=>lang==='ru'||lang==='uz'?` AND json_extract(state,'$.lang')='${lang}'`:'';
+const voteCounts=async(c,id,n)=>{const rows=await all(c,'SELECT opt,COUNT(*) n FROM survey_votes WHERE broadcast_id=? GROUP BY opt',id);return Array.from({length:n},(_,i)=>rows.find(r=>r.opt===i)?.n||0)};
+route('GET','/api/admin/broadcasts',async c=>json({list:await Promise.all((await all(c,'SELECT * FROM broadcasts ORDER BY created DESC LIMIT 20')).map(async b=>bcOut(b,b.kind==='poll'?await voteCounts(c,b.id,(b.options?P(b.options):[]).length):null))),bot:!!c.env.BOT_TOKEN}),true);
 route('POST','/api/admin/broadcasts',async c=>{
   if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
-  const text=clip(c.body.text,3500);if(text.length<2)return bad();
+  const kind=c.body.kind==='poll'?'poll':'message',photo=httpsUrl(c.body.photo)||'';
+  if(photo&&String(c.body.text||'').trim().length>1000)return bad(422,'caption_long');
+  const text=clip(c.body.text,photo?1000:3500);if(text.length<2)return bad(422,'text');
+  const lang=c.body.lang==='ru'||c.body.lang==='uz'?c.body.lang:'all';
+  let options=[];
+  if(kind==='poll'){options=(Array.isArray(c.body.options)?c.body.options:[]).map(o=>clip(o,40)).filter(Boolean).slice(0,6);if(options.length<2)return bad(422,'options')}
+  const bt=c.body.button||{type:'app'};let button={type:'app'};
+  if(kind==='message'){
+    if(bt.type==='none')button={type:'none'};
+    else if(bt.type==='link'){const url=httpsUrl(bt.url),label=clip(bt.text,30);if(!url||!label)return bad(422,'button');button={type:'link',text:label,url}}
+    else if(bt.type==='book'){const label=clip(bt.text,30)||'📖',row=await pubBook(c,String(bt.bookId||''));if(!row)return bad(422,'book');button={type:'book',text:label,bookId:String(bt.bookId)}}
+  }else button={type:'none'};
   const test=c.body.audience==='test',id='bc'+id8();
-  const total=test?1:(await get(c,`SELECT COUNT(*) n FROM users WHERE ${recipientsSql}`)).n;
-  await run(c,'INSERT INTO broadcasts VALUES(?,?,?,?,?,?,?,?,?,?)',id,text,test?'test':'all','running',total,0,0,test?c.user.id:'',Date.now(),c.user.id);
+  const total=test?1:(await get(c,`SELECT COUNT(*) n FROM users WHERE ${recipientsSql}${audSql(lang)}`)).n;
+  await run(c,'INSERT INTO broadcasts(id,text,audience,status,total,sent,failed,cursor,created,created_by,kind,photo,button,options,lang) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,text,test?'test':'all','running',total,0,0,test?c.user.id:'',Date.now(),c.user.id,kind,photo,J(button),J(options),lang);
   return json({broadcast:bcOut(await get(c,'SELECT * FROM broadcasts WHERE id=?',id))});
 },true);
+/** The message of one broadcast as a Telegram API call: text or photo, with the chosen button (open app, link, a book) or survey answers. */
+function bcPayload(c,b,chatId){
+  const btn=b.button?P(b.button):{type:'app'},base=baseUrl(c.env);
+  let markup={};
+  if(b.kind==='poll'){const opts=P(b.options||'[]');markup={reply_markup:{inline_keyboard:opts.map((o,i)=>[{text:o,callback_data:`bv:${b.id}:${i}`}])}}}
+  else if(btn.type==='app')markup=openBtn(c.env);
+  else if(btn.type==='link')markup={reply_markup:{inline_keyboard:[[{text:btn.text,url:btn.url}]]}};
+  else if(btn.type==='book'&&base)markup={reply_markup:{inline_keyboard:[[{text:btn.text,web_app:{url:`${base}/?open=book_${btn.bookId}`}}]]}};
+  return b.photo?['sendPhoto',{chat_id:chatId,photo:b.photo,caption:b.text,...markup}]:['sendMessage',{chat_id:chatId,text:b.text,...markup}];
+}
 /* One step sends to a small batch (stays under per-request subrequest limits); the admin UI calls it until done. */
 route('POST','/api/admin/broadcasts/:id/step',async(c,id)=>{
   const b=await get(c,'SELECT * FROM broadcasts WHERE id=?',id);if(!b)return bad(404);
   if(b.status!=='running')return json({broadcast:bcOut(b)});
-  const users=b.audience==='test'?(b.sent+b.failed?[]:[{id:b.created_by}]):await all(c,`SELECT id FROM users WHERE ${recipientsSql} AND id>? ORDER BY id LIMIT 20`,b.cursor||'');
+  const users=b.audience==='test'?(b.sent+b.failed?[]:[{id:b.created_by}]):await all(c,`SELECT id FROM users WHERE ${recipientsSql}${audSql(b.lang)} AND id>? ORDER BY id LIMIT 20`,b.cursor||'');
   let sent=0,failed=0;const dead=[];
   for(let i=0;i<users.length;i+=10)await Promise.all(users.slice(i,i+10).map(async u=>{
-    const r=await tgApi(c.env,'sendMessage',{chat_id:u.id,text:b.text,...openBtn(c.env)});
+    const [m,body]=bcPayload(c,b,u.id),r=await tgApi(c.env,m,body);
     if(r&&r.ok)sent++;else{failed++;if(r&&(r.status===403||r.status===400))dead.push(u.id)}}));
   for(const d of dead)await run(c,'UPDATE users SET blocked=1 WHERE id=?',d);
   const cursor=users.length?users[users.length-1].id:b.cursor,done=b.audience==='test'||users.length<20;
@@ -400,6 +424,10 @@ route('POST','/api/admin/broadcasts/:id/step',async(c,id)=>{
   return json({broadcast:bcOut(await get(c,'SELECT * FROM broadcasts WHERE id=?',id))});
 },true);
 route('POST','/api/admin/broadcasts/:id/cancel',async(c,id)=>{await run(c,"UPDATE broadcasts SET status='cancelled' WHERE id=? AND status='running'",id);return json({ok:true})},true);
+route('GET','/api/admin/broadcasts/:id/results',async(c,id)=>{
+  const b=await get(c,'SELECT * FROM broadcasts WHERE id=?',id);if(!b)return bad(404);const opts=b.options?P(b.options):[];
+  return json({broadcast:bcOut(b,await voteCounts(c,id,opts.length))});
+},true);
 
 /* ---------- admin: support inbox ---------- */
 route('GET','/api/admin/support',async c=>{
@@ -888,6 +916,14 @@ const notifKeyboard=(notif,lang)=>({inline_keyboard:Object.keys(NOTIF_DEFAULT).m
 const notifText=lang=>lang==='uz'?'Qaysi bildirishnomalarni olmoqchisiz? Bosib yoqing yoki o‘chiring.':'Какие уведомления вы хотите получать? Нажмите, чтобы включить или выключить.';
 async function onCallback(c,q){
   const env=c.env,uid=String(q.from.id),lang=(q.from.language_code||'').startsWith('uz')?'uz':'ru',m=q.data||'';
+  if(m.startsWith('bv:')){
+    const [,bid,oi]=m.split(':'),idx=+oi,b=await get(c,"SELECT id,options,status FROM broadcasts WHERE id=? AND kind='poll'",bid),opts=b?P(b.options||'[]'):[];
+    if(!b||!Number.isInteger(idx)||idx<0||idx>=opts.length)return void await tgApi(env,'answerCallbackQuery',{callback_query_id:q.id});
+    await run(c,'INSERT INTO survey_votes(broadcast_id,user_id,opt,ts) VALUES(?,?,?,?) ON CONFLICT(broadcast_id,user_id) DO UPDATE SET opt=excluded.opt,ts=excluded.ts',bid,uid,idx,Date.now());
+    const mark=opts.map((o,i)=>[{text:(i===idx?'✅ ':'')+o,callback_data:`bv:${bid}:${i}`}]);
+    await Promise.all([q.message?tgApi(env,'editMessageReplyMarkup',{chat_id:q.message.chat.id,message_id:q.message.message_id,reply_markup:{inline_keyboard:mark}}):0,tgApi(env,'answerCallbackQuery',{callback_query_id:q.id,text:lang==='uz'?'Rahmat, javobingiz qabul qilindi':'Спасибо, ответ записан'})]);
+    return;
+  }
   if(!m.startsWith('n:')||!(m.slice(2) in NOTIF_DEFAULT)||!q.message)return void await tgApi(env,'answerCallbackQuery',{callback_query_id:q.id});
   const {st,notif}=await getNotif(c,uid);notif[m.slice(2)]=!notif[m.slice(2)];await saveNotif(c,uid,st,notif);
   await Promise.all([tgApi(env,'editMessageReplyMarkup',{chat_id:q.message.chat.id,message_id:q.message.message_id,reply_markup:notifKeyboard(notif,lang)}),tgApi(env,'answerCallbackQuery',{callback_query_id:q.id,text:lang==='uz'?'Saqlandi':'Сохранено'})]);

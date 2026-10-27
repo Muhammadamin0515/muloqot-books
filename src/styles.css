@@ -599,3 +599,17 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .view:has(>.chatform)>.chatbox{flex:1;min-height:0;padding-bottom:14px;justify-content:flex-end}
 .view:has(>.chatform)>.chatbox>p:first-child{margin-bottom:auto!important}
 .view:has(>.chatform)>.chatform{margin-top:auto;position:sticky;bottom:0}
+
+/* ---- admin: book picker, broadcast preview, survey results ---- */
+.bpick,.bchosen{display:flex}
+.bchosen{align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--acc);border-radius:14px;background:var(--acc-soft)}
+.bchosen small,.bpitem small{display:block;color:var(--mute);font-size:12px;font-weight:500;margin-top:2px}
+.bplist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;background:var(--card);margin-top:8px;overflow:hidden}
+.bpitem{display:block;text-align:left;width:100%;padding:11px 14px;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);font-size:14px}
+.bpitem:last-child{border-bottom:0}
+.bpempty{padding:12px 14px;color:var(--mute);font-size:12.5px}
+.bcphoto{display:flex;align-items:center;justify-content:center;gap:8px;height:120px;margin-bottom:8px;border-radius:12px;background:var(--card);color:var(--mute);font-size:12.5px}
+.bcbtn{margin-top:8px;padding:10px;text-align:center;border-radius:10px;background:rgba(255,255,255,.1);font-weight:600;font-size:13.5px;color:var(--acc-t)}
+.vrow{display:grid;grid-template-columns:minmax(0,1fr) 90px 28px;gap:8px;align-items:center;font-size:12.5px;margin-top:6px}
+.vrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow b{text-align:right}

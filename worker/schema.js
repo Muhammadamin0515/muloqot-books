@@ -22,6 +22,7 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS reading_progress(user_id TEXT,book_id TEXT,ver TEXT,locator TEXT,percent REAL,rev INTEGER,updated INTEGER,PRIMARY KEY(user_id,book_id))',
   'CREATE TABLE IF NOT EXISTS bookmarks(user_id TEXT,id TEXT,book_id TEXT,ver TEXT,ch INTEGER,para INTEGER,snippet TEXT,created INTEGER,PRIMARY KEY(user_id,id))',
   'CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id,created)',
+  'CREATE TABLE IF NOT EXISTS survey_votes(broadcast_id TEXT,user_id TEXT,opt INTEGER,ts INTEGER,PRIMARY KEY(broadcast_id,user_id))',
   'CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts INTEGER,user_id TEXT,action TEXT,target TEXT,detail TEXT)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];
@@ -37,6 +38,11 @@ const ALTERS=[
   'ALTER TABLE submissions ADD COLUMN update_book_id TEXT',
   'ALTER TABLE submissions ADD COLUMN style INTEGER',
   'ALTER TABLE reviews ADD COLUMN demo INTEGER',
+  'ALTER TABLE broadcasts ADD COLUMN kind TEXT',
+  'ALTER TABLE broadcasts ADD COLUMN photo TEXT',
+  'ALTER TABLE broadcasts ADD COLUMN button TEXT',
+  'ALTER TABLE broadcasts ADD COLUMN options TEXT',
+  'ALTER TABLE broadcasts ADD COLUMN lang TEXT',
   'ALTER TABLE threads ADD COLUMN demo INTEGER',
   'ALTER TABLE quotes ADD COLUMN demo INTEGER'
 ];

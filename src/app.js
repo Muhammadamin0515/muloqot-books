@@ -750,7 +750,7 @@ let banned=false,stale=false;
 try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e.status===401&&tg.isTelegram()}
 
 /* ---------- boot ---------- */
-const admApi=initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
+const admApi=initAdmin({AUTHORS,SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
 initCatalogAdmin({SCREENS,ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,refresh,tg},admApi);
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};

@@ -1,7 +1,9 @@
+import {search as fuzzy} from './search.js';
 /* Admin panel + support chat. Wired into the app through initAdmin(ctx); all data comes from /api/admin/*. */
 export function initAdmin(x){
   const {SCREENS,ACT,CHG,FORMS,AFTER,MODEL,go,api,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr}=x;
-  const M=MODEL.adm={nf:{support:'off',submissions:'silent',reports:'silent',donations:'silent'},bcText:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
+  const AUTH=id=>(x.AUTHORS||[]).find(a=>a.id===id)||{name:''};
+  const M=MODEL.adm={nf:{support:'off',submissions:'silent',reports:'silent',donations:'silent'},bcText:'',bc_kind:'message',bc_photo:'',bc_btn:'app',bc_btnText:'',bc_url:'',bc_book:'',bc_opts:'',bc_lang:'all',bp_wq_book:'',bp_bc_book:'',col_q:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
   const A={tab:'overview',fresh:{},stats:null,bc:null,run:null,subs:null,inbox:null,users:null,adbooks:null,chat:{uid:null,name:'',msgs:[]},sup:{msgs:[]},col:null,editId:null};
   const here=n=>NAV.cur.name===n;
   const bg=p=>p.catch(()=>toast('Ошибка запроса'));
@@ -14,6 +16,20 @@ export function initAdmin(x){
   const loading=()=>`<div class="sk" style="height:90px;border-radius:16px;margin-bottom:12px"></div><div class="sk" style="height:90px;border-radius:16px"></div>`;
   const badge=n=>n?`<span class="badge">${n}</span>`:'';
   const confirmSheet=(msg,act,id,label='Подтвердить')=>openSheet(`<h2>${esc(msg)}</h2><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="${act}" data-id="${esc(id)}">${label}</button></div>`);
+
+  /* ---------- search-as-you-type book picker (a plain list of hundreds of books is unusable) ---------- */
+  const bookDocs=()=>BOOKS.map(b=>({id:b.id,title:b.title,author:AUTH(b.a).name,extra:''}));
+  const pickHtml=(key,ph='Начните вводить название или автора')=>{
+    const b=BOOKS.find(y=>y.id===M[key]);
+    if(b)return `<div class="bchosen"><div class="grow" style="min-width:0"><b>${esc(b.title)}</b><small>${esc(AUTH(b.a).name)}</small></div><button class="btn sm ghost" data-a="bpClear" data-k="${key}">Другая</button></div>`;
+    return `<input class="in" data-m="adm:bp_${key}" value="${esc(M['bp_'+key]||'')}" placeholder="${ph}" autocomplete="off" aria-label="Поиск книги"><div class="bplist" id="bpl_${key}">${pickList(key)}</div>`;
+  };
+  const pickList=key=>{const q=(M['bp_'+key]||'').trim();if(!q)return `<div class="bpempty">${BOOKS.length} книг в каталоге: введите часть названия или имя автора</div>`;
+    const hits=fuzzy(q,bookDocs()).slice(0,8),byId=new Map(BOOKS.map(b=>[b.id,b]));
+    return hits.length?hits.map(h=>{const b=byId.get(h.id);return `<button class="bpitem" data-a="bpPick" data-k="${key}" data-id="${esc(b.id)}"><b>${esc(b.title)}</b><small>${esc(AUTH(b.a).name)}</small></button>`}).join(''):'<div class="bpempty">Ничего не найдено</div>'};
+  ['wq_book','bc_book'].forEach(k=>{x.ONINPUT['adm:bp_'+k]=()=>{const l=$('#bpl_'+k);if(l)l.innerHTML=pickList(k)}});
+  ACT.bpPick=el=>{M[el.dataset.k]=el.dataset.id;M['bp_'+el.dataset.k]='';x.refresh()};
+  ACT.bpClear=el=>{M[el.dataset.k]='';x.refresh()};
 
   /* ---------- loading per tab ---------- */
   async function load(key,fn){try{A[key]=await fn()}catch(e){toast('Не удалось загрузить: '+(e.detail||e.status||'сеть'))}if(here('admin'))x.refresh()}
@@ -70,35 +86,66 @@ export function initAdmin(x){
   }
 
   /* ---------- broadcast ---------- */
+  function bcPreview(){
+    const poll=M.bc_kind==='poll',opts=M.bc_opts.split('\n').map(o=>o.trim()).filter(Boolean).slice(0,6);
+    let btns=[];
+    if(poll)btns=opts.length?opts:['Вариант 1','Вариант 2'];
+    else if(M.bc_btn==='app')btns=['📖 Открыть приложение'];
+    else if(M.bc_btn==='link')btns=[M.bc_btnText||'Текст кнопки'];
+    else if(M.bc_btn==='book')btns=[M.bc_btnText||'📖 Читать'];
+    return `${M.bc_photo?`<div class="bcphoto">${ico('upload',22)} картинка по ссылке</div>`:''}<div>${esc(M.bcText)||'Здесь появится ваше сообщение'}</div>${btns.map(b=>`<div class="bcbtn">${esc(b)}</div>`).join('')}`;
+  }
   function tabBroadcast(){
     if(!A.bc)return loading();
-    const r=A.run,reach=A.stats?A.stats.reachable:'…';
+    const r=A.run,reach=A.stats?A.stats.reachable:'…',poll=M.bc_kind==='poll';
     const prog=r?`<div class="card" style="margin-bottom:14px"><b>Идёт рассылка…</b><div class="bar" style="margin:12px 0 8px"><i id="bcBar" style="width:${r.total?Math.round((r.sent+r.failed)/r.total*100):0}%"></i></div><span id="bcTxt" class="mute" style="font-size:13px">Отправлено ${r.sent} из ${r.total}, ошибок ${r.failed}</span></div>`:'';
+    const seg=(key,list)=>`<div class="seg">${list.map(([v,n])=>`<button class="${M[key]===v?'on':''}" data-a="bcSet" data-k="${key}" data-v="${v}">${n}</button>`).join('')}</div>`;
+    const btnFields=poll?'':`<div class="step" style="margin-top:18px"><i>4</i><b>Кнопка под сообщением</b></div>
+      <select class="in" data-chg="bcSel" data-k="bc_btn" aria-label="Кнопка">${[['app','Открыть приложение'],['link','Своя ссылка (реклама, сайт, канал)'],['book','Открыть конкретную книгу'],['none','Без кнопки']].map(([v,n])=>`<option value="${v}" ${M.bc_btn===v?'selected':''}>${n}</option>`).join('')}</select>
+      ${M.bc_btn==='link'?`<div class="field" style="margin-top:12px"><label for="bcBt">Текст на кнопке</label><input id="bcBt" class="in" data-m="adm:bc_btnText" value="${esc(M.bc_btnText)}" maxlength="30" placeholder="Например: Подробнее"></div><div class="field"><label for="bcUrl">Ссылка (https://…)</label><input id="bcUrl" class="in" data-m="adm:bc_url" value="${esc(M.bc_url)}" placeholder="https://t.me/ваш_канал" autocomplete="off"></div>`:''}
+      ${M.bc_btn==='book'?`<div class="field" style="margin-top:12px"><label>Книга</label>${pickHtml('bc_book')}</div><div class="field"><label for="bcBt2">Текст на кнопке</label><input id="bcBt2" class="in" data-m="adm:bc_btnText" value="${esc(M.bc_btnText)}" maxlength="30" placeholder="📖 Читать"></div>`:''}`;
     return `${A.bc.bot?'':'<div class="demo-banner">Бот не подключён: добавьте секрет BOT_TOKEN в настройках Worker, и рассылка заработает.</div>'}${prog}
     <div class="card">
-      <div class="step"><i>1</i><b>Напишите сообщение</b></div>
-      <textarea id="bcText" class="in" data-m="adm:bcText" maxlength="3500" placeholder="Что хотите сообщить читателям?" style="min-height:130px">${esc(M.bcText)}</textarea>
-      <div class="counter"><span id="bcCount">${M.bcText.length} / 3500</span></div>
-      <div class="lbl" style="margin:14px 0 8px">Так увидит читатель</div>
-      <div class="bubble them" id="bcPrev" style="max-width:100%">${esc(M.bcText)||'Здесь появится ваше сообщение'}</div>
-      <div class="step" style="margin-top:18px"><i>2</i><b>Проверьте на себе</b></div>
+      <div class="step"><i>1</i><b>Что отправляем</b></div>
+      ${seg('bc_kind',[['message','Сообщение'],['poll','Опрос (кнопки-ответы)']])}
+      <div class="step" style="margin-top:18px"><i>2</i><b>${poll?'Вопрос':'Текст сообщения'}</b></div>
+      <textarea id="bcText" class="in" data-m="adm:bcText" maxlength="${M.bc_photo?1000:3500}" placeholder="${poll?'Например: Какие книги вам добавить?':'Что хотите сообщить читателям?'}" style="min-height:120px">${esc(M.bcText)}</textarea>
+      <div class="counter"><span id="bcCount">${M.bcText.length} / ${M.bc_photo?1000:3500}</span></div>
+      ${poll?`<div class="field" style="margin-top:12px"><label for="bcOpts">Варианты ответа (каждый с новой строки, от 2 до 6)</label><textarea id="bcOpts" class="in" data-m="adm:bc_opts" style="min-height:96px" placeholder="Узбекская классика&#10;Современные романы&#10;Детективы">${esc(M.bc_opts)}</textarea></div>`:''}
+      <div class="field" style="margin-top:12px"><label for="bcPhoto">Картинка (ссылка https://…, необязательно)</label><input id="bcPhoto" class="in" data-m="adm:bc_photo" value="${esc(M.bc_photo)}" placeholder="https://…/banner.jpg" autocomplete="off"><p class="hint">С картинкой текст до 1000 знаков. Ссылка должна вести прямо на изображение.</p></div>
+      <div class="step" style="margin-top:18px"><i>3</i><b>Кому</b></div>
+      ${seg('bc_lang',[['all','Всем'],['ru','Русский язык'],['uz','Узбекский язык']])}
+      ${btnFields}
+      <div class="lbl" style="margin:18px 0 8px">Так увидит читатель</div>
+      <div class="bubble them" id="bcPrev" style="max-width:100%">${bcPreview()}</div>
+      <div class="step" style="margin-top:18px"><i>${poll?4:5}</i><b>Проверьте на себе</b></div>
       <button class="btn block ghost" data-a="bcTest" ${r?'disabled':''}>Отправить тест мне</button>
-      <div class="step" style="margin-top:18px"><i>3</i><b>Отправьте всем</b></div>
-      <button class="btn block" data-a="bcAll" ${r?'disabled':''}>Отправить всем (${reach})</button>
-      <p class="hint">Получат те, кто запускал бота и не блокировал его. Под сообщением бот добавит кнопку «Открыть приложение».</p>
+      <div class="step" style="margin-top:18px"><i>${poll?5:6}</i><b>Отправьте</b></div>
+      <button class="btn block" data-a="bcAll" ${r?'disabled':''}>Отправить (${M.bc_lang==='all'?reach:'выбранной аудитории'})</button>
+      <p class="hint">Получат те, кто запускал бота и не блокировал его.${poll?' Ответы подсчитываются: результат виден в истории рассылок.':''}</p>
     </div>
-    <div class="sec"><div class="sec-h"><h2>История рассылок</h2></div>${A.bc.list.length?`<div class="list">${A.bc.list.map(b=>`<div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><div class="row" style="width:100%;justify-content:space-between"><b style="font-size:13px">${hm(b.created)}</b><span class="status ${b.status==='done'?'m':''}">${{done:'Отправлена',running:'Идёт',cancelled:'Отменена'}[b.status]||b.status}${b.audience==='test'?' · тест':''}</span></div><span style="font-size:13.5px">${esc(b.text.slice(0,140))}</span><span class="mute" style="font-size:12px">${b.sent} доставлено · ${b.failed} ошибок · из ${b.total}</span></div>`).join('')}</div>`:'<p class="mute">Рассылок ещё не было</p>'}</div>`;
+    <div class="sec"><div class="sec-h"><h2>История рассылок</h2></div>${A.bc.list.length?`<div class="list">${A.bc.list.map(b=>`<div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><div class="row" style="width:100%;justify-content:space-between"><b style="font-size:13px">${hm(b.created)}</b><span class="status ${b.status==='done'?'m':''}">${{done:'Отправлена',running:'Идёт',cancelled:'Отменена'}[b.status]||b.status}${b.audience==='test'?' · тест':''}${b.kind==='poll'?' · опрос':''}</span></div><span style="font-size:13.5px">${esc(b.text.slice(0,140))}</span><span class="mute" style="font-size:12px">${b.sent} доставлено · ${b.failed} ошибок${b.lang&&b.lang!=='all'?' · '+b.lang.toUpperCase():''}</span>
+        ${b.kind==='poll'&&b.votes?`<div style="width:100%;margin-top:6px">${b.options.map((o,i)=>{const tot=b.votes.reduce((n,y)=>n+y,0)||1;return `<div class="vrow"><span>${esc(o)}</span><div class="bar"><i style="width:${Math.round(b.votes[i]/tot*100)}%"></i></div><b>${b.votes[i]}</b></div>`}).join('')}<span class="mute" style="font-size:12px">Всего ответов: ${b.votes.reduce((n,y)=>n+y,0)}</span></div>`:''}</div>`).join('')}</div>`:'<p class="mute">Рассылок пока не было</p>'}</div>`;
   }
-  x.ONINPUT['adm:bcText']=()=>{const p=$('#bcPrev'),c=$('#bcCount');if(p)p.textContent=M.bcText||'Здесь появится ваше сообщение';if(c)c.textContent=M.bcText.length+' / 3500'};
+  const bcRefreshPrev=()=>{const p=$('#bcPrev'),c=$('#bcCount');if(p)p.innerHTML=bcPreview();if(c)c.textContent=M.bcText.length+' / '+(M.bc_photo?1000:3500)};
+  ['bcText','bc_opts','bc_photo','bc_btnText','bc_url'].forEach(k=>{x.ONINPUT['adm:'+k]=bcRefreshPrev});
+  ACT.bcSet=el=>{M[el.dataset.k]=el.dataset.v;x.refresh()};
+  CHG.bcSel=el=>{M[el.dataset.k]=el.value;x.refresh()};
   const paintProg=()=>{const r=A.run;if(!r)return;const b=$('#bcBar'),t=$('#bcTxt');if(b)b.style.width=(r.total?Math.round((r.sent+r.failed)/r.total*100):0)+'%';if(t)t.textContent=`Отправлено ${r.sent} из ${r.total}, ошибок ${r.failed}`};
   async function runBc(b){
     A.run=b;if(here('admin'))x.refresh();
     while(A.run&&A.run.status==='running'){try{A.run=(await api(`/api/admin/broadcasts/${b.id}/step`,'POST',{})).broadcast}catch(e){toast('Сбой отправки, нажмите ещё раз');break}paintProg()}
     const d=A.run;A.run=null;if(d)toast(`Готово: ${d.sent} доставлено, ${d.failed} ошибок`);A.fresh.stats=false;A.fresh.broadcast=false;if(here('admin'))x.refresh();
   }
-  const bcStart=audience=>{if(M.bcText.trim().length<2){toast('Введите текст');return}closeSheet();bg(api('/api/admin/broadcasts','POST',{text:M.bcText,audience}).then(r=>runBc(r.broadcast)))};
+  const BCERR={text:'Введите текст (от 2 знаков)',caption_long:'С картинкой текст не длиннее 1000 знаков',options:'Для опроса нужно от 2 до 6 вариантов ответа',button:'Для кнопки-ссылки нужны текст и адрес https://…',book:'Выберите книгу из каталога'};
+  const bcBody=audience=>({text:M.bcText,audience,kind:M.bc_kind,photo:M.bc_photo.trim(),lang:M.bc_lang,options:M.bc_opts.split('\n'),button:{type:M.bc_btn,text:M.bc_btnText,url:M.bc_url.trim(),bookId:M.bc_book}});
+  const bcValid=()=>{if(M.bcText.trim().length<2){toast(BCERR.text);return false}
+    if(M.bc_kind==='poll'&&M.bc_opts.split('\n').map(o=>o.trim()).filter(Boolean).length<2){toast(BCERR.options);return false}
+    if(M.bc_kind==='message'&&M.bc_btn==='link'&&(!/^https:\/\//i.test(M.bc_url.trim())||!M.bc_btnText.trim())){toast(BCERR.button);return false}
+    if(M.bc_kind==='message'&&M.bc_btn==='book'&&!M.bc_book){toast(BCERR.book);return false}return true};
+  const bcStart=audience=>{if(!bcValid())return;closeSheet();api('/api/admin/broadcasts','POST',bcBody(audience)).then(r=>runBc(r.broadcast)).catch(e=>toast(BCERR[e.detail]||'Не удалось отправить'))};
   ACT.bcTest=()=>bcStart('test');
-  ACT.bcAll=()=>{if(M.bcText.trim().length<2){toast('Введите текст');return}confirmSheet(`Отправить ${A.stats?A.stats.reachable:''} пользователям?`,'bcAllGo','','Отправить')};
+  ACT.bcAll=()=>{if(!bcValid())return;confirmSheet(`Отправить ${M.bc_lang==='all'&&A.stats?A.stats.reachable+' пользователям':'выбранной аудитории'}?`,'bcAllGo','','Отправить')};
   ACT.bcAllGo=()=>bcStart('all');
 
   /* ---------- moderation ---------- */
@@ -213,13 +260,12 @@ export function initAdmin(x){
       <p class="hint">Русский текст получают пользователи с русским Telegram, узбекский с узбекским. Пустое поле вернёт текст по умолчанию. Кнопку «Открыть приложение» бот добавляет сам.</p>
       <button class="btn block" style="margin-top:12px" data-a="wlcSave">Сохранить приветствие</button>`)}</div>
     <div class="sec"><div class="sec-h"><h2>Приложение</h2></div>
-    ${g('Вопрос недели','показывается в «Сообщество → Обсуждения»',`<div class="field"><label for="wqBook">О какой книге</label><select id="wqBook" class="in" data-chg="wqBook">${BOOKS.map(b=>`<option value="${esc(b.id)}" ${b.id===M.wq_book?'selected':''}>${esc(b.title)}</option>`).join('')}</select></div>
+    ${g('Вопрос недели','показывается в «Сообщество → Обсуждения»',`<div class="field"><label>О какой книге</label>${pickHtml('wq_book')}</div>
       <div class="field"><label for="wqRu">Вопрос (русский)</label><textarea id="wqRu" class="in" data-m="adm:wq_ru" style="min-height:80px">${esc(M.wq_ru)}</textarea></div>
       <div class="field"><label for="wqUz">Savol (o‘zbekcha)</label><textarea id="wqUz" class="in" data-m="adm:wq_uz" style="min-height:80px">${esc(M.wq_uz)}</textarea></div><button class="btn block" data-a="wqSave">Сохранить вопрос</button>`)}
     ${g('Подборки',`${COLLECTIONS.length} шт. на главной`,`<div class="list" style="margin-bottom:12px">${cols||'<div class="li mute">Подборок нет</div>'}</div><button class="btn block ghost" data-a="colNew">+ Новая подборка</button>`)}
     ${g('Книги',`${A.adbooks.list.length} шт.: править, скрыть, удалить, история текста`,`<div class="list">${books}</div><p class="hint">Отзывы и обсуждения удаляются в «Сообществе»: у админа рядом с ними есть значок корзины.</p>`)}</div>`;
   }
-  CHG.wqBook=el=>{M.wq_book=el.value};
   CHG.nfSel=el=>{M.nf[el.dataset.k]=el.value};
   ACT.nfSave=()=>bg(api('/api/admin/notif-settings','POST',M.nf).then(n=>{M.nf=n;toast('Сохранено')}));
   ACT.wlcSave=()=>bg(api('/api/admin/welcome','POST',{text:M.welcome,textUz:M.welcomeUz}).then(()=>toast('Приветствие сохранено')));
@@ -240,11 +286,12 @@ export function initAdmin(x){
   ACT.bEditGo=el=>{closeSheet();bg(api(`/api/admin/books/${el.dataset.id}/edit`,'POST',{title:M.eb_title,desc:M.eb_desc}).then(async()=>{await loadBoot();toast('Сохранено');reload('content')}))};
 
   const colSheet=()=>{const c=A.col;return `<h2>${A.editId?'Правка подборки':'Новая подборка'}</h2><div class="field"><label for="colRu">Название (русский)</label><input id="colRu" class="in" data-m="adm:col_ru" value="${esc(M.col_ru)}"></div><div class="field"><label for="colUz">Nomi (o‘zbekcha)</label><input id="colUz" class="in" data-m="adm:col_uz" value="${esc(M.col_uz)}"></div>
-    <div class="lbl" style="margin-bottom:8px">Книги в подборке</div><div class="list" style="max-height:240px;overflow:auto;margin-bottom:14px">${BOOKS.map(b=>`<label class="li" style="cursor:pointer"><input type="checkbox" data-chg="colBook" data-id="${esc(b.id)}" ${c.has(b.id)?'checked':''}><span class="grow">${esc(b.title)}</span></label>`).join('')}</div>
+    <div class="lbl" style="margin-bottom:8px">Книги в подборке: выбрано ${c.size}</div><input class="in" id="colQ" data-m="adm:col_q" placeholder="Найти книгу в списке" autocomplete="off" style="margin-bottom:10px"><div class="list" id="colList" style="max-height:240px;overflow:auto;margin-bottom:14px">${BOOKS.map(b=>`<label class="li" data-t="${esc((b.title+' '+AUTH(b.a).name).toLowerCase())}" style="cursor:pointer"><input type="checkbox" data-chg="colBook" data-id="${esc(b.id)}" ${c.has(b.id)?'checked':''}><span class="grow">${esc(b.title)}</span></label>`).join('')}</div>
     <button class="btn block" data-a="colSave">Сохранить</button>${A.editId?`<button class="btn block ghost" style="margin-top:10px" data-a="colDel">Удалить подборку</button>`:''}`};
-  ACT.colEdit=el=>{const c=COLLECTIONS.find(y=>y.id===el.dataset.id);A.editId=c.id;A.col=new Set(c.ids);M.col_ru=c.t.ru;M.col_uz=c.t.uz;openSheet(colSheet())};
-  ACT.colNew=()=>{A.editId=null;A.col=new Set();M.col_ru='';M.col_uz='';openSheet(colSheet())};
+  ACT.colEdit=el=>{const c=COLLECTIONS.find(y=>y.id===el.dataset.id);A.editId=c.id;A.col=new Set(c.ids);M.col_ru=c.t.ru;M.col_uz=c.t.uz;M.col_q='';openSheet(colSheet())};
+  ACT.colNew=()=>{A.editId=null;A.col=new Set();M.col_ru='';M.col_uz='';M.col_q='';openSheet(colSheet())};
   CHG.colBook=el=>{el.checked?A.col.add(el.dataset.id):A.col.delete(el.dataset.id)};
+  x.ONINPUT['adm:col_q']=()=>{const q=(M.col_q||'').toLowerCase().trim();document.querySelectorAll('#colList label').forEach(l=>l.hidden=!!q&&!l.dataset.t.includes(q))};
   const saveCols=list=>{closeSheet();bg(api('/api/admin/collections','POST',{list}).then(async()=>{await loadBoot();toast('Подборки сохранены');x.refresh()}))};
   ACT.colSave=()=>{if(!M.col_ru.trim()||!A.col.size){toast('Нужно название и хотя бы одна книга');return}
     const item={id:A.editId||'',ids:[...A.col],t:{ru:M.col_ru,uz:M.col_uz}};
