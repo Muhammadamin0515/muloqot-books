@@ -364,3 +364,17 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .in-tg .topbar{padding-top:calc(12px + var(--tg-top,0px))}
 .in-tg .nav{padding-bottom:calc(8px + var(--tg-bottom,0px))}
 .in-tg .hello{padding-top:calc(18px + var(--tg-top,0px))}
+
+/* admin panel & chat */
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:99px;background:var(--acc);color:#fff;font-size:11px;font-weight:800}
+.bars{display:flex;align-items:flex-end;gap:5px;height:110px}
+.bars>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px}
+.bars i{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--acc);min-height:4px}
+.bars small{font-size:10px;color:var(--mute)}.bars em{font-style:normal;font-size:9.5px;color:var(--dim)}
+.chatbox{display:flex;flex-direction:column;gap:8px;padding-bottom:84px}
+.bubble{max-width:82%;padding:10px 14px;border-radius:18px;font-size:14.5px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
+.bubble small{display:block;margin-top:4px;font-size:10.5px;opacity:.6}
+.bubble.me{align-self:flex-end;background:var(--acc);color:#fff;border-bottom-right-radius:6px}
+.bubble.them{align-self:flex-start;background:var(--card2);color:var(--fg);border-bottom-left-radius:6px}
+.chatform{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;padding:10px max(20px,env(safe-area-inset-right,0px)) 12px max(20px,env(safe-area-inset-left,0px));background:var(--bg);border-top:1px solid var(--line)}
+.chatform .in{border-radius:99px;min-height:46px}

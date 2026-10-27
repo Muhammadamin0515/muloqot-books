@@ -3,6 +3,7 @@ import {I18N} from './i18n.js';
 import {esc,ico,cover,portrait,onbArt,authorOf} from './art.js';
 import * as tg from './telegram.js';
 import {api,net} from './api.js';
+import {initAdmin} from './admin.js';
 
 const KEY='muloqot.proto.v1';
 const $=(s,el=document)=>el.querySelector(s);
@@ -178,7 +179,7 @@ const starInput=(cur,act,id)=>`<div class="rate-in" role="group" aria-label="${t
 const rcnt=(r,k,on)=>net.online?r[k]:r[k]+(on?1:0);
 function reviewCard(r,showBook){
   const b=book(r.bookId),rc=S.reacts[r.id]||{};
-  return `<article class="rev" id="rev_${r.id}"><div class="rev-h">${avatar(r.user)}<div class="grow"><b>${esc(r.user)}</b><small>${esc(L(r.date))}</small></div>${stars(r.rating)}</div>
+  return `<article class="rev" id="rev_${r.id}"><div class="rev-h">${avatar(r.user)}<div class="grow"><b>${esc(r.user)}</b><small>${esc(L(r.date))}</small></div>${stars(r.rating)}${S.me&&S.me.admin?`<button class="iconbtn flat" data-a="admDelReview" data-id="${r.id}" aria-label="Удалить" style="width:34px;height:34px">${ico('trash',16)}</button>`:''}</div>
   ${showBook&&b?`<button class="revbook" data-a="openBook" data-id="${b.id}">${cover(b,'xs')}<span>${esc(b.title)}</span></button>`:''}
   <p class="tx">${esc(r.text)}</p>
   <div class="rev-f"><button class="react ${rc.heart?'on':''}" data-a="react" data-id="${r.id}" data-k="heart" aria-pressed="${!!rc.heart}">${ico('heart',16)} ${rcnt(r,'likes',rc.heart)}</button><button class="react ${rc.insight?'on':''}" data-a="react" data-id="${r.id}" data-k="insight" aria-pressed="${!!rc.insight}">${ico('spark',16)} ${rcnt(r,'insight',rc.insight)}</button><button class="react" data-a="toggleReply" data-id="${r.id}">${ico('reply',16)} ${t('reply')}</button></div>
@@ -186,7 +187,7 @@ function reviewCard(r,showBook){
   <form class="replybox" id="rb_${r.id}" data-f="reviewReply" data-id="${r.id}" hidden><input class="in" name="t" placeholder="${t('write_ph')}" aria-label="${t('reply')}" autocomplete="off"><button class="iconbtn" aria-label="${t('send')}" style="background:var(--acc);color:#fff;border:0">${ico('send',18)}</button></form></article>`;
 }
 function threadBody(th){
-  return `<div class="cmt">${th.comments.map((c,i)=>`<div class="c">${avatar(c.user,1)} <b style="margin-left:6px">${esc(c.user)}</b><p>${esc(c.text)}</p>
+  return `<div class="cmt">${th.comments.map((c,i)=>`<div class="c">${avatar(c.user,1)} <b style="margin-left:6px">${esc(c.user)}</b>${S.me&&S.me.admin&&c.id?`<button class="link" style="float:right" data-a="admDelComment" data-t="${th.id}" data-id="${c.id}" aria-label="Удалить">${ico('trash',13)}</button>`:''}<p>${esc(c.text)}</p>
   ${c.replies.length?`<div class="replies">${c.replies.map(x=>`<div class="r"><b>${esc(x.user)}</b><p>${esc(x.text)}</p></div>`).join('')}</div>`:''}
   <button class="link acc" data-a="toggleCReply" data-t="${th.id}" data-c="${i}">${ico('reply',13)} ${t('reply')}</button>
   <form class="replybox" id="cr_${th.id}_${i}" data-f="cReply" data-t="${th.id}" data-c="${i}" hidden><input class="in" name="t" placeholder="${t('write_ph')}" aria-label="${t('reply')}" autocomplete="off"><button class="iconbtn" aria-label="${t('send')}" style="background:var(--acc);color:#fff;border:0">${ico('send',18)}</button></form></div>`).join('')}
@@ -195,7 +196,7 @@ function threadBody(th){
 const CM={tab:'reviews',qv:'all',open:{t1:true}};
 function threadCard(th){
   const b=th.bookId?book(th.bookId):null,open=!!CM.open[th.id],n=th.comments.reduce((s,c)=>s+1+c.replies.length,0);
-  return `<article class="thread"><button class="th" data-a="toggleThread" data-id="${th.id}" aria-expanded="${open}"><div class="row" style="margin-bottom:8px;flex-wrap:wrap">${avatar(th.user,1)}<span class="mute" style="font-size:12.5px">${esc(th.user)}</span>${b?`<span class="tag acc">${esc(b.title)}</span>`:''}</div><h3>${esc(th.title)}</h3>${th.text?`<p class="mute" style="margin-top:6px;font-size:14px">${esc(th.text)}</p>`:''}<div class="meta">${ico('chat',14)} ${n} ${t('replies')}</div></button>${open?threadBody(th):''}</article>`;
+  return `<article class="thread"><button class="th" data-a="toggleThread" data-id="${th.id}" aria-expanded="${open}"><div class="row" style="margin-bottom:8px;flex-wrap:wrap">${avatar(th.user,1)}<span class="mute" style="font-size:12.5px">${esc(th.user)}</span>${b?`<span class="tag acc">${esc(b.title)}</span>`:''}</div><h3>${esc(th.title)}</h3>${th.text?`<p class="mute" style="margin-top:6px;font-size:14px">${esc(th.text)}</p>`:''}<div class="meta">${ico('chat',14)} ${n} ${t('replies')}</div></button>${S.me&&S.me.admin?`<button class="link" data-a="admDelThread" data-id="${th.id}">${ico('trash',13)} Удалить тему</button>`:''}${open?threadBody(th):''}</article>`;
 }
 const topicForm=bid=>`<form class="replybox" data-f="topicNew" data-book="${bid||''}" style="margin:0 0 6px"><input class="in" name="t" placeholder="${t('topic_ph')}" aria-label="${t('new_topic')}" autocomplete="off"><button class="btn sm" style="height:42px">${t('post')}</button></form>`;
 SCREENS.book=({id})=>{
@@ -443,7 +444,7 @@ SCREENS.studio=()=>{
     body=`<div class="steps" aria-label="${steps[ST.step]}">${steps.map((s,i)=>`<i class="${i<=ST.step?'on':''}"></i>`).join('')}</div><div class="eyebrow" style="margin-bottom:16px">${ST.step+1} / 4 · ${steps[ST.step]}</div>${inner}${nav}`;
   }
   return `<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="${t('back')}">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">${t('studio')}</h2></div></header>
-  <div class="px"><div class="demo-banner">${ico('info',18)}<span>${t('demo_banner')}</span></div>${S.me&&S.me.admin?adminBlock():''}${body}</div>`;
+  <div class="px"><div class="demo-banner">${ico('info',18)}<span>${t('demo_banner')}</span></div>${body}</div>`;
 };
 ACT.stNew=()=>{Object.assign(ST,{mode:'form',step:0,title:'',author:S.name,lang:'ru',genre:'novel',desc:'',tags:'',cover:null,coverName:'',fileName:'',fileSize:'',body:'',err:null,sending:false,sent:false});refresh();$('#screen').scrollTop=0};
 ACT.stHome=()=>{ST.mode='home';ST.sending=false;ST.sent=false;refresh()};
@@ -459,14 +460,6 @@ ACT.stSubmit=()=>{ST.sending=true;refresh();
   if(net.online){const bar=()=>$('#stBar');setTimeout(()=>{const b=bar();if(b)b.style.width='70%'},30);
     api('/api/submissions','POST',{title:ST.title,author:ST.author,lang:ST.lang,genre:ST.genre,desc:ST.desc,tags:ST.tags,cover:ST.cover,fileName:ST.fileName,body:ST.body}).then(x=>subDone(x.sub)).catch(()=>{ST.sending=false;toast(t('err_send'));if(NAV.cur.name==='studio')refresh()});return}
   let v=0;const iv=setInterval(()=>{v+=14;const bar=$('#stBar');if(bar)bar.style.width=Math.min(100,v)+'%';if(v>=100){clearInterval(iv);setTimeout(()=>subDone({id:'s'+Date.now(),title:ST.title.trim(),status:'moderation'}),300)}},220)};
-/* ---------- moderation (admins) ---------- */
-function adminBlock(){
-  if(!AD.list||!AD.list.length)return AD.list?`<div class="sec" style="margin:0 0 22px"><div class="sec-h"><h2>${t('moderation')}</h2></div><p class="mute">${t('mod_empty')}</p></div>`:'';
-  return `<div class="sec" style="margin:0 0 22px"><div class="sec-h"><h2>${t('moderation')}</h2></div>${AD.list.map(x=>`<div class="card" style="margin-bottom:10px"><b>${esc(x.title)}</b><div class="mute" style="font-size:12.5px;margin:4px 0 8px">${esc(x.author)} · ${x.lang.toUpperCase()} · ${gl(x.genre)} · ${Math.round(x.chars/1000)}k</div><p style="font-size:13.5px;margin-bottom:12px">${esc(x.desc)}</p><div class="row" style="gap:8px"><button class="btn sm" data-a="adApprove" data-id="${x.id}">${t('approve')}</button><button class="btn sm ghost" data-a="adReject" data-id="${x.id}">${t('reject')}</button></div></div>`).join('')}</div>`;
-}
-const loadAdmin=()=>{if(net.online&&S.me&&S.me.admin)api('/api/admin/submissions').then(l=>{AD.list=l;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
-ACT.adApprove=el=>bg(api(`/api/admin/submissions/${el.dataset.id}/approve`,'POST',{}).then(()=>{toast(t('approved_toast'));loadAdmin();return loadBoot().then(()=>refresh())}));
-ACT.adReject=el=>bg(api(`/api/admin/submissions/${el.dataset.id}/reject`,'POST',{}).then(()=>{loadAdmin()}));
 
 /* =====================================================================
    PROFILE & SETTINGS
@@ -479,6 +472,8 @@ SCREENS.profile=()=>{
   <div class="px"><div class="row" style="gap:16px;margin-bottom:22px"><span class="avatar" style="width:68px;height:68px;font-size:26px;background:${AVC[0]}">${esc((S.name||'?')[0].toUpperCase())}</span><div class="field grow" style="margin:0"><label for="pname">${t('reader_name')}</label><input id="pname" class="in" value="${esc(S.name)}" maxlength="24" autocomplete="off"></div></div>
   <div class="stat3"><div><b>${fin}</b><small>${t('stat_read')}</small></div><div><b>${pages}</b><small>${t('stat_pages')}</small></div><div><b>${S.bookmarks.length}</b><small>${t('stat_bm')}</small></div></div>
   <button class="li card" style="margin-top:18px;width:100%;border:1px solid var(--line2)" data-a="openStudio"><span class="iconbtn" style="background:var(--acc-soft);color:var(--acc-t);border:0">${ico('pen',20)}</span><div class="grow"><b>${t('open_studio')}</b><div class="mute" style="font-size:12.5px">${t('studio_desc')}</div></div>${ico('chev',18)}</button>
+  ${net.online?`<button class="li card" style="margin-top:12px;width:100%;border:1px solid var(--line2)" data-a="openSupport"><span class="iconbtn" style="background:var(--acc-soft);color:var(--acc-t);border:0">${ico('chat',20)}</span><div class="grow"><b>${tr('Поддержка','Yordam')}</b><div class="mute" style="font-size:12.5px">${tr('Написать администратору','Administratorga yozish')}</div></div>${S.me&&S.me.supportUnread?`<span class="badge">${S.me.supportUnread}</span>`:''}${ico('chev',18)}</button>`:''}
+  ${S.me&&S.me.admin?`<button class="li card" style="margin-top:12px;width:100%;border:1px solid var(--acc)" data-a="openAdmin"><span class="iconbtn" style="background:var(--acc);color:#fff;border:0">${ico('spark',20)}</span><div class="grow"><b>Админ-панель</b><div class="mute" style="font-size:12.5px">Статистика, рассылка, модерация, чат</div></div>${ico('chev',18)}</button>`:''}
   <section class="sec" style="margin-top:28px"><div class="lbl" style="margin-bottom:10px">${t('ui_lang')}</div>${seg([['ru','Русский'],['uz','Oʻzbekcha']],S.lang,'setLang')}</section>
   <section class="sec" style="margin-top:22px"><div class="lbl" style="margin-bottom:10px">${t('app_theme')}</div>${seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.theme,'setTheme')}</section>
   <section class="sec" style="margin-top:22px"><div class="lbl" style="margin-bottom:10px">${t('read_prefs')}</div><div class="card" style="display:flex;flex-direction:column;gap:16px">
@@ -496,7 +491,7 @@ ACT.pRTheme=el=>{S.reader.theme=el.dataset.v;save();refresh()};
 ACT.setGoal=el=>{S.goal=+el.dataset.v;save();refresh()};
 CHG.pSize=el=>{S.reader.size=+el.value;save();refresh()};
 ACT.toggleN=el=>{const k=el.dataset.k;S.notif[k]=!S.notif[k];save();el.classList.toggle('on',S.notif[k]);el.setAttribute('aria-checked',S.notif[k])};
-ACT.openStudio=()=>{ST.mode='home';ST.sent=false;ST.sending=false;go('studio');loadAdmin();if(net.online)api('/api/bootstrap').then(d=>{S.subs=d.subs;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
+ACT.openStudio=()=>{ST.mode='home';ST.sent=false;ST.sending=false;go('studio');if(net.online)api('/api/bootstrap').then(d=>{S.subs=d.subs;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
 ACT.showOnb=()=>{OB.i=0;go('onboarding')};
 ACT.resetAsk=()=>openSheet(`<h2>${t('reset_ask')}</h2><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">${t('cancel')}</button><button class="btn grow" data-a="resetDo">${t('reset_yes')}</button></div>`);
 ACT.resetDo=()=>{const lang=S.lang;try{localStorage.removeItem(KEY)}catch(e){}S=DEFAULT();S.lang=lang;S.onboarded=true;Object.keys(LOADED).forEach(k=>delete LOADED[k]);resetCat();closeSheet();toast(t('reset_done'));refresh();
@@ -526,9 +521,11 @@ function applyBoot(d,first){
   if(first&&!(d.state&&d.state.name)&&!localStorage.getItem(KEY)&&d.me.name)S.name=d.me.name.slice(0,24);
 }
 function loadBoot(first){return api('/api/bootstrap').then(d=>{net.online=true;applyBoot(d,first)})}
-try{await loadBoot(true)}catch(e){net.online=false}
+let banned=false;
+try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403}
 
 /* ---------- boot ---------- */
-NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
-
-render(true);
+initAdmin({SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
+if(banned)$('#screen').innerHTML=`<div class="empty" style="padding-top:120px"><b>${tr('Доступ ограничен','Kirish cheklangan')}</b><span>${tr('Ваш аккаунт заблокирован администратором.','Akkauntingiz administrator tomonidan bloklangan.')}</span></div>`;
+else{NAV.cur=S.onboarded?{name:'home',p:{}}:{name:'onboarding',p:{}};
+render(true);}
