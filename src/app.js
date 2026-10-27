@@ -450,8 +450,8 @@ ACT.stHome=()=>{ST.mode='home';ST.sending=false;ST.sent=false;refresh()};
 ACT.stPrev=()=>{ST.step=Math.max(0,ST.step-1);ST.err=null;refresh();$('#screen').scrollTop=0};
 ACT.stNext=()=>{if(ST.step===0){if(ST.title.trim().length<2){ST.err=t('err_title');refresh();return}if(ST.desc.trim().length<20){ST.err=t('err_desc');refresh();return}}if(ST.step===1&&net.online&&ST.body.trim().length<500){ST.err=t('err_file');refresh();return}ST.err=null;ST.step=Math.min(3,ST.step+1);refresh();$('#screen').scrollTop=0};
 CHG.stLang=el=>{ST.lang=el.value};CHG.stGenre=el=>{ST.genre=el.value};
-CHG.stCover=el=>{const f=el.files&&el.files[0];if(!f)return;if(f.size>3*1024*1024){toast(tr('Файл больше 3 МБ','Fayl 3 MB dan katta'));return}const fr=new FileReader();fr.onload=()=>{ST.cover=fr.result;ST.coverName=f.name;refresh()};fr.readAsDataURL(f)};
-CHG.stFile=el=>{const f=el.files&&el.files[0];if(!f)return;if(f.size>2*1024*1024){toast(tr('Файл больше 2 МБ','Fayl 2 MB dan katta'));return}
+CHG.stCover=el=>{const f=el.files&&el.files[0];if(!f)return;if(f.size>600*1024){toast(tr('Обложка больше 600 КБ','Muqova 600 KB dan katta'));return}const fr=new FileReader();fr.onload=()=>{ST.cover=fr.result;ST.coverName=f.name;refresh()};fr.readAsDataURL(f)};
+CHG.stFile=el=>{const f=el.files&&el.files[0];if(!f)return;if(f.size>1100*1024){toast(tr('Файл больше 1 МБ','Fayl 1 MB dan katta'));return}
   const fr=new FileReader();fr.onload=()=>{ST.body=String(fr.result);ST.fileName=f.name;ST.fileSize=(f.size/1024).toFixed(0)+' KB';refresh()};fr.readAsText(f)};
 ACT.stPage=()=>{const d=draftBook();openSheet(`<h2>${t('preview_page')}</h2><div class="reader" style="background:transparent;height:auto;--rs:18px;--rlh:1.7"><div class="chhead"><span class="eyebrow">${t('chapter')} 1</span><h2>${esc(d.title)}</h2></div><p class="rp" style="font-family:var(--read)">${esc(ST.desc.trim()||'—')}</p></div>`)};
 const subDone=sub=>{ST.sending=false;ST.sent=true;S.subs.unshift(sub);save();if(NAV.cur.name==='studio')refresh()};

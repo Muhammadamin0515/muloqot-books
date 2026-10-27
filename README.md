@@ -2,30 +2,38 @@
 
 Литературная платформа (RU/UZ): каталог, читалка, библиотека, сообщество, студия автора (демо).
 
-## Запуск
+## Локальный запуск
 ```
 npm install
-cp .env.example .env     # BOT_TOKEN, WEBAPP_URL, ADMIN_IDS
-npm run start            # сборка фронта + сервер на :3000 (Node >= 22.13)
-# разработка: два терминала
-npm run server           # API
-npm run dev              # Vite с прокси /api
+npm run db:migrate:local   # создать локальную D1 и засеять каталог
+npm run start              # сборка + wrangler dev на http://localhost:8787
 ```
-Без BOT_TOKEN сервер в dev-режиме: пользователь задаётся заголовком `x-dev-user` (в браузере `?as=admin` — администратор).
+Без `BOT_TOKEN` включён dev-режим: пользователь задаётся заголовком `x-dev-user` (в браузере `?as=admin` — администратор). Для разработки фронта: `npm run server` и `npm run dev` в двух терминалах (Vite проксирует `/api` на :3000, укажите `wrangler dev --port 3000`).
 
 ## Что реализовано
 - Авторизация через Telegram `initData` (HMAC-проверка на сервере).
-- SQLite (`node:sqlite`): книги, авторы, отзывы и ответы, реакции, обсуждения и комментарии, цитаты сообщества, оценки (средний рейтинг считается из реальных оценок), подписки на авторов.
+- Cloudflare D1 (SQLite): книги, авторы, отзывы и ответы, реакции, обсуждения и комментарии, цитаты сообщества, оценки (средний рейтинг считается из реальных оценок), подписки на авторов.
 - Личное состояние (прогресс чтения, закладки, библиотека, настройки, серия дней) синхронизируется между устройствами.
 - Студия автора: загрузка рукописи .txt и обложки, главы определяются по заголовкам, заявка уходит на модерацию; админ публикует или отклоняет, книга сразу появляется в каталоге.
-- Бот: `/start` с кнопкой открытия, уведомления (ответ на отзыв/комментарий, новая книга автора, решение по заявке, напоминание о чтении в 19:00 по Ташкенту).
+- Бот (webhook): `/start` с кнопкой открытия, уведомления (ответ на отзыв/комментарий, новая книга автора, решение по заявке, напоминание о чтении в 19:00 по Ташкенту).
 - Без сервера (статический хостинг) приложение работает локально, как раньше.
 
-## Подключение к Telegram
-1. Деплой на сервер с HTTPS (нужен Node, а не только статика), `WEBAPP_URL` = этот адрес.
-2. @BotFather: создайте бота, `/newapp` или `/setmenubutton` с этим URL, токен в `BOT_TOKEN`.
-3. Добавьте свой Telegram ID в `ADMIN_IDS`.
-4. Опционально `VITE_APP_LINK=https://t.me/<bot>/<app>` при сборке для «Поделиться».
+## Деплой на Cloudflare (Workers + D1 + статика)
+1. `npx wrangler login`
+2. `npx wrangler d1 create muloqot-books` и вставьте выданный `database_id` в `wrangler.jsonc`.
+3. `npm run db:migrate` — схема и стартовый каталог в боевую D1.
+4. В `wrangler.jsonc` → `vars`: `ADMIN_IDS` (ваш Telegram ID, через запятую) и `WEBAPP_URL` (адрес воркера, появится после первого деплоя).
+5. Секреты: `npx wrangler secret put BOT_TOKEN` (токен из @BotFather) и `npx wrangler secret put WEBHOOK_SECRET` (любая случайная строка).
+6. `npm run deploy` — получите адрес `https://muloqot-books.<аккаунт>.workers.dev`. Впишите его в `WEBAPP_URL` и задеплойте ещё раз.
+7. Вебхук бота:
+```
+curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+  -d url=https://<адрес-воркера>/telegram/webhook -d secret_token=<WEBHOOK_SECRET>
+```
+8. В @BotFather: `/newapp` (или `/setmenubutton`) с адресом воркера.
+
+Автодеплой из GitHub: в Cloudflare → Workers & Pages → Create → Import repository; build command `npm run build`, deploy command `npx wrangler deploy`.
+Напоминания о чтении работают по Cron Trigger (`0 14 * * *` UTC = 19:00 Ташкент).
 
 ## Структура
-`server/` API, БД, бот · `src/data.js` стартовые данные (засеваются в БД) · `src/i18n.js` · `src/art.js` · `src/app.js` · `src/api.js` · `src/telegram.js`.
+`worker/` API Worker (D1, бот, cron) · `migrations/` схема и сид (сид генерируется `npm run gen-seed` из `src/data.js`) · `src/` фронтенд (`app.js`, `api.js`, `telegram.js`, `data.js`, `i18n.js`, `art.js`).

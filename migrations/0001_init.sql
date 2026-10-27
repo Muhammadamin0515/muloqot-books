@@ -1,0 +1,17 @@
+CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT,state TEXT DEFAULT '{}',created INTEGER);
+CREATE TABLE authors(id TEXT PRIMARY KEY,data TEXT,followers_base INTEGER DEFAULT 0,user_id TEXT);
+CREATE TABLE books(id TEXT PRIMARY KEY,data TEXT,added INTEGER);
+CREATE TABLE ratings(user_id TEXT,book_id TEXT,value INTEGER,PRIMARY KEY(user_id,book_id));
+CREATE TABLE follows(user_id TEXT,author_id TEXT,PRIMARY KEY(user_id,author_id));
+CREATE TABLE reviews(id TEXT PRIMARY KEY,book_id TEXT,user_id TEXT,user_name TEXT,rating INTEGER,text TEXT,created INTEGER,likes_base INTEGER DEFAULT 0,insight_base INTEGER DEFAULT 0);
+CREATE TABLE review_replies(id INTEGER PRIMARY KEY AUTOINCREMENT,review_id TEXT,user_id TEXT,user_name TEXT,text TEXT,is_author INTEGER DEFAULT 0,created INTEGER);
+CREATE TABLE reacts(user_id TEXT,target TEXT,kind TEXT,PRIMARY KEY(user_id,target,kind));
+CREATE TABLE threads(id TEXT PRIMARY KEY,book_id TEXT,user_id TEXT,user_name TEXT,title TEXT,text TEXT,created INTEGER);
+CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT,thread_id TEXT,parent_id INTEGER,user_id TEXT,user_name TEXT,text TEXT,created INTEGER);
+CREATE TABLE quotes(id TEXT PRIMARY KEY,book_id TEXT,text TEXT,likes_base INTEGER DEFAULT 0);
+CREATE TABLE submissions(id TEXT PRIMARY KEY,user_id TEXT,title TEXT,author_name TEXT,lang TEXT,genre TEXT,description TEXT,tags TEXT,cover TEXT,file_name TEXT,body TEXT,status TEXT,note TEXT,book_id TEXT,created INTEGER);
+CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);
+CREATE INDEX idx_reviews_created ON reviews(created);
+CREATE INDEX idx_replies_review ON review_replies(review_id);
+CREATE INDEX idx_comments_thread ON comments(thread_id);
+CREATE INDEX idx_subs_user ON submissions(user_id);

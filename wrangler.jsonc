@@ -1,0 +1,16 @@
+{
+  "name": "muloqot-books",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/telegram/*"]
+  },
+  "d1_databases": [
+    {"binding": "DB", "database_name": "muloqot-books", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations"}
+  ],
+  "triggers": {"crons": ["0 14 * * *"]},
+  "vars": {"ADMIN_IDS": "", "WEBAPP_URL": ""}
+}

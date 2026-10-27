@@ -1,0 +1,4 @@
+# Локальные секреты для `npm run server` (скопируйте в .dev.vars). Без BOT_TOKEN включён dev-режим:
+# пользователь задаётся заголовком x-dev-user, в браузере ?as=admin даёт права администратора.
+BOT_TOKEN=
+WEBHOOK_SECRET=
