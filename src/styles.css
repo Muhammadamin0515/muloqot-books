@@ -440,3 +440,19 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .don-t{display:block;font-family:var(--display);font-weight:400;font-size:17px;line-height:1.25;margin-top:4px}
 .sec-h{margin-bottom:14px}
 .hs .chip{flex:none}
+
+/* community polish */
+.rev{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.rev:first-child{padding-top:16px}
+.rev .tx{margin-top:12px}
+.rev-f{align-items:center;margin-top:14px}
+.rev-f .sp,.fchips .sp{flex:1}
+.react.ico-only{width:32px;padding:0;justify-content:center}
+.revbook{margin-top:12px;background:var(--bg2);border-radius:14px}
+.rev .replies{margin:14px 0 0;padding:10px 12px;border-left:2px solid var(--acc);background:var(--bg2);border-radius:4px 12px 12px 4px;gap:10px}
+.rev .replies .r b{font-size:13px}
+.thread{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.thread h3{font-size:16px}
+.th-f{display:flex;justify-content:flex-end;gap:6px;margin-top:2px}
+.thread .cmt{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.compose{border-radius:16px}
