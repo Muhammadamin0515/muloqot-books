@@ -118,7 +118,7 @@ SCREENS.home=()=>{
   const pop=BOOKS.slice().sort((a,b)=>stat(b).n-stat(a).n).slice(0,8);
   const nw=BOOKS.filter(b=>b.added>=9).sort((a,b)=>b.added-a.added);
   const gc=g=>BOOKS.filter(b=>b.genre===g).length;
-  return `<header class="hello px"><div class="grow"><p class="eyebrow">${t(g)}</p><h1 class="display">${esc(S.name)}</h1><span class="streak">${ico('flame',14)} ${streak()?`${streak()} ${tr('дн. подряд','kun ketma-ket')}`:tr('Начните серию сегодня','Bugun boshlang')}</span></div><button class="avatar" data-a="tab" data-id="profile" aria-label="${t('nav_profile')}" style="background:${AVC[0]}">${esc((S.name||'?')[0].toUpperCase())}</button></header>
+  return `<header class="hello px"><div class="grow"><p class="eyebrow">${t(g)}</p><h1 class="display">${esc(dispName())}</h1><span class="streak">${ico('flame',14)} ${streak()?`${streak()} ${tr('дн. подряд','kun ketma-ket')}`:tr('Начните серию сегодня','Bugun boshlang')}</span></div><button class="avatar" data-a="tab" data-id="profile" aria-label="${t('nav_profile')}" style="background:${AVC[0]}">${hasName()?esc(S.name[0].toUpperCase()):ico('user',20)}</button></header>
   <div class="px" style="margin-top:18px"><button class="fakesearch" data-a="openSearch">${ico('search',20)}<span>${t('search_ph')}</span></button></div>
   <div class="px" style="margin-top:20px">${cont}</div>
   ${net.online&&S.donateOn?donCard():''}
@@ -526,28 +526,53 @@ ACT.stSubmit=()=>{ST.sending=true;refresh();
 /* =====================================================================
    PROFILE & SETTINGS
    ===================================================================== */
+const PROF={open:{}};
+document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.dataset.pg)PROF.open[d.dataset.pg]=d.open},true);
+/* A Telegram name like "." should not become the greeting. */
+const hasName=()=>/[\p{L}\p{N}]/u.test(S.name||'');
+const dispName=()=>hasName()?S.name:tr('Читатель','O‘quvchi');
 SCREENS.profile=()=>{
   const fin=S.finished.length;let pages=0;S.finished.forEach(id=>{const b=book(id);if(b)pages+=b.pages});readingIds().forEach(id=>{pages+=Math.round(book(id).pages*pctRaw(id)/100)});
   const sw=(k,label)=>`<div class="li"><span class="grow" style="font-weight:600">${label}</span><button class="sw ${S.notif[k]?'on':''}" role="switch" aria-checked="${!!S.notif[k]}" aria-label="${label}" data-a="toggleN" data-k="${k}"></button></div>`;
   const seg=(arr,cur,act)=>`<div class="seg">${arr.map(([k,n])=>`<button class="${String(cur)===String(k)?'on':''}" data-a="${act}" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const grp=(id,title,sub,body)=>`<details class="dgroup" data-pg="${id}" ${PROF.open[id]?'open':''}><summary><b>${title}</b><span>${sub}</span></summary><div class="dbody">${body}</div></details>`;
+  const rowBtn=(act,ic,title,sub,extra='')=>`<button class="li" data-a="${act}"><span class="aico">${ico(ic,20)}</span><div class="grow"><b>${title}</b><div class="mute" style="font-size:12.5px">${sub}</div></div>${extra}${ico('chev',18)}</button>`;
+  const admin=S.me&&S.me.admin;
+  const nOn=Object.keys(S.notif).filter(k=>S.notif[k]).length,themeName={dark:t('t_dark'),light:t('t_light'),paper:t('t_paper')};
+  const field=(label,body)=>`<div class="field" style="margin-bottom:18px"><label>${label}</label>${body}</div>`;
+  const streakN=streak();
   return `<header class="topbar px"><h2 class="display" style="font-size:26px">${t('profile')}</h2></header>
-  <div class="px"><div class="row" style="gap:16px;margin-bottom:22px"><span class="avatar" style="width:68px;height:68px;font-size:26px;background:${AVC[0]}">${esc((S.name||'?')[0].toUpperCase())}</span><div class="field grow" style="margin:0"><label for="pname">${t('reader_name')}</label><input id="pname" class="in" value="${esc(S.name)}" maxlength="24" autocomplete="off"></div></div>
-  <div class="stat3"><div><b>${fin}</b><small>${t('stat_read')}</small></div><div><b>${pages}</b><small>${t('stat_pages')}</small></div><div><b>${S.bookmarks.length}</b><small>${t('stat_bm')}</small></div></div>
-  ${S.me&&S.me.admin?`<button class="alert" style="margin-top:18px" data-a="openAdmin"><span class="aico" style="background:var(--acc);color:#fff">${ico('spark',20)}</span><div class="grow"><b>Админ-панель</b><div class="mute" style="font-size:12.5px;font-weight:500">Статистика, модерация, рассылка, чат</div></div>${ico('chev',18)}</button>`:''}
-  <div class="list" style="margin-top:${S.me&&S.me.admin?'12':'18'}px">
-   <button class="li" data-a="openStudio"><span class="aico">${ico('pen',20)}</span><div class="grow"><b>${t('open_studio')}</b><div class="mute" style="font-size:12.5px">${t('studio_desc')}</div></div>${ico('chev',18)}</button>
-   ${net.online&&S.donateOn?`<button class="li" data-a="openDonate"><span class="aico">${ico('heart',20)}</span><div class="grow"><b>${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</b><div class="mute" style="font-size:12.5px">${S.me&&S.me.patron?tr('⭐ Вы меценат, спасибо!','⭐ Siz homiysiz, rahmat!'):tr('Новые книги и развитие платформы','Yangi kitoblar va platforma rivoji')}</div></div>${ico('chev',18)}</button>`:''}
-   ${net.online?`<button class="li" data-a="openSupport"><span class="aico">${ico('chat',20)}</span><div class="grow"><b>${tr('Поддержка','Yordam')}</b><div class="mute" style="font-size:12.5px">${tr('Написать администратору','Administratorga yozish')}</div></div>${S.me&&S.me.supportUnread?`<span class="badge">${S.me.supportUnread}</span>`:''}${ico('chev',18)}</button>`:''}
+  <div class="px">
+  <div class="card" style="padding:18px">
+    <div class="row" style="gap:16px"><span class="avatar" style="width:64px;height:64px;font-size:24px;background:${AVC[0]}">${hasName()?esc(S.name[0].toUpperCase()):ico('user',28)}</span>
+    <div class="field grow" style="margin:0"><label for="pname">${t('reader_name')}</label><input id="pname" class="in" value="${esc(hasName()?S.name:'')}" placeholder="${tr('Как вас зовут?','Ismingiz nima?')}" maxlength="24" autocomplete="off"></div></div>
+    <div class="stat3" style="grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px"><div style="padding:12px 8px"><b style="font-size:21px">${fin}</b><small>${t('stat_read')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${pages}</b><small>${t('stat_pages')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${S.bookmarks.length}</b><small>${t('stat_bm')}</small></div><div style="padding:12px 8px"><b style="font-size:21px">${streakN}</b><small>${tr('Дней подряд','Kun ketma-ket')}</small></div></div>
   </div>
-  <section class="sec" style="margin-top:28px"><div class="lbl" style="margin-bottom:10px">${t('ui_lang')}</div>${seg([['ru','Русский'],['uz','Oʻzbekcha']],S.lang,'setLang')}</section>
-  <section class="sec" style="margin-top:22px"><div class="lbl" style="margin-bottom:10px">${t('app_theme')}</div>${seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.theme,'setTheme')}</section>
-  <section class="sec" style="margin-top:22px"><div class="lbl" style="margin-bottom:10px">${t('read_prefs')}</div><div class="card" style="display:flex;flex-direction:column;gap:16px">
-   <div><div class="row" style="justify-content:space-between;margin-bottom:8px"><span style="font-weight:600">${t('font_size')}</span><b class="mono">${S.reader.size}</b></div><input type="range" min="15" max="28" value="${S.reader.size}" data-chg="pSize" aria-label="${t('font_size')}" style="width:100%;accent-color:var(--acc)"></div>
-   <div><div style="font-weight:600;margin-bottom:8px">${t('line_height')}</div>${seg([[1.5,t('lh_tight')],[1.7,t('lh_normal')],[1.95,t('lh_airy')]],S.reader.lh,'pLh')}</div>
-   <div><div style="font-weight:600;margin-bottom:8px">${t('theme')}</div>${seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.reader.theme,'pRTheme')}</div>
-   <div><div style="font-weight:600;margin-bottom:8px">${t('day_goal')}</div>${seg([[10,'10 '+t('min')],[20,'20 '+t('min')],[30,'30 '+t('min')]],S.goal,'setGoal')}</div></div></section>
-  <section class="sec" style="margin-top:22px"><div class="lbl" style="margin-bottom:10px">${t('notifs')}</div><div class="list">${sw('chapters',t('n_chapters'))}${sw('replies',t('n_replies'))}${sw('reminder',t('n_reminder'))}${sw('authors',t('n_authors'))}</div></section>
-  <section class="sec" style="margin-top:22px"><div class="lbl" style="margin-bottom:10px">${t('about_proto')}</div><div class="list"><div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><span class="mute" style="font-size:13px">${t('about_text')}</span><span class="mute" style="font-size:11.5px">${tr('Версия','Versiya')}: ${typeof __BUILD__!=='undefined'?__BUILD__:'dev'}${S.appLink?' · '+tr('ссылка на приложение задана','ilova havolasi o‘rnatilgan'):' · '+tr('ссылка на приложение не задана','ilova havolasi o‘rnatilmagan')}</span></div><button class="li" data-a="showOnb"><span class="grow">${t('show_onb')}</span>${ico('chev',18)}</button><button class="li" data-a="resetAsk"><span class="grow" style="color:var(--acc-t);font-weight:700">${t('reset_demo')}</span></button></div></section></div>`;
+  <div class="adm">
+  <div class="sec" style="margin-top:24px"><div class="sec-h"><h2>${tr('Сервисы','Xizmatlar')}</h2></div>
+    ${admin?`<button class="alert" data-a="openAdmin"><span class="aico" style="background:var(--acc);color:#fff">${ico('spark',20)}</span><div class="grow"><b>Админ-панель</b><div class="mute" style="font-size:12.5px;font-weight:500">Статистика, модерация, рассылка, чат</div></div>${ico('chev',18)}</button>`:''}
+    <div class="list">
+      ${rowBtn('openStudio','pen',t('open_studio'),t('studio_desc'))}
+      ${net.online&&S.donateOn?rowBtn('openDonate','heart',tr('Поддержать проект','Loyihani qo‘llab-quvvatlash'),S.me&&S.me.patron?tr('⭐ Вы меценат, спасибо!','⭐ Siz homiysiz, rahmat!'):tr('Новые книги и развитие платформы','Yangi kitoblar va platforma rivoji')):''}
+      ${net.online?rowBtn('openSupport','chat',tr('Поддержка','Yordam'),tr('Написать администратору','Administratorga yozish'),S.me&&S.me.supportUnread?`<span class="badge">${S.me.supportUnread}</span>`:''):''}
+    </div></div>
+  <div class="sec"><div class="sec-h"><h2>${tr('Настройки','Sozlamalar')}</h2></div>
+    ${grp('look',tr('Внешний вид','Tashqi ko‘rinish'),`${S.lang==='ru'?'Русский':'Oʻzbekcha'} · ${themeName[S.theme]}`,
+      field(t('ui_lang'),seg([['ru','Русский'],['uz','Oʻzbekcha']],S.lang,'setLang'))+field(t('app_theme'),seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.theme,'setTheme')))}
+    ${grp('read',t('read_prefs'),`${tr('Шрифт','Shrift')} ${S.reader.size} · ${themeName[S.reader.theme]} · ${S.goal} ${t('min')}`,
+      field(`${t('font_size')}: <b class="mono">${S.reader.size}</b>`,`<input type="range" min="15" max="28" value="${S.reader.size}" data-chg="pSize" aria-label="${t('font_size')}" style="width:100%;accent-color:var(--acc)">`)
+      +field(t('line_height'),seg([[1.5,t('lh_tight')],[1.7,t('lh_normal')],[1.95,t('lh_airy')]],S.reader.lh,'pLh'))
+      +field(t('theme'),seg([['dark',t('t_dark')],['light',t('t_light')],['paper',t('t_paper')]],S.reader.theme,'pRTheme'))
+      +field(t('day_goal'),seg([[10,'10 '+t('min')],[20,'20 '+t('min')],[30,'30 '+t('min')]],S.goal,'setGoal')))}
+    ${grp('notif',t('notifs'),`${tr('включено','yoqilgan')}: ${nOn} ${tr('из','/')} ${Object.keys(S.notif).length}`,
+      `<div class="list" style="margin-bottom:14px">${sw('chapters',t('n_chapters'))}${sw('replies',t('n_replies'))}${sw('reminder',t('n_reminder'))}${sw('authors',t('n_authors'))}</div><p class="hint" style="margin-top:0">${tr('Все уведомления можно также настроить в боте командой /notifications.','Bildirishnomalarni botda /notifications buyrug‘i bilan ham sozlash mumkin.')}</p>`)}
+  </div>
+  <div class="sec"><div class="sec-h"><h2>${t('about_proto')}</h2></div><div class="list">
+    <div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><span class="mute" style="font-size:13px">${t('about_text')}</span><span class="mute" style="font-size:11.5px">${tr('Версия','Versiya')}: ${typeof __BUILD__!=='undefined'?__BUILD__:'dev'}${S.appLink?'':' · '+tr('ссылка на приложение не задана','ilova havolasi o‘rnatilmagan')}</span></div>
+    <button class="li" data-a="showOnb"><span class="grow">${t('show_onb')}</span>${ico('chev',18)}</button>
+    <button class="li" data-a="resetAsk"><span class="grow" style="color:var(--acc-t);font-weight:700">${t('reset_demo')}</span></button>
+  </div></div>
+  </div></div>`;
 };
 ACT.setLang=el=>{S.lang=el.dataset.v;save();refresh()};
 ACT.setTheme=el=>{S.theme=el.dataset.v;save();refresh()};
