@@ -384,3 +384,10 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .don-card{display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border-radius:22px;border:1px solid var(--line2);background:linear-gradient(135deg,#2a1710,#5a2616);color:#f3ece1}
 .goalopt{border:1px solid var(--line)}
 .goalopt.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.hint{font-size:12px;line-height:1.45;color:var(--mute);margin-top:6px}
+.dgroup{border:1px solid var(--line);border-radius:16px;background:var(--card);margin-bottom:10px;overflow:hidden}
+.dgroup summary{list-style:none;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:14px 16px}
+.dgroup summary::-webkit-details-marker{display:none}
+.dgroup summary b{font-size:14.5px}.dgroup summary span{font-size:12.5px;color:var(--mute)}
+.dgroup[open] summary{border-bottom:1px solid var(--line)}
+.dgroup .dbody{padding:14px 16px 4px}
