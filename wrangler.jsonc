@@ -12,5 +12,5 @@
     {"binding": "DB", "database_name": "muloqot-books", "database_id": "a1369085-0a18-42a8-b631-77f90eb07a49", "migrations_dir": "migrations"}
   ],
   "triggers": {"crons": ["0 14 * * *"]},
-  "vars": {"ADMIN_IDS": "", "WEBAPP_URL": ""}
+  "keep_vars": true
 }

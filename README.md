@@ -22,7 +22,7 @@ npm run start              # сборка + wrangler dev на http://localhost:8
 1. `npx wrangler login`
 2. `npx wrangler d1 create muloqot-books` и вставьте выданный `database_id` в `wrangler.jsonc`.
 3. `npm run db:migrate` — схема и стартовый каталог в боевую D1.
-4. В `wrangler.jsonc` → `vars`: `ADMIN_IDS` (ваш Telegram ID, через запятую) и `WEBAPP_URL` (адрес воркера, появится после первого деплоя).
+4. В панели Cloudflare → Settings → Variables and Secrets (тип Text; в `wrangler.jsonc` включён `keep_vars`, значения не затираются деплоем): `ADMIN_IDS` (ваш Telegram ID, через запятую) и `WEBAPP_URL` (адрес воркера, появится после первого деплоя).
 5. Секреты: `npx wrangler secret put BOT_TOKEN` (токен из @BotFather) и `npx wrangler secret put WEBHOOK_SECRET` (любая случайная строка).
 6. `npm run deploy` — получите адрес `https://muloqot-books.<аккаунт>.workers.dev`. Впишите его в `WEBAPP_URL` и задеплойте ещё раз.
 7. Вебхук бота:
