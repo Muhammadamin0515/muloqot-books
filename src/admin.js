@@ -6,6 +6,9 @@ export function initAdmin(x){
   const here=n=>NAV.cur.name===n;
   const bg=p=>p.catch(()=>toast('Ошибка запроса'));
   const T=[['overview','Обзор'],['broadcast','Рассылка'],['moderation','Модерация'],['reports','Жалобы'],['chat','Чат'],['users','Люди'],['content','Контент']];
+  const ORDER=['overview','moderation','reports','chat','users','broadcast','donations','content'];
+  const ICON={overview:'📊',moderation:'🛡',reports:'🚩',chat:'💬',users:'👥',broadcast:'📣',donations:'⭐',content:'🧩'};
+  const HINT={overview:'Сводка по приложению: сколько людей, что популярно и что требует вашего внимания.',moderation:'Новые книги и обновления текста от авторов. Проверьте и опубликуйте или отклоните с причиной.',reports:'Жалобы читателей на отзывы, темы и комментарии. После трёх жалоб контент скрывается сам.',chat:'Сообщения от пользователей. Ваш ответ приходит им в бота и в приложение.',users:'Найдите человека, заблокируйте его или сделайте админом.',broadcast:'Сообщение всем, кто запускал бота. Сначала отправьте тест себе.',donations:'Деньги от Telegram Stars, цели сбора и настройки экрана донатов.',content:'Тексты бота, ссылка на приложение, подборки и книги.'};
   const ago=ms=>{if(!ms)return 'никогда';const m=Math.floor((Date.now()-ms)/6e4);if(m<2)return 'сейчас';if(m<60)return m+' мин назад';const h=Math.floor(m/60);if(h<24)return h+' ч назад';return Math.floor(h/24)+' дн. назад'};
   const hm=ms=>new Date(ms).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const loading=()=>`<div class="sk" style="height:90px;border-radius:16px;margin-bottom:12px"></div><div class="sk" style="height:90px;border-radius:16px"></div>`;
@@ -27,31 +30,36 @@ export function initAdmin(x){
   AFTER.admin=()=>{
     if(!A.fresh.stats){A.fresh.stats=true;api('/api/admin/stats').then(s=>{A.stats=s;if(here('admin'))x.refresh()}).catch(()=>{})}
     if(!A.fresh[A.tab]){A.fresh[A.tab]=true;loaders[A.tab]()}
+    const on=document.querySelector('.admbar .chip.on');if(on)on.scrollIntoView({inline:'center',block:'nearest'});
   };
   const reload=k=>{A.fresh[k]=false;x.refresh()};
 
   /* ---------- screen ---------- */
   SCREENS.admin=()=>{
     const s=A.stats||{};
-    const tabs=T.map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${n}${k==='moderation'?badge(s.pending):k==='reports'?badge(s.reports):k==='chat'?badge(s.supportUnread):''}</button>`).join('');
+    const num={moderation:s.pending,reports:s.reports,chat:s.supportUnread};
+    const tabs=[...T].sort((a,b)=>ORDER.indexOf(a[0])-ORDER.indexOf(b[0])).map(([k,n])=>`<button class="chip ${A.tab===k?'on':''}" data-a="admTab" data-v="${k}">${ICON[k]||''} ${n}${badge(num[k])}</button>`).join('');
     const body=bodies[A.tab]();
-    return `<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">Админ-панель</h2></div></header>
-    <div class="hs px" style="margin-top:4px">${tabs}</div><div class="px" style="margin-top:18px">${body}</div>`;
+    return `<div class="admhead"><header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">Админ-панель</h2></div></header><div class="admbar px">${tabs}</div></div>
+    <div class="px adm" style="margin-top:8px"><p class="pagehint">${HINT[A.tab]||''}</p>${body}</div>`;
   };
   ACT.openAdmin=()=>{A.fresh={};A.tab='overview';go('admin')};
   ACT.admTab=el=>{A.tab=el.dataset.v;A.fresh[A.tab]=false;x.refresh();$('#screen').scrollTop=0};
 
   /* ---------- overview ---------- */
+  const tile=(n,label,sub)=>`<div class="tile"><b>${n}</b><span>${label}</span>${sub?`<small>${sub}</small>`:''}</div>`;
   function tabOverview(){
     const s=A.stats;if(!s)return loading();
-    const cards=[[s.users,'Пользователей'],[s.new24,'Новых за сутки'],[s.new7,'Новых за неделю'],[s.active24,'Активны за сутки'],[s.active7,'Активны за неделю'],[s.reachable,'Доступны боту'],[s.books,'Книг'],[s.reviews,'Отзывов'],[s.threads,'Обсуждений']];
     const max=Math.max(1,...s.signups.map(d=>d.n));
-    const alerts=[s.pending?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="moderation"><div class="grow"><b>Заявок на проверке: ${s.pending}</b></div>${ico('chev',18)}</button>`:'',s.reports?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="reports"><div class="grow"><b>Жалоб на проверке: ${s.reports}</b></div>${ico('chev',18)}</button>`:'',s.supportUnread?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="chat"><div class="grow"><b>Непрочитанных диалогов: ${s.supportUnread}</b></div>${ico('chev',18)}</button>`:''].join('');
-    return `${alerts}<div class="stat3" style="grid-template-columns:repeat(3,1fr)">${cards.map(([n,l])=>`<div><b>${n}</b><small>${l}</small></div>`).join('')}</div>
-    <div class="card" style="margin-top:16px"><div class="lbl" style="margin-bottom:12px">Новые пользователи за 14 дней</div>${s.signups.length?`<div class="bars">${s.signups.map(d=>`<div><i style="height:${Math.max(6,d.n/max*100)}%"></i><small>${d.n}</small><em>${esc(d.d.slice(8))}</em></div>`).join('')}</div>`:'<p class="mute">Пока нет данных</p>'}</div>
-    ${s.top&&s.top.length?`<div class="card" style="margin-top:16px"><div class="lbl" style="margin-bottom:10px">Популярные книги за неделю</div>${s.top.map(b=>`<div class="row" style="justify-content:space-between;gap:8px;padding:6px 0"><span style="font-size:14px">${esc(b.title)}</span><span class="mute mono" style="font-size:12px;white-space:nowrap">👁 ${b.views} · 📖 ${b.reads} · ✅ ${b.finishes}</span></div>`).join('')}</div>`:''}
-    ${s.errors&&s.errors.length?`<div class="demo-banner" style="margin-top:14px;flex-direction:column"><b>Часть данных не загрузилась</b>${s.errors.map(e=>`<span>${esc(e)}</span>`).join('')}</div>`:''}
-    <p class="mute" style="font-size:12.5px;margin-top:14px">Заблокировано: ${s.banned} · Остановили бота: ${s.blocked} · Скрытых книг: ${s.hidden} · Комментариев: ${s.comments}</p>`;
+    const alert=(tab,text,n)=>`<button class="alert" data-a="admTab" data-v="${tab}"><b>${text}</b>${badge(n)}${ico('chev',18)}</button>`;
+    const alerts=[s.pending?alert('moderation','Заявки ждут проверки',s.pending):'',s.reports?alert('reports','Жалобы ждут решения',s.reports):'',s.supportUnread?alert('chat','Непрочитанные сообщения',s.supportUnread):''].join('');
+    return `${alerts?`<div class="sec"><div class="sec-h"><h2>Требует внимания</h2></div>${alerts}</div>`:''}
+    <div class="sec"><div class="sec-h"><h2>Пользователи</h2></div><div class="tiles">${tile(s.users,'Всего',`+${s.new24} за сутки`)}${tile(s.active24,'Активны сегодня',`${s.active7} за неделю`)}${tile(s.new7,'Новых за неделю','')}${tile(s.reachable,'Доступны боту','получат рассылку')}</div>
+      <p class="hint" style="margin-top:10px">Заблокировано: ${s.banned} · остановили бота: ${s.blocked}</p></div>
+    <div class="sec"><div class="sec-h"><h2>Контент</h2></div><div class="tiles">${tile(s.books,'Книг',s.hidden?`скрыто: ${s.hidden}`:'')}${tile(s.reviews,'Отзывов','')}${tile(s.threads,'Обсуждений',`комментариев: ${s.comments}`)}</div></div>
+    <div class="sec"><div class="sec-h"><h2>Регистрации за 14 дней</h2></div><div class="card">${s.signups.length?`<div class="bars">${s.signups.map(d=>`<div><i style="height:${Math.max(6,d.n/max*100)}%"></i><small>${d.n}</small><em>${esc(d.d.slice(8))}</em></div>`).join('')}</div>`:'<p class="mute">Пока нет данных</p>'}</div></div>
+    ${s.top&&s.top.length?`<div class="sec"><div class="sec-h"><h2>Популярные книги недели</h2></div><div class="list">${s.top.map(b=>`<div class="li"><span class="grow" style="font-size:14px;font-weight:600">${esc(b.title)}</span><span class="mute mono" style="font-size:12px;white-space:nowrap">👁 ${b.views} · 📖 ${b.reads} · ✅ ${b.finishes}</span></div>`).join('')}</div></div>`:''}
+    ${s.errors&&s.errors.length?`<div class="demo-banner" style="margin-top:14px;flex-direction:column"><b>Часть данных не загрузилась</b>${s.errors.map(e=>`<span>${esc(e)}</span>`).join('')}</div>`:''}`;
   }
 
   /* ---------- broadcast ---------- */
@@ -60,11 +68,21 @@ export function initAdmin(x){
     const r=A.run,reach=A.stats?A.stats.reachable:'…';
     const prog=r?`<div class="card" style="margin-bottom:14px"><b>Идёт рассылка…</b><div class="bar" style="margin:12px 0 8px"><i id="bcBar" style="width:${r.total?Math.round((r.sent+r.failed)/r.total*100):0}%"></i></div><span id="bcTxt" class="mute" style="font-size:13px">Отправлено ${r.sent} из ${r.total}, ошибок ${r.failed}</span></div>`:'';
     return `${A.bc.bot?'':'<div class="demo-banner">Бот не подключён: добавьте секрет BOT_TOKEN в настройках Worker, и рассылка заработает.</div>'}${prog}
-    <div class="field"><label for="bcText">Текст сообщения</label><textarea id="bcText" class="in" data-m="adm:bcText" maxlength="3500" placeholder="Что хотите сообщить читателям?" style="min-height:150px">${esc(M.bcText)}</textarea></div>
-    <div class="row" style="gap:10px"><button class="btn ghost grow" data-a="bcTest" ${r?'disabled':''}>Тест себе</button><button class="btn grow" data-a="bcAll" ${r?'disabled':''}>Отправить всем (${reach})</button></div>
-    <p class="mute" style="font-size:12px;margin-top:10px">Получат только те, кто открывал бота и не блокировал его. К сообщению добавляется кнопка открытия приложения.</p>
-    <div class="sec"><div class="sec-h"><h2>История</h2></div>${A.bc.list.length?`<div class="list">${A.bc.list.map(b=>`<div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><div class="row" style="width:100%;justify-content:space-between"><b style="font-size:13px">${hm(b.created)}</b><span class="status ${b.status==='done'?'m':''}">${{done:'Отправлена',running:'Идёт',cancelled:'Отменена'}[b.status]||b.status}${b.audience==='test'?' · тест':''}</span></div><span style="font-size:13.5px">${esc(b.text.slice(0,140))}</span><span class="mute" style="font-size:12px">${b.sent} доставлено · ${b.failed} ошибок · из ${b.total}</span></div>`).join('')}</div>`:'<p class="mute">Рассылок ещё не было</p>'}</div>`;
+    <div class="card">
+      <div class="step"><i>1</i><b>Напишите сообщение</b></div>
+      <textarea id="bcText" class="in" data-m="adm:bcText" maxlength="3500" placeholder="Что хотите сообщить читателям?" style="min-height:130px">${esc(M.bcText)}</textarea>
+      <div class="counter"><span id="bcCount">${M.bcText.length} / 3500</span></div>
+      <div class="lbl" style="margin:14px 0 8px">Так увидит читатель</div>
+      <div class="bubble them" id="bcPrev" style="max-width:100%">${esc(M.bcText)||'Здесь появится ваше сообщение'}</div>
+      <div class="step" style="margin-top:18px"><i>2</i><b>Проверьте на себе</b></div>
+      <button class="btn block ghost" data-a="bcTest" ${r?'disabled':''}>Отправить тест мне</button>
+      <div class="step" style="margin-top:18px"><i>3</i><b>Отправьте всем</b></div>
+      <button class="btn block" data-a="bcAll" ${r?'disabled':''}>Отправить всем (${reach})</button>
+      <p class="hint">Получат те, кто запускал бота и не блокировал его. Под сообщением бот добавит кнопку «Открыть приложение».</p>
+    </div>
+    <div class="sec"><div class="sec-h"><h2>История рассылок</h2></div>${A.bc.list.length?`<div class="list">${A.bc.list.map(b=>`<div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><div class="row" style="width:100%;justify-content:space-between"><b style="font-size:13px">${hm(b.created)}</b><span class="status ${b.status==='done'?'m':''}">${{done:'Отправлена',running:'Идёт',cancelled:'Отменена'}[b.status]||b.status}${b.audience==='test'?' · тест':''}</span></div><span style="font-size:13.5px">${esc(b.text.slice(0,140))}</span><span class="mute" style="font-size:12px">${b.sent} доставлено · ${b.failed} ошибок · из ${b.total}</span></div>`).join('')}</div>`:'<p class="mute">Рассылок ещё не было</p>'}</div>`;
   }
+  x.ONINPUT['adm:bcText']=()=>{const p=$('#bcPrev'),c=$('#bcCount');if(p)p.textContent=M.bcText||'Здесь появится ваше сообщение';if(c)c.textContent=M.bcText.length+' / 3500'};
   const paintProg=()=>{const r=A.run;if(!r)return;const b=$('#bcBar'),t=$('#bcTxt');if(b)b.style.width=(r.total?Math.round((r.sent+r.failed)/r.total*100):0)+'%';if(t)t.textContent=`Отправлено ${r.sent} из ${r.total}, ошибок ${r.failed}`};
   async function runBc(b){
     A.run=b;if(here('admin'))x.refresh();
@@ -77,17 +95,21 @@ export function initAdmin(x){
   ACT.bcAllGo=()=>bcStart('all');
 
   /* ---------- moderation ---------- */
+  function subCard(s){
+    const up=!!s.update,kb=n=>Math.round(n/1000)+'k';
+    return `<div class="card" style="margin-bottom:12px${up?';border-color:var(--acc)':''}">
+      <div class="row" style="justify-content:space-between;gap:8px;margin-bottom:8px"><span class="tag acc">${up?'↻ Обновление текста':'Новая книга'}</span><span class="mute" style="font-size:12px">${kb(s.chars)} знаков</span></div>
+      <b style="font-size:15.5px">${esc(s.title)}</b>
+      <div class="mute" style="font-size:12.5px;margin:3px 0 10px">${esc(s.author)}${up?'':` · ${s.lang.toUpperCase()} · ${x.gl(s.genre)}`}</div>
+      ${up&&s.update?`<div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px"><div class="tile" style="padding:10px"><b style="font-size:20px">${s.update.oldChapters}→${s.update.newChapters}</b><small>глав</small></div><div class="tile" style="padding:10px"><b style="font-size:20px">${kb(s.update.oldChars)}→${kb(s.chars)}</b><small>знаков</small></div><div class="tile" style="padding:10px"><b style="font-size:20px">${s.chars>=s.update.oldChars?'+':'−'}${kb(Math.abs(s.chars-s.update.oldChars))}</b><small>разница</small></div></div>`:''}
+      ${(up?(s.update&&s.update.note):s.desc)?`<p style="font-size:13.5px;line-height:1.5;margin-bottom:10px">${up?'«'+esc(s.update.note)+'»':esc(s.desc)}</p>`:''}
+      <details class="howto" style="margin-bottom:0"><summary>Начало текста</summary><p class="syn" style="font-size:13.5px;margin-top:8px;white-space:pre-wrap">${esc(s.preview)}…</p></details>
+      <div class="mrow"><button class="btn sm" data-a="subApprove" data-id="${esc(s.id)}">${up?'Заменить текст':'Опубликовать'}</button><button class="btn sm ghost" data-a="subReject" data-id="${esc(s.id)}">Отклонить</button><button class="btn sm ghost" data-a="openChatWith" data-id="${esc(s.userId)}">Написать автору</button></div></div>`;
+  }
   function tabModeration(){
     if(!A.subs)return loading();
-    if(!A.subs.length)return empty('check','Заявок нет','Новые книги от авторов появятся здесь.');
-    return A.subs.map(s=>s.update?`<div class="card" style="margin-bottom:12px;border-color:var(--acc)"><span class="tag acc">↻ Обновление текста</span><b style="display:block;margin-top:8px">${esc(s.title)}</b><div class="mute" style="font-size:12.5px;margin:4px 0 8px">${esc(s.author)}</div>
-      ${s.update?`<div class="stat3" style="margin:10px 0"><div><b>${s.update.oldChapters}→${s.update.newChapters}</b><small>Глав</small></div><div><b>${Math.round(s.update.oldChars/1000)}k→${Math.round(s.chars/1000)}k</b><small>Знаков</small></div><div><b>${s.chars>=s.update.oldChars?'+':''}${Math.round((s.chars-s.update.oldChars)/1000)}k</b><small>Разница</small></div></div>`:''}
-      ${s.update&&s.update.note?`<p style="font-size:13.5px;margin-bottom:10px">«${esc(s.update.note)}»</p>`:''}
-      <details style="margin-bottom:12px"><summary class="mute" style="font-size:13px;cursor:pointer">Начало нового текста</summary><p class="syn" style="font-size:13.5px;margin-top:8px;white-space:pre-wrap">${esc(s.preview)}…</p></details>
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-a="subApprove" data-id="${esc(s.id)}">Заменить текст</button><button class="btn sm ghost" data-a="subReject" data-id="${esc(s.id)}">Отклонить</button><button class="btn sm ghost" data-a="openChatWith" data-id="${esc(s.userId)}">Написать</button></div></div>`
-    :`<div class="card" style="margin-bottom:12px"><b>${esc(s.title)}</b><div class="mute" style="font-size:12.5px;margin:4px 0 8px">${esc(s.author)} · ${s.lang.toUpperCase()} · ${x.gl(s.genre)} · ${Math.round(s.chars/1000)}k знаков</div><p style="font-size:13.5px;margin-bottom:10px">${esc(s.desc)}</p>
-      <details style="margin-bottom:12px"><summary class="mute" style="font-size:13px;cursor:pointer">Начало текста</summary><p class="syn" style="font-size:13.5px;margin-top:8px;white-space:pre-wrap">${esc(s.preview)}…</p></details>
-      <div class="row" style="gap:8px"><button class="btn sm" data-a="subApprove" data-id="${esc(s.id)}">Опубликовать</button><button class="btn sm ghost" data-a="subReject" data-id="${esc(s.id)}">Отклонить</button><button class="btn sm ghost" data-a="openChatWith" data-id="${esc(s.userId)}">Написать</button></div></div>`).join('');
+    if(!A.subs.length)return empty('check','Всё проверено','Новые книги и обновления текста от авторов появятся здесь.');
+    return A.subs.map(subCard).join('');
   }
   ACT.subApprove=el=>{el.disabled=true;bg(api(`/api/admin/submissions/${el.dataset.id}/approve`,'POST',{}).then(async()=>{toast('Книга опубликована');await loadBoot();A.fresh.stats=false;reload('moderation')}))};
   ACT.subReject=el=>{M.rejNote='';openSheet(`<h2>Отклонить заявку</h2><div class="field"><label for="rejNote">Причина (увидит автор)</label><textarea id="rejNote" class="in" data-m="adm:rejNote" placeholder="Например: слишком короткий текст"></textarea></div><button class="btn block" data-a="subRejectGo" data-id="${esc(el.dataset.id)}">Отклонить</button>`)};
@@ -102,7 +124,8 @@ export function initAdmin(x){
       <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${Object.entries(g.reasons).map(([k,n])=>`<span class="tag">${WHY[k]||k}: ${n}</span>`).join('')}</div>
       ${g.gone?'<p class="mute">Контент уже удалён</p>':`<p class="mute" style="font-size:12px;margin-bottom:4px">Автор: ${esc(g.author||'—')}</p><p style="font-size:14px;margin-bottom:12px;white-space:pre-wrap">${esc(g.text)}</p>`}
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-a="repKeep" data-id="${esc(g.kind+'|'+g.target)}">Оставить</button>${g.gone?'':`<button class="btn sm ghost" data-a="repDel" data-id="${esc(g.kind+'|'+g.target)}">Удалить</button><button class="btn sm ghost" data-a="repBan" data-id="${esc(g.kind+'|'+g.target)}">Удалить и заблокировать автора</button>`}</div></div>`).join(''):empty('check','Жалоб нет','Если читатели пожалуются на отзыв, тему или комментарий, они появятся здесь. После трёх жалоб контент скрывается автоматически.');
-    return `${list}<div class="sec"><div class="sec-h"><h2>Стоп-слова</h2></div><div class="card"><p class="hint" style="margin:0 0 10px">Сообщения с этими словами не публикуются. Перечислите через запятую. Ссылки и повторы одного и того же сообщения блокируются автоматически, чаще 6 сообщений в минуту писать нельзя.</p><textarea id="stw" class="in" data-m="adm:stopwords" style="min-height:90px" placeholder="слово1, слово2">${esc(M.stopwords)}</textarea><button class="btn block" style="margin-top:12px" data-a="stwSave">Сохранить</button></div></div>`;
+    return `${list}<div class="sec"><div class="sec-h"><h2>Защита от спама</h2></div>
+      <details class="dgroup"><summary><b>Стоп-слова</b><span>сообщения с такими словами не публикуются</span></summary><div class="dbody"><div class="field"><label for="stw">Слова через запятую</label><textarea id="stw" class="in" data-m="adm:stopwords" style="min-height:90px" placeholder="слово1, слово2">${esc(M.stopwords)}</textarea><p class="hint">Ссылки и повторы одного сообщения блокируются автоматически. Писать чаще 6 сообщений в минуту нельзя (админов это не касается).</p></div><button class="btn block" data-a="stwSave">Сохранить стоп-слова</button></div></details></div>`;
   }
   const resolve=(id,action,msg)=>{const [kind,target]=id.split('|');bg(api('/api/admin/reports/resolve','POST',{kind,target,action}).then(async()=>{toast(msg);A.fresh.stats=false;await x.loadBoot();reload('reports')}))};
   ACT.repKeep=el=>resolve(el.dataset.id,'keep','Оставлено');
@@ -145,13 +168,17 @@ export function initAdmin(x){
     bg(api('/api/support','POST',{text:v}).then(async()=>{A.sup.msgs=(await api('/api/support')).messages;x.refresh();toBottom();$('#chatIn')&&$('#chatIn').focus()}))};
 
   /* ---------- users ---------- */
+  const UF=[['all','Все'],['admin','Админы'],['banned','Заблокированные'],['blocked','Бот остановлен']];
+  ACT.uFilter=el=>{A.uf=el.dataset.v;x.refresh()};
   function tabUsers(){
-    const u=A.users;
-    return `<div class="searchbox" style="margin-bottom:14px">${ico('search',20)}<input id="uq" class="in" type="search" data-m="adm:uq" value="${esc(M.uq)}" placeholder="Имя или Telegram ID" autocomplete="off"></div>
-    ${!u?loading():u.list.length?`<div class="list">${u.list.map(r=>`<div class="li" style="align-items:flex-start">${avatar(r.name||'?',1)}<div class="grow" style="min-width:0"><b style="font-size:14px">${esc(r.name||'Без имени')}</b>${r.root?' <span class="tag acc">главный админ</span>':r.admin?' <span class="tag acc">админ</span>':''}${r.banned?' <span class="tag">заблокирован</span>':''}${r.blocked?' <span class="tag">бот остановлен</span>':''}
+    const u=A.users,f=A.uf||'all';
+    const list=u?u.list.filter(r=>f==='all'||(f==='admin'&&r.admin)||(f==='banned'&&r.banned)||(f==='blocked'&&r.blocked)):[];
+    return `<div class="searchbox" style="margin-bottom:12px">${ico('search',20)}<input id="uq" class="in" type="search" data-m="adm:uq" value="${esc(M.uq)}" placeholder="Имя или Telegram ID" autocomplete="off"></div>
+    <div class="fchips">${UF.map(([k,n])=>`<button class="chip ${f===k?'on':''}" data-a="uFilter" data-v="${k}">${n}</button>`).join('')}</div>
+    ${!u?loading():list.length?`<div class="list">${list.map(r=>`<div class="li" style="align-items:flex-start">${avatar(r.name||'?',1)}<div class="grow" style="min-width:0"><b style="font-size:14px">${esc(r.name||'Без имени')}</b>${r.root?' <span class="tag acc">главный админ</span>':r.admin?' <span class="tag acc">админ</span>':''}${r.banned?' <span class="tag">заблокирован</span>':''}${r.blocked?' <span class="tag">бот остановлен</span>':''}
       <div class="mute" style="font-size:12px">ID ${esc(r.id)} · был(а) ${ago(r.last_seen||r.created)}</div>
-      ${r.root?'':`<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm ghost" data-a="uBan" data-id="${esc(r.id)}" data-on="${r.banned?0:1}">${r.banned?'Разблокировать':'Заблокировать'}</button><button class="btn sm ghost" data-a="uAdmin" data-id="${esc(r.id)}" data-on="${r.admin?0:1}">${r.admin?'Снять админа':'Сделать админом'}</button><button class="btn sm ghost" data-a="openChatWith" data-id="${esc(r.id)}">Написать</button></div>`}</div></div>`).join('')}</div>${u.more?`<button class="btn block ghost" style="margin-top:12px" data-a="uMore">Показать ещё</button>`:''}`:empty('user','Никого не нашли','Измените запрос.')}
-    <div class="sec"><div class="sec-h"><h2>Добавить админа по ID</h2></div><form class="replybox" data-f="admAdd"><input class="in" name="t" data-m="adm:admId" value="${esc(M.admId)}" inputmode="numeric" placeholder="Telegram ID" autocomplete="off"><button class="btn sm" style="height:42px">Добавить</button></form></div>`;
+      ${r.root?'':`<div class="mrow" style="margin-top:8px"><button class="btn sm ghost" data-a="uBan" data-id="${esc(r.id)}" data-on="${r.banned?0:1}">${r.banned?'Разблокировать':'Заблокировать'}</button><button class="btn sm ghost" data-a="uAdmin" data-id="${esc(r.id)}" data-on="${r.admin?0:1}">${r.admin?'Снять админа':'Сделать админом'}</button><button class="btn sm ghost" data-a="openChatWith" data-id="${esc(r.id)}">Написать</button></div>`}</div></div>`).join('')}</div>${u.more?`<button class="btn block ghost" style="margin-top:12px" data-a="uMore">Показать ещё</button>`:''}`:empty('user','Никого не нашли',f==='all'?'Измените запрос.':'В загруженном списке нет подходящих. Попробуйте «Все» или уточните поиск.')}
+    <div class="sec"><div class="sec-h"><h2>Администраторы</h2></div><details class="dgroup"><summary><b>Добавить админа по ID</b><span>человеку не нужно предварительно открывать приложение</span></summary><div class="dbody"><form class="replybox" data-f="admAdd"><input class="in" name="t" data-m="adm:admId" value="${esc(M.admId)}" inputmode="numeric" placeholder="Telegram ID, например 123456789" autocomplete="off"><button class="btn sm" style="height:42px">Добавить</button></form><p class="hint">Свой ID узнают у бота @userinfobot. Главных админов (из настроек сервера) снять нельзя.</p></div></details></div>`;
   }
   let uqT;
   x.ONINPUT['adm:uq']=()=>{clearTimeout(uqT);uqT=setTimeout(async()=>{try{A.users=await api('/api/admin/users?q='+encodeURIComponent(M.uq));if(here('admin')&&A.tab==='users'){const f=document.activeElement&&document.activeElement.id==='uq';x.refresh();if(f){const i=$('#uq');i.focus();i.setSelectionRange(i.value.length,i.value.length)}}}catch(e){}},350)};

@@ -400,3 +400,31 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .howto summary::-webkit-details-marker{display:none}
 .howto ol{margin:10px 0 2px;padding-left:20px;font-size:13px;line-height:1.55;color:var(--fg)}
 .howto li{margin-bottom:4px}
+
+/* admin panel polish */
+.adm .sec{margin-top:28px}
+.adm>.sec:first-of-type{margin-top:0}
+.adm .sec-h{margin-bottom:12px;align-items:center}
+.adm .sec-h h2{font-family:var(--ui);font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.admhead{position:sticky;top:0;z-index:7;background:var(--bg);padding-bottom:12px}
+.admhead .topbar{position:static;background:none;padding-bottom:6px}
+.admbar{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.admbar::-webkit-scrollbar{display:none}
+.admbar .chip{flex:none}
+.pagehint{font-size:13px;color:var(--mute);line-height:1.5;margin:0 0 20px}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px}
+.tile b{display:block;font-family:var(--display);font-weight:400;font-size:28px;line-height:1.1}
+.tile span{display:block;font-size:12.5px;font-weight:600;margin-top:5px}
+.tile small{display:block;font-size:11.5px;color:var(--mute);margin-top:2px}
+.alert{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border-radius:16px;border:1px solid var(--acc);background:var(--acc-soft);text-align:left;margin-bottom:10px;color:var(--fg)}
+.alert b{flex:1;font-size:14px}
+.alert .badge{margin:0}
+.aico{width:38px;height:38px;border-radius:12px;background:var(--acc-soft);color:var(--acc-t);display:grid;place-items:center;flex:none}
+.fchips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.fchips .chip{height:32px;font-size:12.5px;padding:0 12px}
+.mrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.step{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.step i{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#fff;font-style:normal;font-weight:800;font-size:12.5px;display:grid;place-items:center;flex:none}
+.step b{font-size:14.5px}
+.counter{font-size:11.5px;color:var(--dim);text-align:right;margin-top:4px}
