@@ -221,19 +221,21 @@ route('POST','/api/support',async c=>{
 
 /* ---------- admin: overview ---------- */
 route('GET','/api/admin/stats',async c=>{
-  const now=Date.now(),D=864e5,n=(sql,...a)=>stmt(c,sql,...a);
-  const r=await batch(c,[
-    n('SELECT COUNT(*) n FROM users'),n('SELECT COUNT(*) n FROM users WHERE created>?',now-D),n('SELECT COUNT(*) n FROM users WHERE created>?',now-7*D),
-    n('SELECT COUNT(*) n FROM users WHERE last_seen>?',now-D),n('SELECT COUNT(*) n FROM users WHERE last_seen>?',now-7*D),
-    n('SELECT COUNT(*) n FROM users WHERE banned=1'),n('SELECT COUNT(*) n FROM users WHERE blocked=1'),
-    n('SELECT COUNT(*) n FROM books WHERE hidden=0 OR hidden IS NULL'),n('SELECT COUNT(*) n FROM books WHERE hidden=1'),
-    n('SELECT COUNT(*) n FROM reviews'),n('SELECT COUNT(*) n FROM threads'),n('SELECT COUNT(*) n FROM comments'),
-    n("SELECT COUNT(*) n FROM submissions WHERE status='moderation'"),
-    n('SELECT COUNT(DISTINCT user_id) n FROM support_messages WHERE from_admin=0 AND read=0'),
-    n("SELECT date(created/1000,'unixepoch') d,COUNT(*) n FROM users WHERE created>? GROUP BY d ORDER BY d",now-14*D),
-    n("SELECT COUNT(*) n FROM users WHERE blocked=0 AND banned=0 AND id GLOB '[0-9]*'")]);
-  const v=i=>r[i][0].n;
-  return json({users:v(0),new24:v(1),new7:v(2),active24:v(3),active7:v(4),banned:v(5),blocked:v(6),books:v(7),hidden:v(8),reviews:v(9),threads:v(10),comments:v(11),pending:v(12),supportUnread:v(13),signups:r[14],reachable:v(15)});
+  const now=Date.now(),D=864e5;
+  const Q=[
+    ['users','SELECT COUNT(*) n FROM users'],['new24','SELECT COUNT(*) n FROM users WHERE created>?',now-D],['new7','SELECT COUNT(*) n FROM users WHERE created>?',now-7*D],
+    ['active24','SELECT COUNT(*) n FROM users WHERE last_seen>?',now-D],['active7','SELECT COUNT(*) n FROM users WHERE last_seen>?',now-7*D],
+    ['banned','SELECT COUNT(*) n FROM users WHERE banned=1'],['blocked','SELECT COUNT(*) n FROM users WHERE blocked=1'],
+    ['books','SELECT COUNT(*) n FROM books WHERE hidden=0 OR hidden IS NULL'],['hidden','SELECT COUNT(*) n FROM books WHERE hidden=1'],
+    ['reviews','SELECT COUNT(*) n FROM reviews'],['threads','SELECT COUNT(*) n FROM threads'],['comments','SELECT COUNT(*) n FROM comments'],
+    ['pending',"SELECT COUNT(*) n FROM submissions WHERE status='moderation'"],
+    ['supportUnread','SELECT COUNT(DISTINCT user_id) n FROM support_messages WHERE from_admin=0 AND read=0'],
+    ['reachable',"SELECT COUNT(*) n FROM users WHERE blocked=0 AND banned=0 AND id GLOB '[0-9]*'"]];
+  const out={signups:[],errors:[]};
+  /* each metric is isolated, so one failing query cannot blank the whole overview */
+  await Promise.all(Q.map(async([k,sql,...a])=>{try{out[k]=(await get(c,sql,...a)).n}catch(e){out[k]=0;out.errors.push(k+': '+String(e.message||e).slice(0,120))}}));
+  try{out.signups=await all(c,"SELECT date(created/1000,'unixepoch') d,COUNT(*) n FROM users WHERE created>? GROUP BY d ORDER BY d",now-14*D)}catch(e){out.errors.push('signups: '+String(e.message||e).slice(0,120))}
+  return json(out);
 },true);
 
 /* ---------- admin: broadcasts ---------- */
@@ -483,7 +485,7 @@ export default {
     try{
       if(pathname==='/telegram/webhook'&&request.method==='POST')return await handleWebhook(request,env,ctx);
       if(pathname.startsWith('/api/'))return await handleApi(request,env,ctx);
-    }catch(e){console.error(e);return json({error:'server'},500)}
+    }catch(e){console.error(e);return json({error:'server',...(pathname.startsWith('/api/admin/')?{detail:String(e.message||e).slice(0,200)}:{})},500)}
     return env.ASSETS.fetch(request);
   },
   scheduled(event,env,ctx){ctx.waitUntil(reminders(env,ctx))}

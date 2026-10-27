@@ -13,7 +13,7 @@ export function initAdmin(x){
   const confirmSheet=(msg,act,id,label='Подтвердить')=>openSheet(`<h2>${esc(msg)}</h2><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="${act}" data-id="${esc(id)}">${label}</button></div>`);
 
   /* ---------- loading per tab ---------- */
-  async function load(key,fn){try{A[key]=await fn()}catch(e){toast('Не удалось загрузить данные')}if(here('admin'))x.refresh()}
+  async function load(key,fn){try{A[key]=await fn()}catch(e){toast('Не удалось загрузить: '+(e.detail||e.status||'сеть'))}if(here('admin'))x.refresh()}
   const loaders={
     overview:()=>load('stats',()=>api('/api/admin/stats')),
     broadcast:()=>Promise.all([load('bc',()=>api('/api/admin/broadcasts')),A.stats?0:load('stats',()=>api('/api/admin/stats'))]),
@@ -48,6 +48,7 @@ export function initAdmin(x){
     const alerts=[s.pending?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="moderation"><div class="grow"><b>Заявок на проверке: ${s.pending}</b></div>${ico('chev',18)}</button>`:'',s.supportUnread?`<button class="li card" style="margin-bottom:10px" data-a="admTab" data-v="chat"><div class="grow"><b>Непрочитанных диалогов: ${s.supportUnread}</b></div>${ico('chev',18)}</button>`:''].join('');
     return `${alerts}<div class="stat3" style="grid-template-columns:repeat(3,1fr)">${cards.map(([n,l])=>`<div><b>${n}</b><small>${l}</small></div>`).join('')}</div>
     <div class="card" style="margin-top:16px"><div class="lbl" style="margin-bottom:12px">Новые пользователи за 14 дней</div>${s.signups.length?`<div class="bars">${s.signups.map(d=>`<div><i style="height:${Math.max(6,d.n/max*100)}%"></i><small>${d.n}</small><em>${esc(d.d.slice(8))}</em></div>`).join('')}</div>`:'<p class="mute">Пока нет данных</p>'}</div>
+    ${s.errors&&s.errors.length?`<div class="demo-banner" style="margin-top:14px;flex-direction:column"><b>Часть данных не загрузилась</b>${s.errors.map(e=>`<span>${esc(e)}</span>`).join('')}</div>`:''}
     <p class="mute" style="font-size:12.5px;margin-top:14px">Заблокировано: ${s.banned} · Остановили бота: ${s.blocked} · Скрытых книг: ${s.hidden} · Комментариев: ${s.comments}</p>`;
   }
 
