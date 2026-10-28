@@ -89,7 +89,7 @@ export function initDonate(x,adm){
     ${group('Где читатели видят донаты','главная, профиль, конец книги, экран доната',`<div class="list" style="margin-bottom:12px">${where.map(([i,a,b])=>`<div class="li" style="align-items:flex-start"><span style="font-size:20px;width:28px">${i}</span><div class="grow"><b style="font-size:14px">${a}</b><div class="mute" style="font-size:12.5px">${b}</div></div></div>`).join('')}</div><button class="btn block ghost" data-a="dPreview">Посмотреть как читатель</button>`)}</div>`;
   }
   ACT.dPreview=()=>{D.info=null;go('donate');loadInfo()};
-  adm.T.push(['donations','Донаты']);
+  if(!adm.T.some(t=>t[0]==='donations'))adm.T.push(['donations','Донаты']);
   adm.bodies.donations=tabDonations;
   adm.loaders.donations=()=>load('dons',()=>api('/api/admin/donations')).then(()=>{if(A.dons){fillSettings(A.dons.settings);if(adm.here('admin'))x.refresh()}});
   CHG.mGoal=el=>{AM.m_goal=el.value};

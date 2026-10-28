@@ -92,7 +92,7 @@ export function initCatalogAdmin(x,adm){
     try{const [b,d,a]=await Promise.all([api('/api/admin/books'),api('/api/admin/demo'),api('/api/admin/audit')]);L={books:b.list,demo:d,audit:a.list};adm.A.adbooks=b}catch(e){toast('Не удалось загрузить каталог')}
     if(adm.here('admin'))x.refresh();
   }
-  T.push(['catalog','Каталог']);bodies.catalog=tabCatalog;loaders.catalog=reloadCatalog;
+  if(!T.some(t=>t[0]==='catalog'))T.push(['catalog','Каталог']);bodies.catalog=tabCatalog;loaders.catalog=reloadCatalog;
 
   CHG.ciSel=el=>{M[el.dataset.k]=el.value};
   ACT.ciFilter=el=>{CI.filter=el.dataset.v;CI.shown=40;x.refresh()};

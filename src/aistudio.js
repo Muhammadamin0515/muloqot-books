@@ -247,5 +247,5 @@ export function initAiStudio(x,adm){
     if(S.cur){if(!S.d)return S.err?`<button class="btn sm ghost" data-a="asBack">← К заданиям</button>${err()}`:loading();return jobView(S.d)}
     return listView();
   }
-  T.push(['aistudio','ИИ-книга']);bodies.aistudio=tabStudio;loaders.aistudio=loadList;
+  if(!T.some(t=>t[0]==='aistudio'))T.push(['aistudio','ИИ-книга']);bodies.aistudio=tabStudio;loaders.aistudio=loadList;
 }
