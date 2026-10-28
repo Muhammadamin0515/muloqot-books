@@ -18,7 +18,8 @@
     "ruslit:fetch": "node scripts/ruslit.mjs fetch",
     "ruslit:dry-run": "node scripts/ruslit.mjs scan",
     "ruslit:import": "node scripts/ruslit.mjs import",
-    "ruslit:publish": "node scripts/ruslit.mjs publish"
+    "ruslit:publish": "node scripts/ruslit.mjs publish",
+    "load": "node tests/load/load.mjs"
   },
   "devDependencies": {
     "vite": "^6.0.0",

@@ -120,6 +120,6 @@ const r=spawnSync('node',[join(ROOT,'scripts/covers.mjs'),'--target',B],{encodin
 const after=(await imp('/api/import/covers')).j.books.length;
 ok(before>0&&r.status===0&&after===0,'cover script draws and uploads covers for imported books ('+before+' → '+after+')');
 const pub=(await api('r1','/api/bootstrap')).j.books.find(b=>b.lit||b.collection);
-if(pub){const c=await fetch(B+'/api/cover/'+pub.id);ok(c.status===200&&c.headers.get('content-type')==='image/jpeg','published imported book serves a JPEG cover')}}
+if(pub){const c=await fetch(B+'/api/cover/'+pub.id);ok(c.status===200&&c.headers.get('content-type')==='image/jpeg','published imported book serves a JPEG cover (for Telegram cards)');ok(pub.img===undefined,'the app does not download that cover: it draws the artwork itself (one request less per book)')}}
 rmSync(work,{recursive:true,force:true});
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

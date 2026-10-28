@@ -33,8 +33,14 @@ function load(){try{const raw=localStorage.getItem(KEY);S=Object.assign(DEFAULT(
 const SHARED=['reviews','threads','subs','reacts','qLikes','follows','ratings','me','donateGoal','donateOn','appLink'];
 /* Reading progress and bookmarks are synced record by record (see syncReading), not inside the state blob. */
 const persistable=()=>{const o={...S};SHARED.forEach(k=>delete o[k]);delete o.progress;delete o.bookmarks;delete o.outbox;return o};
+/* The state blob is sent only when it really changed (progress, bookmarks and shared data travel separately): fewer requests on the server. */
+const stable=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).sort().reduce((a,x)=>(a[x]=v[x],a),{}):v);
+let lastSent='';
+/* leaving the app: send a pending state change right away instead of waiting for the delay */
+let leaving=false; /* true while the page is being hidden or closed: changes are then sent at once */
+function flushState(){if(!net.online||!syncT)return;clearTimeout(syncT);syncT=0;const cur=stable(persistable());if(cur===lastSent)return;lastSent=cur;api('/api/state','PUT',persistable(),{keepalive:true}).catch(()=>{lastSent=''})}
 let saveT,syncT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250);
-  if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>api('/api/state','PUT',persistable()).catch(()=>{}),1200)}}
+  if(net.online){clearTimeout(syncT);syncT=setTimeout(()=>{syncT=0;const cur=stable(persistable());if(cur===lastSent)return;lastSent=cur;api('/api/state','PUT',persistable()).catch(()=>{lastSent=''})},5000);if(leaving)flushState()}}
 const ERR={rate:['Слишком часто. Подождите минуту.','Juda tez-tez. Bir daqiqa kuting.'],links:['Ссылки в сообщениях запрещены.','Xabarlarda havolalar taqiqlangan.'],duplicate:['Такое сообщение уже отправлено.','Bunday xabar allaqachon yuborilgan.'],stopword:['Сообщение содержит запрещённые слова.','Xabarda taqiqlangan so‘zlar bor.'],banned:['Ваш аккаунт заблокирован.','Akkauntingiz bloklangan.']};
 const errMsg=e=>{const m=ERR[e&&e.detail];if(m)return tr(m[0],m[1]);
   if(e&&e.status>=500)return tr('Ошибка сервера. Попробуйте ещё раз немного позже.','Server xatosi. Birozdan so‘ng qayta urinib ko‘ring.');
@@ -436,7 +442,14 @@ ACT.openBm=el=>{const x=S.bookmarks.find(b=>b.id===el.dataset.id);openReader(x.b
 const R={id:null,ch:0,startP:0,startPara:null,sel:null,fresh:false};
 const bmFind=(id,ch,para)=>S.bookmarks.find(x=>x.bookId===id&&x.ch===ch&&x.para===para);
 const TEXT={},LOADING={},TOC={};
-const track=(id,type)=>{if(net.online)api(`/api/books/${id}/event`,'POST',{type}).catch(()=>{})};
+/* The server counts one event per reader, book and day anyway: do not even send the repeats. */
+const SEEN_EV=(()=>{try{const o=JSON.parse(localStorage.getItem('muloqot.ev')||'{}');return o.d===new Date().toISOString().slice(0,10)?o:{d:new Date().toISOString().slice(0,10),k:{}}}catch(e){return{d:'',k:{}}}})();
+const track=(id,type)=>{
+  if(!net.online)return;const day=new Date().toISOString().slice(0,10),k=type+':'+id;
+  if(SEEN_EV.d!==day){SEEN_EV.d=day;SEEN_EV.k={}}
+  if(SEEN_EV.k[k])return;SEEN_EV.k[k]=1;try{localStorage.setItem('muloqot.ev',JSON.stringify(SEEN_EV))}catch(e){}
+  api(`/api/books/${id}/event`,'POST',{type}).catch(()=>{delete SEEN_EV.k[k]});
+};
 const hasText=b=>b.lazy?!!b.tocLoaded:(b.chapters.length>0&&b.chapters.every(c=>Array.isArray(c.p)));
 /* Collections (lazy books) are read chapter by chapter; the catalog carries no chapter list at all. Other books load their whole text once. */
 function loadText(id){
@@ -519,8 +532,9 @@ function adoptReading(d){
   for(const x of sv.values())if(S.outbox.b[x.id]!=='del')out.push({...x,sy:1});
   S.bookmarks=out;
 }
-document.addEventListener('visibilitychange',()=>{if(document.hidden)syncReading(true)});
-window.addEventListener('pagehide',()=>syncReading(true));
+document.addEventListener('visibilitychange',()=>{if(document.hidden){leaving=true;syncReading(true);flushState()}else leaving=false});
+window.addEventListener('pagehide',()=>{leaving=true;syncReading(true);flushState()});
+window.addEventListener('pageshow',()=>{leaving=false});
 window.addEventListener('online',()=>kickSync(500));
 async function openReader(id,opts){
   const b=book(id);if(!b)return;
@@ -743,7 +757,7 @@ function applyBoot(d,first){
   S.reviews=d.reviews;S.threads=d.threads;S.ratings=d.ratings;S.follows=d.follows;S.subs=d.subs;S.me=d.me;S.donateGoal=d.donateGoal;S.donateOn=d.donateOn;S.appLink=d.appLink;
   S.reacts={};d.reviews.forEach(r=>{if(r.my&&(r.my.heart||r.my.insight))S.reacts[r.id]=r.my});
   S.qLikes={};d.quotes.forEach(q=>{if(q.mine)S.qLikes[q.id]=true});
-  if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=mergeState(loc,Object.assign(DEFAULT(),d.state));SHARED.forEach(k=>S[k]=loc[k]);S.outbox=loc.outbox||S.outbox;if(net.online)save()}
+  if(first&&d.state&&Object.keys(d.state).length){const loc=S;S=mergeState(loc,Object.assign(DEFAULT(),d.state));SHARED.forEach(k=>S[k]=loc[k]);S.outbox=loc.outbox||S.outbox;lastSent=stable(d.state);if(net.online)save()}
   else if(first)api('/api/state','PUT',persistable()).catch(()=>{});
   adoptReading(d);kickSync(1500);
   if(first&&!(d.state&&d.state.name)&&!localStorage.getItem(KEY)&&d.me.name)S.name=d.me.name.slice(0,24);

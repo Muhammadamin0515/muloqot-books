@@ -82,7 +82,7 @@ function bookOut(row,agg,extra={}){const b=P(row.data);const a=agg[row.id]||{n:0
   const full=canRead(b);
   /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/chapter/:n) and covers are served as images (/api/cover/:id). */
   const {rights,chapters,img,lit,pendingToc,pendingNch,pendingChars,...rest}=b;
-  return{...rest,chapters:full&&!b.lazy?chapters.map(ch=>({t:ch.t})):[],nch:b.lazy?b.nch:chapters.length,ver:b.ver||'',fullText:full&&hasText(b),rights:publicRights(b),...(lit?{collection:lit.collection}:{}),...(img?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,dist:a.d||[0,0,0,0,0]}}
+  return{...rest,chapters:full&&!b.lazy?chapters.map(ch=>({t:ch.t})):[],nch:b.lazy?b.nch:chapters.length,ver:b.ver||'',fullText:full&&hasText(b),rights:publicRights(b),...(lit?{collection:lit.collection}:{}),...(img&&!b.imgAuto?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,dist:a.d||[0,0,0,0,0]}}
 const DIST=',SUM(value=1) c1,SUM(value=2) c2,SUM(value=3) c3,SUM(value=4) c4,SUM(value=5) c5';
 const distOf=r=>[r.c1,r.c2,r.c3,r.c4,r.c5].map(x=>x||0);
 const ratingAgg=async c=>{const o={};(await all(c,`SELECT book_id,COUNT(*) n,SUM(value) s${DIST} FROM ratings GROUP BY book_id`)).forEach(r=>o[r.book_id]={n:r.n,s:r.s,d:distOf(r)});return o};
@@ -94,8 +94,8 @@ async function loadReviews(c,onlyId,realOnly){
   const patronMin=(await getDonateSettings(c)).patronMin;
   const [rv,rp,rc,mine,pat]=await batch(c,[
     stmt(c,`SELECT * FROM reviews${w} ORDER BY created DESC LIMIT 200`,...args),
-    stmt(c,'SELECT review_id,user_name,text,is_author FROM review_replies ORDER BY id'),
-    stmt(c,"SELECT target,kind,COUNT(*) n FROM reacts WHERE target LIKE 'r:%' GROUP BY target,kind"),
+    stmt(c,`SELECT review_id,user_name,text,is_author FROM review_replies WHERE review_id IN (SELECT id FROM reviews${w} ORDER BY created DESC LIMIT 200) ORDER BY id`,...args),
+    stmt(c,`SELECT target,kind,COUNT(*) n FROM reacts WHERE target IN (SELECT 'r:'||id FROM reviews${w} ORDER BY created DESC LIMIT 200) GROUP BY target,kind`,...args),
     stmt(c,"SELECT target,kind FROM reacts WHERE user_id=? AND target LIKE 'r:%'",c.user.id),
     stmt(c,"SELECT user_id FROM donations WHERE status='paid' AND user_id IS NOT NULL GROUP BY user_id HAVING SUM(amount)>=?",patronMin)]);
   const patrons=new Set(pat.map(x=>x.user_id));
@@ -107,7 +107,7 @@ async function loadReviews(c,onlyId,realOnly){
 }
 async function loadThreads(c,onlyId,realOnly){
   const w=onlyId?' WHERE id=?':` WHERE (hidden=0 OR hidden IS NULL)${realOnly?` AND demo IS NOT 1 AND (book_id IS NULL OR book_id IN ${REAL_BOOK})`:''}`,args=onlyId?[onlyId]:[];
-  const [th,cs]=await batch(c,[stmt(c,`SELECT * FROM threads${w} ORDER BY created DESC LIMIT 100`,...args),stmt(c,onlyId?'SELECT * FROM comments WHERE thread_id=? AND (hidden=0 OR hidden IS NULL) ORDER BY id':'SELECT * FROM comments WHERE hidden=0 OR hidden IS NULL ORDER BY id',...args)]);
+  const [th,cs]=await batch(c,[stmt(c,`SELECT * FROM threads${w} ORDER BY created DESC LIMIT 100`,...args),stmt(c,onlyId?'SELECT * FROM comments WHERE thread_id=? AND (hidden=0 OR hidden IS NULL) ORDER BY id':`SELECT * FROM comments WHERE (hidden=0 OR hidden IS NULL) AND thread_id IN (SELECT id FROM threads${w} ORDER BY created DESC LIMIT 100) ORDER BY id`,...args)]);
   return th.map(t=>{const mine=cs.filter(x=>x.thread_id===t.id);
     return{id:t.id,bookId:t.book_id,title:t.title,user:t.user_name,text:t.text,mine:t.user_id===c.user.id,
       comments:mine.filter(x=>!x.parent_id).map(x=>({id:x.id,user:x.user_name,text:x.text,mine:x.user_id===c.user.id,replies:mine.filter(y=>y.parent_id===x.id).map(y=>({user:y.user_name,text:y.text}))}))}});
@@ -134,27 +134,69 @@ const demoVisible=async c=>{
   return !(await get(c,"SELECT 1 x FROM books WHERE json_extract(data,'$.demo') IS NOT 1 AND json_extract(data,'$.publish') IS NOT 'draft' AND (hidden=0 OR hidden IS NULL) LIMIT 1"));
 };
 const REAL_BOOK="(SELECT id FROM books WHERE json_extract(data,'$.demo') IS NOT 1)";
-route('GET','/api/bootstrap',async c=>{
-  const uid=c.user.id,demo=await demoVisible(c),since=new Date(Date.now()-29*864e5).toISOString().slice(0,10);
-  const [books,authors,fol,meta,sub,usr,my1,my2,stats,aud]=await batch(c,[
+/* ---------- the public part of the app is built once and shared (the free plan has few D1 reads and little CPU per request) ----------
+   Layer 1: this isolate's memory (60 s). Layer 2: one row in `meta` (5 min). Layer 3: rebuild from the tables. Admin and author changes clear it. */
+const CACHE={mem:{}};
+const MEM_TTL=60e3,DB_TTL=300e3;
+async function cachedPart(c,key,build){
+  const m=CACHE.mem[key];if(m&&Date.now()<m.exp)return{...m.v,src:'mem'};
+  const row=await get(c,'SELECT value FROM meta WHERE key=?','cache:'+key);
+  if(row){const i=row.value.indexOf('|'),j=row.value.indexOf('|',i+1),ts=+row.value.slice(0,i);
+    if(Date.now()-ts<DB_TTL){const v={aux:row.value.slice(i+1,j),payload:row.value.slice(j+1)};CACHE.mem[key]={v,exp:Date.now()+MEM_TTL};return{...v,src:'db'}}}
+  const v=await build();
+  await run(c,'INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value','cache:'+key,`${Date.now()}|${v.aux}|${v.payload}`);
+  CACHE.mem[key]={v,exp:Date.now()+MEM_TTL};return{...v,src:'built'};
+}
+/** Clears the shared parts. `comm` only (reviews, threads, quotes) or everything. */
+async function bustCache(c,all=true){
+  CACHE.mem=all?{}:{...CACHE.mem,comm:null};
+  await run(c,all?"DELETE FROM meta WHERE key LIKE 'cache:%'":"DELETE FROM meta WHERE key='cache:comm'");
+}
+const BUST_ALL=/^\/api\/(author\/|admin\/(books|import|demo|collections|weekly|submissions|goals|donate-settings|donations|reviews|threads|comments|reports|ai\/jobs\/[^/]+\/publish))/,BUST_COMM=/^\/api\/(reviews|threads|quotes)/;
+async function buildPublic(c){
+  const demo=await demoVisible(c),since=new Date(Date.now()-29*864e5).toISOString().slice(0,10);
+  const [books,authors,fol,meta,stats,aud]=await batch(c,[
     stmt(c,`SELECT * FROM books WHERE (hidden=0 OR hidden IS NULL) AND json_extract(data,'$.publish') IS NOT 'draft'${demo?'':" AND json_extract(data,'$.demo') IS NOT 1"}`),
     stmt(c,`SELECT * FROM authors${demo?'':" WHERE json_extract(data,'$.demo') IS NOT 1"}`),stmt(c,'SELECT author_id,COUNT(*) n FROM follows GROUP BY author_id'),
-    stmt(c,'SELECT key,value FROM meta'),stmt(c,"SELECT * FROM submissions WHERE user_id=? AND status<>'withdrawn' ORDER BY created DESC",uid),
-    stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid),
+    stmt(c,"SELECT key,value FROM meta WHERE key NOT LIKE 'aikey:%' AND key NOT LIKE 'cache:%'"),
     stmt(c,'SELECT book_id,SUM(views) v,SUM(reads) r,SUM(finishes) f FROM book_stats WHERE day>=? GROUP BY book_id',since),
     stmt(c,'SELECT book_id,COUNT(*) n FROM audio_tracks GROUP BY book_id')]);
-  const [progress,bookmarks]=[await LIB.progressOf(c),await LIB.bookmarksOf(c)];
-  const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)]));
-  const sup=await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid);
-  const don=await get(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),ds=await getDonateSettings(c),goals=await goalRows(c);
+  const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)])),ds=await getDonateSettings(c),goals=await goalRows(c);
   const st=Object.fromEntries(stats.map(x=>[x.book_id,{views:x.v,reads:x.r,finishes:x.f}])),au=Object.fromEntries(aud.map(x=>[x.book_id,x.n]));
   const out=books.map(b=>bookOut(b,agg,{pop:popularity(st[b.id]||{},agg[b.id]?.n),audio:au[b.id]||0})),ids=new Set(out.map(b=>b.id));
   const collections=(m.collections||[]).map(x=>({...x,ids:x.ids.filter(i=>ids.has(i))})).filter(x=>x.ids.length);
-  return json({me:{id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup.n,donated:don.s,patron:don.s>=ds.patronMin},donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,appLink:m.applink||'',demo,
-    books:out,
-    authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(fol.find(f=>f.author_id===a.id)?.n||0)})),
-    collections,weekly:m.weekly&&ids.has(m.weekly.bookId)?m.weekly:null,quotes:await loadQuotes(c,null,!demo),reviews:await loadReviews(c,null,!demo),threads:await loadThreads(c,null,!demo),
-    ratings:Object.fromEntries(my1.map(r=>[r.book_id,r.value])),follows:my2.map(r=>r.author_id),subs:sub.map(subOut),progress,bookmarks,state:P(usr[0]?.state||'{}')});
+  const folN=Object.fromEntries(fol.map(f=>[f.author_id,f.n]));
+  const pub={demo,donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,appLink:m.applink||'',books:out,
+    authors:authors.map(a=>({...P(a.data),followers:a.followers_base+(folN[a.id]||0)})),collections,weekly:m.weekly&&ids.has(m.weekly.bookId)?m.weekly:null};
+  return{aux:String(ds.patronMin),payload:J(pub)};
+}
+/** Reviews, threads and quotes as everybody sees them (no "mine" marks); the personal marks are added per reader. */
+async function buildCommunity(c){
+  const demo=await demoVisible(c),anon={...c,user:{id:'\u0000'}};
+  const [reviews,threads,quotes]=[await loadReviews(anon,null,!demo),await loadThreads(anon,null,!demo),await loadQuotes(anon,null,!demo)];
+  return{aux:'',payload:J({reviews,threads,quotes})};
+}
+route('GET','/api/bootstrap',async c=>{
+  const uid=c.user.id;
+  const [pub,comm]=[await cachedPart(c,'pub',()=>buildPublic(c)),await cachedPart(c,'comm',()=>buildCommunity(c))];
+  const [sub,usr,my1,my2,mr,mre,mt,mc,sup,don]=await batch(c,[
+    stmt(c,"SELECT * FROM submissions WHERE user_id=? AND status<>'withdrawn' ORDER BY created DESC",uid),
+    stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT book_id,value FROM ratings WHERE user_id=?',uid),stmt(c,'SELECT author_id FROM follows WHERE user_id=?',uid),
+    stmt(c,'SELECT id FROM reviews WHERE user_id=?',uid),stmt(c,'SELECT target,kind FROM reacts WHERE user_id=?',uid),
+    stmt(c,'SELECT id FROM threads WHERE user_id=?',uid),stmt(c,'SELECT id FROM comments WHERE user_id=?',uid),
+    stmt(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=1 AND read=0',uid),
+    stmt(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid)]);
+  const [progress,bookmarks]=[await LIB.progressOf(c),await LIB.bookmarksOf(c)];
+  /* personal marks on the shared community lists */
+  const cm=P(comm.payload),myRev=new Set(mr.map(x=>x.id)),myTh=new Set(mt.map(x=>x.id)),myCm=new Set(mc.map(x=>x.id)),react={};
+  mre.forEach(x=>{(react[x.target]=react[x.target]||{})[x.kind]=true});
+  const reviews=cm.reviews.map(r=>{const mine=myRev.has(r.id),my=react['r:'+r.id];return mine||my?{...r,mine,my:my||{}}:r});
+  const threads=cm.threads.map(t=>{const mine=myTh.has(t.id);return mine||t.comments.some(x=>myCm.has(x.id))?{...t,mine,comments:t.comments.map(x=>myCm.has(x.id)?{...x,mine:true}:x)}:t});
+  const quotes=cm.quotes.map(q=>react['q:'+q.id]&&react['q:'+q.id].heart?{...q,mine:true}:q);
+  const me={id:uid,name:c.user.name,admin:c.user.admin,superadmin:c.user.superadmin,supportUnread:sup[0].n,donated:don[0].s,patron:don[0].s>=+pub.aux};
+  const per=J({me,quotes,reviews,threads,ratings:Object.fromEntries(my1.map(r=>[r.book_id,r.value])),follows:my2.map(r=>r.author_id),subs:sub.map(subOut),progress,bookmarks,state:P(usr[0]?.state||'{}')});
+  /* the large public part is spliced in as text: it is never parsed or serialised again */
+  return new Response('{'+pub.payload.slice(1,-1)+','+per.slice(1),{headers:{'content-type':'application/json','x-catalog-cache':pub.src}});
 });
 /* Full text is served only for books whose distribution rights are confirmed (or demo books). Admins can always preview. */
 route('GET','/api/books/:id/text',async(c,id)=>{
@@ -515,7 +557,7 @@ async function importOne(c,r){
   let a=await get(c,"SELECT id FROM authors WHERE lower(json_extract(data,'$.name'))=lower(?)",v.author.name);
   const aid=a?.id||'a'+id8(),bid='b'+id8(),h=[...bid].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];
   const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
-  const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover}:{}),imported:{by:c.user.id,at:Date.now()}};
+  const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover,...(r.ai?{imgAuto:true}:{})}:{}),imported:{by:c.user.id,at:Date.now()}};
   const ops=[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added)];
   if(!a)ops.push(stmt(c,'INSERT INTO authors(id,data,followers_base,user_id) VALUES(?,?,0,NULL)',aid,J({id:aid,name:v.author.name,city:v.author.city,hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal:[['#2a1a14','#7a2e17'],['#10282c','#2f6672'],['#26141a','#7a3346'],['#2a1f12','#8a5a22']][h%4],bio:v.author.bio,...(v.author.deathYear?{deathYear:v.author.deathYear}:{})})));
   await batch(c,ops);await audit(c,'import',bid,{title:v.book.title,rights:v.book.rights.status,fullText:v.book.chapters.length>0});
@@ -929,10 +971,13 @@ async function handleImport(request,env,ctx){
   for(const r of routes){
     if(r.admin!=='token'||r.method!==request.method)continue;const m=r.re.exec(url.pathname);if(!m)continue;
     if(request.method!=='GET'){if(+request.headers.get('content-length')>4_500_000)return bad(413,'toolarge');try{c.body=await request.json()}catch{c.body={}}}
-    return r.fn(c,...m.slice(1));
+    const res=await r.fn(c,...m.slice(1));
+    if(request.method!=='GET'&&res.status<400&&!/\/(status|chapter|chunks)/.test(url.pathname))await bustCache(c,true);
+    return res;
   }
   return bad(404,'not found');
 }
+const SEEN_EVERY=10*60*1000; /* last_seen is refreshed at most every 10 minutes */
 async function handleApi(request,env,ctx){
   const c={env,ctx,request,body:{}};
   /* The x-dev-user shortcut exists for local development only: it must never work on a deployed host, even if BOT_TOKEN is missing. */
@@ -944,16 +989,20 @@ async function handleApi(request,env,ctx){
   await ensureSchema(env);
   c.user={id,name};
   c.user.superadmin=csv(env.ADMIN_IDS).includes(id)||(dev&&id==='admin');
-  c.user.admin=c.user.superadmin||!!await get(c,'SELECT 1 x FROM admins WHERE user_id=?',id);
+  /* one read per request: who the user is (admin, banned, last seen). The row is written only when it is stale: D1 writes are the scarce resource. */
+  const urow=await get(c,'SELECT u.banned,u.blocked,u.last_seen,(SELECT 1 FROM admins WHERE user_id=u.id) adm FROM users u WHERE u.id=?',id);
+  c.user.admin=c.user.superadmin||!!urow?.adm;
   const url=new URL(request.url);
   for(const r of routes){
     if(r.method!==request.method)continue;const m=r.re.exec(url.pathname);if(!m)continue;
     if(r.admin==='token')continue;
     if(r.admin&&!c.user.admin)return bad(403,'forbidden');
     if(request.method!=='GET'){if(+request.headers.get('content-length')>4_500_000)return bad(413,'toolarge');try{c.body=await request.json()}catch{c.body={}}}
-    await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=COALESCE(users.name,excluded.name),last_seen=excluded.last_seen,blocked=0',id,name,Date.now(),Date.now());
-    if((await get(c,'SELECT banned FROM users WHERE id=?',id))?.banned&&!c.user.superadmin)return bad(403,'banned');
-    return r.fn(c,...m.slice(1));
+    if(!urow||urow.blocked||Date.now()-(urow.last_seen||0)>SEEN_EVERY)await run(c,'INSERT INTO users(id,name,created,last_seen) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=COALESCE(users.name,excluded.name),last_seen=excluded.last_seen,blocked=0',id,name,Date.now(),Date.now());
+    if(urow?.banned&&!c.user.superadmin)return bad(403,'banned');
+    const res=await r.fn(c,...m.slice(1));
+    if(request.method!=='GET'&&res.status<400){if(BUST_ALL.test(url.pathname))await bustCache(c,true);else if(BUST_COMM.test(url.pathname))await bustCache(c,false)}
+    return res;
   }
   return bad(404,'not found');
 }
@@ -1005,10 +1054,13 @@ async function onBotMessage(c,m){
   await tgApi(env,'sendMessage',{chat_id:chat,text:T('Спасибо! Сообщение передано администратору, ответ придёт сюда ✅','Rahmat! Xabaringiz administratorga yuborildi, javob shu yerga keladi ✅')});
 }
 
+const SEEN_UPD=new Set();
 async function handleWebhook(request,env,ctx){
   const h=request.headers.get('x-telegram-bot-api-secret-token');
   if(!env.BOT_TOKEN||(h!==await webhookSecret(env)&&(!env.WEBHOOK_SECRET||h!==env.WEBHOOK_SECRET)))return new Response('forbidden',{status:403});
   const u=await request.json().catch(()=>null);if(!u)return new Response('ok');
+  /* Telegram repeats an update when it is slow to be answered: do not handle the same one twice (best effort, per isolate) */
+  if(Number.isInteger(u.update_id)){if(SEEN_UPD.has(u.update_id))return new Response('ok');SEEN_UPD.add(u.update_id);if(SEEN_UPD.size>1000)SEEN_UPD.delete(SEEN_UPD.values().next().value)}
   const c={env,ctx};await ensureSchema(env);
   if(u.pre_checkout_query){
     const q=u.pre_checkout_query,d=await get(c,'SELECT status FROM donations WHERE id=?',q.invoice_payload);

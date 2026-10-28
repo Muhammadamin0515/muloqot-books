@@ -57,6 +57,8 @@ const ALTERS=[
 /* Test data shipped in migrations/0002_seed.sql has short ids (b1, a1, r1, t1, q1); everything created later has 8+ characters.
    Mark the seed rows once, so real and demo content can be separated without deleting anything. Idempotent. */
 const BACKFILL=[
+  /* covers drawn by the app itself (imported and AI books) are drawn in the browser, not downloaded: one request less per book */
+  "UPDATE books SET data=json_set(data,'$.imgAuto',1) WHERE json_extract(data,'$.img') IS NOT NULL AND json_extract(data,'$.imgAuto') IS NULL AND (json_extract(data,'$.lit.sourceId') IS NOT NULL OR json_extract(data,'$.ai') IS NOT NULL)",
   "UPDATE books SET data=json_set(data,'$.demo',1) WHERE length(id)<=3 AND json_extract(data,'$.demo') IS NULL",
   "UPDATE authors SET data=json_set(data,'$.demo',1) WHERE length(id)<=3 AND json_extract(data,'$.demo') IS NULL",
   'UPDATE reviews SET demo=CASE WHEN length(id)<=3 THEN 1 ELSE 0 END WHERE demo IS NULL',

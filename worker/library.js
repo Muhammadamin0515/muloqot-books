@@ -71,7 +71,7 @@ export function registerLibrary(d){
     if(!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(img)||img.length>70000)return bad(422,'cover');
     const row=await bookRow(c,id);if(!row)return bad(404);
     const b=P(row.data);if(b.img)return json({status:'exists'});
-    b.img=img;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);return json({status:'ok'});
+    b.img=img;b.imgAuto=true;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);return json({status:'ok'});
   },'token');
 
   route('POST','/api/import/book',async c=>{

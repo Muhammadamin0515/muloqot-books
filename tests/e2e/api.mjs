@@ -100,6 +100,24 @@ const before=(await api('admin','/api/admin/stats')).j,r=await api('admin','/api
 const after=(await api('admin','/api/admin/stats')).j;
 ok(r.s===200&&r.j.deleted>=12&&after.demoBooks===0&&after.books===before.books,'purge removes the demo books and keeps real ones ('+r.j.deleted+' deleted)');
 const bs=(await api('admin','/api/bootstrap')).j;ok(bs.books.every(b=>!b.demo)&&bs.books.length===before.books,'catalog after purge has only real books');}
+
+/* the shared catalog: built once, personal marks added per reader, cleared when something changes */
+{const raw=async who=>{const r=await fetch(B+'/api/bootstrap',{headers:{'x-dev-user':who}});return{h:r.headers.get('x-catalog-cache'),j:await r.json()}};
+const a1=await raw('cacheA'),a2=await raw('cacheA'),b1=await raw('cacheB');
+ok(['mem','db','built'].includes(a1.h)&&a2.h==='mem'&&b1.h==='mem','the second and third readers get the catalog from the cache ('+a1.h+', '+a2.h+', '+b1.h+')');
+ok(JSON.stringify(a1.j.books)===JSON.stringify(b1.j.books)&&a1.j.me.id==='cacheA'&&b1.j.me.id==='cacheB','the books are shared, "me" is personal');
+const bid=a1.j.books[0].id;
+await api('cacheA','/api/books/'+bid+'/rate','POST',{value:5});
+const rv=await api('cacheA','/api/reviews','POST',{bookId:bid,rating:5,text:'Отличная книга, читал с удовольствием до конца.'});
+const a3=await raw('cacheA'),b3=await raw('cacheB');
+const mine=a3.j.reviews.find(r=>r.text.startsWith('Отличная книга')),other=b3.j.reviews.find(r=>r.text.startsWith('Отличная книга'));
+ok(rv.s===200&&mine&&mine.mine===true&&other&&other.mine===false,'a new review is visible at once (the cache is cleared), marked as mine only for its author');
+ok(a3.j.ratings[bid]===5&&b3.j.ratings[bid]===undefined,'my rating is personal');
+const hid=await api('admin','/api/admin/books/'+bid+'/hide','POST',{on:true});const a4=await raw('cacheA');
+ok(hid.s===200&&!a4.j.books.some(b=>b.id===bid),'hiding a book removes it from the catalog at once');
+await api('admin','/api/admin/books/'+bid+'/hide','POST',{on:false});const a5=await raw('cacheA');ok(a5.j.books.some(b=>b.id===bid),'and showing it brings it back at once');
+const before=Date.now();for(let i=0;i<5;i++)await raw('cacheB');
+const meta=(await api('admin','/api/admin/stats')).j;ok(meta.errors.length===0,'the cache row does not disturb the admin overview');void before;}
 /* audit */
 const au=(await api('admin','/api/admin/audit')).j.list.map(x=>x.action);ok(['import','rights','text','audio','demo'].every(a=>au.includes(a)),'rights and import actions are written to the audit log');
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);
