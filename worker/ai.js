@@ -1,3 +1,4 @@
+import {sealSecret,openSecret} from './secret-box.js';
 /* One interface to the AI services (Groq, Google Gemini, OpenRouter): request building, answer parsing, usage, error classes and the
    live model list. Keys never leave the server. The orchestrator (orch.js) and the quick generator both call callModel(). */
 export const PROVIDERS={
@@ -78,27 +79,36 @@ export async function listModels(env,key,provider){
 
 export function registerAi(d){
   const {route,get,run,json,bad,P,J,audit}=d;
-  const keyOf=async(c,p)=>{const e=String(c.env[PROVIDERS[p].env]||'').trim();if(e)return{key:e,source:'env'};const r=await get(c,'SELECT value FROM meta WHERE key=?','aikey:'+p);const k=r?String(P(r.value)||''):'';return k?{key:k,source:'db'}:{key:'',source:''}};
+  const keyOf=async(c,p)=>{
+    const e=String(c.env[PROVIDERS[p].env]||'').trim();if(e)return{key:e,source:'secret'};
+    const r=await get(c,'SELECT value FROM meta WHERE key=?','aikey:'+p);if(!r)return{key:'',source:''};
+    const stored=P(r.value);
+    if(stored&&typeof stored==='object'&&stored.encrypted){try{return{key:await openSecret(stored.encrypted,c.env.AI_KEYS_ENCRYPTION_KEY),source:'encrypted_db'}}catch{return{key:'',source:'locked'}}}
+    const legacy=String(stored||'');if(!legacy)return{key:'',source:''};
+    if(c.env.AI_KEYS_ENCRYPTION_KEY){const encrypted=await sealSecret(legacy,c.env.AI_KEYS_ENCRYPTION_KEY);await run(c,'UPDATE meta SET value=? WHERE key=?',J({encrypted}),'aikey:'+p);return{key:legacy,source:'encrypted_db'}}
+    return{key:'',source:'legacy_db_locked'};
+  };
   d.aiKey=keyOf;
 
   /* which providers are ready (never the keys themselves) */
   route('GET','/api/admin/ai/config',async c=>{
     const out={};for(const p of Object.keys(PROVIDERS)){const k=await keyOf(c,p);out[p]={name:PROVIDERS[p].name,set:!!k.key,source:k.source,env:PROVIDERS[p].env}}
-    return json({providers:out,canSetKeys:!!c.user.superadmin});
+    return json({providers:out,canSetKeys:!!c.user.superadmin,secureStorageReady:!!String(c.env.AI_KEYS_ENCRYPTION_KEY||'').trim()});
   },true);
   route('POST','/api/admin/ai/key',async c=>{
     if(!c.user.superadmin)return bad(403,'superadmin');
     const p=String(c.body.provider||''),key=String(c.body.key||'').trim();if(!PROVIDERS[p])return bad(400,'provider');
     if(key&&!/^[\w.:-]{16,300}$/.test(key))return bad(422,'key');
-    if(key)await run(c,"INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",'aikey:'+p,J(key));
+    if(key&&!c.env.AI_KEYS_ENCRYPTION_KEY)return json({error:'secure_storage_not_configured'},503);
+    if(key){const encrypted=await sealSecret(key,c.env.AI_KEYS_ENCRYPTION_KEY);await run(c,"INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",'aikey:'+p,J({encrypted}));}
     else await run(c,'DELETE FROM meta WHERE key=?','aikey:'+p);
     await audit(c,'ai_key',p,{set:!!key});return json({ok:true});
   },true);
   /* the live model list of one provider */
   route('GET','/api/admin/ai/models',async c=>{
-    const p=new URL(c.request.url).searchParams.get('provider')||'';if(!PROVIDERS[p])return bad(400,'provider');
+    const search=new URL(c.request.url).searchParams,p=search.get('provider')||'',q=String(search.get('q')||'').trim().toLowerCase();if(!PROVIDERS[p])return bad(400,'provider');
     const {key}=await keyOf(c,p);if(!key)return bad(409,'no_key');
-    try{return json({provider:p,models:await listModels(c.env,key,p)})}
+    try{const all=await listModels(c.env,key,p),models=q?all.filter(m=>m.id.toLowerCase().includes(q)):all;return json({provider:p,total:all.length,models:models.slice(0,120)})}
     catch(e){return json({error:e.kind||'provider',detail:String(e.message).slice(0,200)},e.kind==='rate_limit'?429:502)}
   },true);
   route('POST','/api/admin/ai/generate',async c=>{

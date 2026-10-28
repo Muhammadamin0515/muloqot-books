@@ -1,6 +1,17 @@
 /* Programmatic checks and parsers for the AI orchestrator. Pure functions: no network, no database. */
 export const words=t=>(String(t||'').match(/\S+/g)||[]).length;
 
+/** Explicit chapter count in Russian, English, or Uzbek prompts. */
+export function requestedChapterCount(text){
+  const s=String(text||'');
+  const patterns=[
+    /(?:ровно\s*)?(\d{1,3})\s*(?:глав(?:а|ы|у|е|ой)?|chapter(?:s)?|ta\s*bob(?:lar|dan|gacha|ni|ga)?|bob(?:lar|dan|gacha|ni|ga)?)(?!\p{L})/iu,
+    /(?:глав(?:а|ы|у|е|ой)?|chapter(?:s)?|bob(?:lar|dan|gacha|ni|ga)?)\s*(?:ровно\s*)?(\d{1,3})(?!\d)/iu
+  ];
+  for(const re of patterns){const n=Number(re.exec(s)?.[1]);if(Number.isInteger(n)&&n>=2)return n}
+  return null;
+}
+
 /** Removes markdown the models like to add, keeps paragraphs separated by a blank line. */
 export const cleanText=t=>String(t||'').replace(/\r/g,'').replace(/^[ \t]*#+[ \t].*$/gm,'').replace(/\*\*|__/g,'').replace(/^[ \t]*[-*][ \t]+/gm,'— ').replace(/\n{3,}/g,'\n\n').trim();
 
@@ -64,7 +75,7 @@ export function parseReview(text){
 /** The plan and "story bible" the architect returns → normalized, or throws. */
 export function parsePlan(text,{chapters}={}){
   const j=parseJsonLoose(text);if(!j||!Array.isArray(j.chapters))throw new Error('bad_format');
-  const ch=j.chapters.slice(0,14).map(c=>({title:String(c?.title||'').slice(0,100),summary:String(c?.summary||'').slice(0,500)})).filter(c=>c.title);
+  const ch=j.chapters.slice(0,60).map(c=>({title:String(c?.title||'').slice(0,100),summary:String(c?.summary||'').slice(0,500)})).filter(c=>c.title);
   if(!ch.length||(chapters&&ch.length!==chapters))throw new Error('bad_format');
   const wpc=Math.round(+j.wordsPerChapter);
   const st=j.style&&typeof j.style==='object'?j.style:{};

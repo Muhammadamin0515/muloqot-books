@@ -37,6 +37,8 @@ const DDL=[
   'CREATE INDEX IF NOT EXISTS idx_ai_calls ON ai_calls(job_id,id)'
 ];
 const ALTERS=[
+  'ALTER TABLE ai_jobs ADD COLUMN workflow_id TEXT',
+  "ALTER TABLE ai_jobs ADD COLUMN workflow_status TEXT DEFAULT ''",
   'ALTER TABLE support_messages ADD COLUMN chat_id TEXT',
   'ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0',
   'ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0',

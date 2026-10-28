@@ -3,7 +3,7 @@
    so a job can be stopped and resumed at any time without losing chapters or repeating successful calls. */
 import {PROVIDERS,AiError,callModel,listModels} from './ai.js';
 import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,pickModels,freeOnly,ROLE_PROVIDER} from './orch-route.js';
-import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang,fixPlan,tameFinal} from './orch-checks.js';
+import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang,fixPlan,tameFinal,requestedChapterCount} from './orch-checks.js';
 import * as PR from './orch-prompts.js';
 
 const LOCK_MS=100000,MAX_ACTIVE=10,RETRIES=1,MAX_VERSIONS=240;
@@ -24,7 +24,19 @@ export function registerOrch(d){
   const addVersion=(c,job,chapter,kind,text,who,note='')=>stmt(c,'INSERT INTO ai_versions(job_id,chapter,kind,text,provider,model,note,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,text,who?.provider||'',who?.model||'',note,Date.now());
   const addCheck=(c,job,chapter,kind,ok,issues,who)=>stmt(c,'INSERT INTO ai_checks(job_id,chapter,kind,ok,issues,provider,model,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,ok?1:0,J(issues),who?.provider||'',who?.model||'',Date.now());
 
-  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{onFail:job.config.onFail==='ask'?'ask':'accept',freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
+  const loadSettings=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='aiSettings'");let v={};try{v=r?P(r.value):{}}catch{}return v&&typeof v==='object'?v:{}};
+  const globalConfig=async c=>{
+    const saved=await loadSettings(c),base=rolesFromEnv(c.env),merged=saved.roles?mergeRoles(base,saved.roles):{roles:base};
+    return{auto:saved.auto===true,chapters:Math.max(2,Math.min(60,Math.round(+saved.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+saved.words)||900)),freeOnly:saved.freeOnly!==false,onFail:saved.onFail==='ask'?'ask':'accept',roles:merged.roles||base,limits:limitsFrom(c.env,saved.limits||{})};
+  };
+  const ensureWorkflow=async(c,id)=>{
+    if(!c.env.AI_BOOK_WORKFLOW)return false;const row=await get(c,'SELECT workflow_id,workflow_status,status FROM ai_jobs WHERE id=?',id);
+    if(!row||['published','cancelled','awaiting_publish'].includes(row.status))return false;if(row.workflow_id&&['queued','running','waiting'].includes(row.workflow_status))return true;
+    try{const instance=await c.env.AI_BOOK_WORKFLOW.create({id:id+'-'+id8(),params:{jobId:id}});await run(c,"UPDATE ai_jobs SET workflow_id=?,workflow_status='queued' WHERE id=?",instance.id,id);return true}
+    catch(error){await run(c,"UPDATE ai_jobs SET workflow_status='error' WHERE id=?",id);console.error(JSON.stringify({event:'ai_workflow_start_error',jobId:id,message:String(error?.message||error).slice(0,160)}));return false}
+  };
+
+  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,workflowStatus:job.workflow_status||'',created:job.created,updated:job.updated,config:{onFail:job.config.onFail==='ask'?'ask':'accept',freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
     state:job.state,usage:{calls:job.calls,tokensIn:job.tokens_in,tokensOut:job.tokens_out,cost:job.cost,costUnknown:!!job.cost_unknown},bookId:job.book_id||null});
 
   /* ---------- calling a role: fallbacks, retries, limits, journal ---------- */
@@ -194,16 +206,24 @@ export function registerOrch(d){
   /* ---------- routes ---------- */
   const A=(method,path,fn)=>route(method,path,fn,true);
   /* defaults the server is configured with (model ids only; nothing is assumed when a variable is missing) */
-  A('GET','/api/admin/ai/jobs-config',async c=>{const r=rolesFromEnv(c.env),l=limitsFrom(c.env,{});return json({roles:Object.fromEntries(Object.entries(r).map(([k,v])=>[k,v?{model:v.primary.model,fallbacks:v.fallbacks.map(x=>x.provider+':'+x.model)}:null])),limits:l})});
+  A('GET','/api/admin/ai/jobs-config',async c=>{const cfg=await globalConfig(c);return json({defaults:{auto:cfg.auto,chapters:cfg.chapters,words:cfg.words,freeOnly:cfg.freeOnly,onFail:cfg.onFail},roles:Object.fromEntries(Object.entries(cfg.roles).map(([k,v])=>[k,v?{model:v.primary.model,fallbacks:v.fallbacks.map(x=>x.provider+':'+x.model)}:null])),limits:cfg.limits,workflowReady:!!c.env.AI_BOOK_WORKFLOW})});
+  A('POST','/api/admin/ai/settings',async c=>{
+    if(!c.user.superadmin)return bad(403,'superadmin');const b=c.body||{},old=await loadSettings(c),next={auto:b.auto===true,chapters:Math.max(2,Math.min(60,Math.round(+b.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+b.words)||900)),freeOnly:b.freeOnly!==false,onFail:b.onFail==='ask'||(b.onFail==null&&defaults.onFail==='ask')?'ask':'accept',limits:limitsFrom(c.env,b.limits||old.limits||{})};
+    const roles=mergeRoles(rolesFromEnv(c.env),b.roles||old.roles||{});if(roles.error)return json({error:roles.error},422);next.roles=Object.fromEntries(Object.entries(roles.roles).map(([k,v])=>[k,v?{model:v.primary.model,fallbacks:v.fallbacks.map(x=>x.provider+':'+x.model)}:null]));
+    await run(c,"INSERT INTO meta(key,value) VALUES('aiSettings',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(next));await audit(c,'ai_settings','global',{auto:next.auto,chapters:next.chapters,freeOnly:next.freeOnly});return json(await globalConfig(c));
+  });
   A('POST','/api/admin/ai/jobs/:id/step',async(c,id)=>{const r=await step(c,id);return json(r.j,r.s)});
+  A('POST','/api/admin/ai/jobs/:id/start',async(c,id)=>{const job=await loadJob(c,id);if(!job)return bad(404);if(!['draft','running','paused','plan_ready','needs_admin'].includes(job.status))return bad(409,'not_active');if(!c.env.AI_BOOK_WORKFLOW)return bad(503,'workflow_not_configured');if(!await ensureWorkflow(c,id))return bad(503,'workflow_start_failed');return json({ok:true,job:view(await loadJob(c,id))})});
 
   A('POST','/api/admin/ai/jobs',async c=>{
     const b=c.body,idea=String(b.idea||'').trim().slice(0,8000);if(idea.length<10)return bad(400,'idea');
-    const auto=b.auto!==false&&!b.chapters&&!b.genre&&!b.words||b.auto===true;
+    const defaults=await globalConfig(c),requested=Number.isFinite(+b.chapters)&&+b.chapters>0?Math.round(+b.chapters):requestedChapterCount(idea);
+    if(requested!=null&&(requested<2||requested>60))return bad(400,'chapter_limit');
+    const auto=requested==null&&(typeof b.auto==='boolean'?b.auto:defaults.auto);
     const lang=b.lang==='uz'||b.lang==='ru'?b.lang:detectLang(idea),genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel';
-    const chapters=Math.max(2,Math.min(12,Math.round(+b.chapters)||6)),wordsN=Math.max(300,Math.min(2000,Math.round(+b.words)||900));
+    const chapters=requested||defaults.chapters,wordsN=Math.max(300,Math.min(2000,Math.round(+b.words)||defaults.words));
     if((await get(c,`SELECT COUNT(*) n FROM ai_jobs WHERE status IN (${ACTIVE.map(()=>'?').join(',')})`,...ACTIVE)).n>=MAX_ACTIVE)return bad(429,'too_many_active');
-    let m=mergeRoles(b.autoModels===true?{}:rolesFromEnv(c.env),b.roles||{}),picked=null;
+    let m=mergeRoles(b.autoModels===true?{}:defaults.roles,b.roles||{}),picked=null;
     if(m.error==='roles_required'){ /* nothing configured: choose from the models the keys can really use */
       const lists={};for(const p of Object.keys(PROVIDERS)){const {key}=await aiKey(c,p);if(!key)continue;try{lists[p]=(await listModels(c.env,key,p)).map(x=>x.id)}catch{}}
       picked=pickModels(lists);
@@ -211,7 +231,7 @@ export function registerOrch(d){
       m=mergeRoles({},{draft:{model:picked.draft,fallbacks:lists.gemini&&picked.editor?[`gemini:${picked.editor}`]:[]},editor:{model:picked.editor},expert:picked.expert?{model:picked.expert}:null});
     }
     if(m.error)return json({error:m.error==='roles_required'?'roles_required':'model',detail:m.error},422);
-    const roles=m.roles,limits=limitsFrom(c.env,b.limits||{}),prices={...pricesFromEnv(c.env)};
+    const roles=m.roles,limits=limitsFrom(c.env,{...defaults.limits,...(b.limits||{})}),prices={...pricesFromEnv(c.env)};
     /* models are never assumed: each one must be in the provider's own list, and each provider needs a key */
     const used=[...new Set(Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).map(x=>x.provider))],available={};
     for(const p of used){
@@ -229,7 +249,7 @@ export function registerOrch(d){
       if(roles.expert&&x===roles.expert.primary){roles.expert=null;dropped.push({role:'expert',reason:'unknown',...x})}
       else for(const role of Object.keys(roles)){const r=roles[role];if(!r)continue;const k=r.fallbacks.indexOf(x);if(k>=0){r.fallbacks.splice(k,1);dropped.push({role,reason:'unknown',...x})}}
     }
-    const free=b.freeOnly!==false;
+    const free=b.freeOnly==null?defaults.freeOnly:b.freeOnly!==false;
     if(free)dropped.push(...freeOnly(roles,prices));
     if(!roles.draft||!roles.editor)return json({error:'no_models',detail:'нет бесплатных моделей'},422);
     if(limits.maxCostUsd!=null&&!free){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
@@ -237,10 +257,10 @@ export function registerOrch(d){
     const cfg={auto,autoModels:!!picked,freeOnly:free,onFail:b.onFail==='ask'?'ask':'accept',dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
-    await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});
+    await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});await ensureWorkflow(c,id);
     return json({job:view(await loadJob(c,id))});
   });
-  A('GET','/api/admin/ai/jobs',async c=>json({jobs:(await all(c,'SELECT id,title,status,pause_reason,created,updated,calls,tokens_in,tokens_out,cost,cost_unknown,config FROM ai_jobs ORDER BY created DESC LIMIT 30')).map(r=>({id:r.id,title:r.title,status:r.status,pauseReason:r.pause_reason,created:r.created,updated:r.updated,calls:r.calls,tokens:r.tokens_in+r.tokens_out,cost:r.cost,costUnknown:!!r.cost_unknown,chapters:P(r.config).chapters}))}));
+  A('GET','/api/admin/ai/jobs',async c=>json({jobs:(await all(c,'SELECT id,title,status,pause_reason,workflow_status,created,updated,calls,tokens_in,tokens_out,cost,cost_unknown,config FROM ai_jobs ORDER BY created DESC LIMIT 30')).map(r=>({id:r.id,title:r.title,status:r.status,pauseReason:r.pause_reason,workflowStatus:r.workflow_status||'',created:r.created,updated:r.updated,calls:r.calls,tokens:r.tokens_in+r.tokens_out,cost:r.cost,costUnknown:!!r.cost_unknown,chapters:P(r.config).chapters}))}));
   A('GET','/api/admin/ai/jobs/:id',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);
     const chs=await chaptersOf(c,id),checks=await all(c,'SELECT id,chapter,kind,ok,issues,provider,model,created FROM ai_checks WHERE job_id=? ORDER BY id DESC LIMIT 40',id),calls=await all(c,'SELECT id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created FROM ai_calls WHERE job_id=? ORDER BY id DESC LIMIT 60',id);
@@ -266,7 +286,7 @@ export function registerOrch(d){
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');
     if(c.body.confirm!==true)return bad(400,'confirm');
     const now=Date.now();job.status='running';job.pause_reason='';job.state={phase:'draft',chapter:0,fix:0,expert:0,issues:[]};
-    await batch(c,[...job.plan.chapters.map((_,k)=>stmt(c,"INSERT OR IGNORE INTO ai_chapters(job_id,idx,status,text,updated) VALUES(?,?,'pending','',?)",id,k,now)),saveJob(c,job)]);
+    await batch(c,[...job.plan.chapters.map((_,k)=>stmt(c,"INSERT OR IGNORE INTO ai_chapters(job_id,idx,status,text,updated) VALUES(?,?,'pending','',?)",id,k,now)),saveJob(c,job)]);await ensureWorkflow(c,id);
     await audit(c,'ai_job_plan_approved',id,{chapters:job.plan.chapters.length});return json({job:view(job)});
   });
   A('POST','/api/admin/ai/jobs/:id/pause',async(c,id)=>{const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='running'&&job.status!=='draft')return bad(409,'not_running');job.status='paused';job.pause_reason='manual';await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,updated=? WHERE id=?','paused','manual',Date.now(),id);return json({job:view(job)})});
@@ -284,9 +304,10 @@ export function registerOrch(d){
       await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,state=?,updated=? WHERE id=?','needs_admin','',J(job.state),Date.now(),id);return json({job:view(job)});
     }
     job.status=job.plan&&job.state.chapter!==undefined&&job.state.phase&&job.state.phase!=='plan'?'running':'draft';job.pause_reason='';
-    await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,updated=? WHERE id=?',job.status,'',Date.now(),id);return json({job:view(job)});
+    await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,updated=? WHERE id=?',job.status,'',Date.now(),id);await ensureWorkflow(c,id);return json({job:view(job)});
   });
   A('POST','/api/admin/ai/jobs/:id/cancel',async(c,id)=>{const job=await loadJob(c,id);if(!job)return bad(404);if(['published','cancelled'].includes(job.status))return bad(409,'finished');await run(c,"UPDATE ai_jobs SET status='cancelled',updated=? WHERE id=?",Date.now(),id);await audit(c,'ai_job_cancel',id,{});return json({ok:true})});
+  A('DELETE','/api/admin/ai/jobs/:id',async(c,id)=>{const job=await loadJob(c,id);if(!job)return bad(404);if(ACTIVE.includes(job.status))return bad(409,'cancel_first');if(job.lock_until>Date.now())return bad(409,'busy');await batch(c,[stmt(c,'DELETE FROM ai_checks WHERE job_id=?',id),stmt(c,'DELETE FROM ai_calls WHERE job_id=?',id),stmt(c,'DELETE FROM ai_versions WHERE job_id=?',id),stmt(c,'DELETE FROM ai_chapters WHERE job_id=?',id),stmt(c,'DELETE FROM ai_jobs WHERE id=?',id)]);await audit(c,'ai_job_delete',id,{published:job.status==='published',bookId:job.book_id||null});return json({ok:true})});
 
   /* the administrator decides about a chapter the models could not bring to quality */
   A('POST','/api/admin/ai/jobs/:id/chapters/:i/resolve',async(c,id,i)=>{
@@ -317,7 +338,7 @@ export function registerOrch(d){
     const [first,...rest]=fp.chapters;
     job.state={...job.state,refix:rest,refixTotal:fp.chapters.length,refixIssues:fp.byChapter,chapter:first,phase:'fix',fix:0,expert:0,issues:fp.byChapter[first],fixRound:(job.state.fixRound||0)+1};
     job.status='running';job.pause_reason='';
-    await batch(c,[saveJob(c,job)]);await audit(c,'ai_job_fix_final',id,{chapters:fp.chapters.map(x=>x+1),only});
+    await batch(c,[saveJob(c,job)]);await audit(c,'ai_job_fix_final',id,{chapters:fp.chapters.map(x=>x+1),only});await ensureWorkflow(c,id);
     return json({job:view(job),fix:{chapters:fp.chapters.map(x=>x+1),skipped:fp.global.length}});
   });
 
@@ -338,4 +359,5 @@ export function registerOrch(d){
     await audit(c,'ai_job_publish',id,{book:res.id,override:!!fin&&!fin.ok});return json({ok:true,bookId:res.id,job:view(await loadJob(c,id))});
   });
   void ROLE_PROVIDER;
+  return{step:(env,id)=>step({env},id)};
 }

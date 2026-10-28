@@ -3,3 +3,6 @@
 BOT_TOKEN=
 WEBHOOK_SECRET=
 IMPORT_TOKEN=
+# Локальный ключ шифрования для ключей AI-провайдеров, сохранённых в D1.
+# В Cloudflare задайте AI_KEYS_ENCRYPTION_KEY как Secret отдельно для production.
+AI_KEYS_ENCRYPTION_KEY=

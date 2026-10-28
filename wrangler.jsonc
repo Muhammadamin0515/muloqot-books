@@ -11,6 +11,10 @@
   "d1_databases": [
     {"binding": "DB", "database_name": "muloqot-books", "database_id": "a1369085-0a18-42a8-b631-77f90eb07a49", "migrations_dir": "migrations"}
   ],
+  "workflows": [
+    {"name": "muloqot-books-ai-job", "binding": "AI_BOOK_WORKFLOW", "class_name": "AiBookWorkflow"}
+  ],
+  "observability": {"enabled": true, "head_sampling_rate": 0.15, "issues": {"enabled": true}},
   "triggers": {"crons": ["*/5 14-15 * * *"]},
   "keep_vars": true
 }

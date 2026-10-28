@@ -5,6 +5,7 @@ import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,right
 import {registerLibrary,tokenCheck} from './library.js';
 import {registerAi} from './ai.js';
 import {registerOrch} from './orch.js';
+import {WorkflowEntrypoint} from 'cloudflare:workers';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
 const clip=(s,n)=>String(s??'').trim().slice(0,n);
@@ -1181,7 +1182,34 @@ async function reminders(env,ctx){
 const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKEN||'').trim().replace(/^bot/i,''),WEBHOOK_SECRET:String(env.WEBHOOK_SECRET||'').trim()});
 LIB=registerLibrary({route,stmt,get,all,run,batch,json,bad,P,J,audit,id8});
 const AID={route,get,run,json,bad,P,J,audit};registerAi(AID);
-registerOrch({...AID,stmt,all,batch,id8,importOne,aiKey:AID.aiKey});
+const ORCH=registerOrch({...AID,stmt,all,batch,id8,importOne,aiKey:AID.aiKey});
+export class AiBookWorkflow extends WorkflowEntrypoint{
+  async run(event,step){
+    const jobId=String(event.payload?.jobId||'');if(!jobId)return;
+    const db=this.env.DB;
+    try{
+      for(let i=0;i<600;i++){
+        const row=await step.do(`job-state-${i}`,async()=>db.prepare('SELECT status FROM ai_jobs WHERE id=?').bind(jobId).first());
+        if(!row||['cancelled','published','awaiting_publish'].includes(row.status)){
+          await step.do(`workflow-done-${i}`,async()=>db.prepare("UPDATE ai_jobs SET workflow_status='done' WHERE id=?").bind(jobId).run());return;
+        }
+        if(['plan_ready','paused','needs_admin'].includes(row.status)){
+          await step.do(`workflow-waiting-${i}`,async()=>db.prepare("UPDATE ai_jobs SET workflow_status='waiting' WHERE id=?").bind(jobId).run());
+          await step.sleep(`wait-for-admin-${i}`,'1 minute');
+          continue;
+        }
+        await step.do(`advance-ai-${i}`,{retries:{limit:3,delay:'10 seconds',backoff:'exponential'},timeout:'2 minutes'},async()=>{
+          const result=await ORCH.step(this.env,jobId);if(result.s>=500)throw new Error(`orchestrator_http_${result.s}`);return{status:result.s,jobStatus:result.j?.job?.status||''};
+        });
+        await step.do(`workflow-running-${i}`,async()=>db.prepare("UPDATE ai_jobs SET workflow_status='running' WHERE id=?").bind(jobId).run());
+      }
+      await db.prepare("UPDATE ai_jobs SET status='paused',pause_reason='workflow_step_limit',workflow_status='error',updated=? WHERE id=? AND status IN ('draft','running')").bind(Date.now(),jobId).run();
+    }catch(error){
+      await db.prepare("UPDATE ai_jobs SET status='paused',pause_reason='workflow_error',workflow_status='error',updated=? WHERE id=? AND status IN ('draft','running')").bind(Date.now(),jobId).run();
+      console.error(JSON.stringify({event:'ai_workflow_error',jobId,message:String(error?.message||error).slice(0,160)}));throw error;
+    }
+  }
+}
 export default {
   async fetch(request,env0,ctx){
     const env=clean(env0);
