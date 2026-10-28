@@ -26,6 +26,8 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS broadcast_media(id TEXT PRIMARY KEY,mime TEXT,data TEXT,created INTEGER)',
   'CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts INTEGER,user_id TEXT,action TEXT,target TEXT,detail TEXT)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)',
+  'CREATE TABLE IF NOT EXISTS support_chats(id TEXT PRIMARY KEY,user_id TEXT,title TEXT,created INTEGER,updated INTEGER,hidden_user INTEGER DEFAULT 0)',
+  'CREATE INDEX IF NOT EXISTS idx_support_chats_user ON support_chats(user_id,updated)',
   'CREATE TABLE IF NOT EXISTS ai_jobs(id TEXT PRIMARY KEY,created INTEGER,updated INTEGER,created_by TEXT,status TEXT,pause_reason TEXT DEFAULT \'\',title TEXT,config TEXT,plan TEXT,state TEXT,calls INTEGER DEFAULT 0,tokens_in INTEGER DEFAULT 0,tokens_out INTEGER DEFAULT 0,cost REAL DEFAULT 0,cost_unknown INTEGER DEFAULT 0,lock_until INTEGER DEFAULT 0,book_id TEXT)',
   'CREATE TABLE IF NOT EXISTS ai_chapters(job_id TEXT,idx INTEGER,status TEXT,text TEXT DEFAULT \'\',summary TEXT DEFAULT \'\',facts TEXT DEFAULT \'[]\',updated INTEGER,PRIMARY KEY(job_id,idx))',
   'CREATE TABLE IF NOT EXISTS ai_versions(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT,chapter INTEGER,kind TEXT,text TEXT,provider TEXT,model TEXT,note TEXT DEFAULT \'\',created INTEGER)',
@@ -35,6 +37,7 @@ const DDL=[
   'CREATE INDEX IF NOT EXISTS idx_ai_calls ON ai_calls(job_id,id)'
 ];
 const ALTERS=[
+  'ALTER TABLE support_messages ADD COLUMN chat_id TEXT',
   'ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0',
   'ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0',
   'ALTER TABLE users ADD COLUMN last_seen INTEGER',
@@ -57,6 +60,10 @@ const ALTERS=[
 /* Test data shipped in migrations/0002_seed.sql has short ids (b1, a1, r1, t1, q1); everything created later has 8+ characters.
    Mark the seed rows once, so real and demo content can be separated without deleting anything. Idempotent. */
 const BACKFILL=[
+  'CREATE INDEX IF NOT EXISTS idx_support_chat ON support_messages(chat_id,id)',
+  /* conversations: every user's earlier support messages become one first chat */
+  "INSERT OR IGNORE INTO support_chats(id,user_id,title,created,updated) SELECT 'd'||user_id,user_id,'Первое обращение',MIN(created),MAX(created) FROM support_messages WHERE chat_id IS NULL AND user_id IS NOT NULL GROUP BY user_id",
+  "UPDATE support_messages SET chat_id='d'||user_id WHERE chat_id IS NULL AND user_id IS NOT NULL",
   /* books made with the AI tool belong to the platform's own shelf */
   "UPDATE books SET data=json_set(data,'$.own',1) WHERE json_extract(data,'$.ai') IS NOT NULL AND json_extract(data,'$.own') IS NULL",
   /* covers drawn by the app itself (imported and AI books) are drawn in the browser, not downloaded: one request less per book */

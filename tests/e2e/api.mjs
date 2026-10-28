@@ -120,6 +120,28 @@ ok(hid.s===200&&!a4.j.books.some(b=>b.id===bid),'hiding a book removes it from t
 await api('admin','/api/admin/books/'+bid+'/hide','POST',{on:false});const a5=await raw('cacheA');ok(a5.j.books.some(b=>b.id===bid),'and showing it brings it back at once');
 const before=Date.now();for(let i=0;i<5;i++)await raw('cacheB');
 const meta=(await api('admin','/api/admin/stats')).j;ok(meta.errors.length===0,'the cache row does not disturb the admin overview');void before;}
+
+/* support: conversations like in a messenger */
+{const U='supA',V='supB';await api(U,'/api/bootstrap');await api(V,'/api/bootstrap');
+const c1=await api(U,'/api/support/chats','POST',{text:'Не открывается книга «Агафья», белый экран при открытии'});
+const c2=await api(U,'/api/support/chats','POST',{text:'Предложение: добавить тёмную тему для чтения'});
+ok(c1.s===200&&c2.s===200&&c1.j.id!==c2.j.id&&c1.j.title.startsWith('Не открывается книга'),'a user can start several chats; the title comes from the first message');
+const l1=(await api(U,'/api/support/chats')).j.chats;ok(l1.length===2&&l1[0].id===c2.j.id&&l1[0].last.startsWith('Предложение')&&l1[0].lastMine===true&&l1.every(c=>c.unread===0),'the list shows chats newest first with the last message');
+ok((await api(V,'/api/support/chats')).j.chats.length===0&&(await api(V,'/api/support/chats/'+c1.j.id)).s===404&&(await api(V,'/api/support/chats/'+c1.j.id,'POST',{text:'чужой'})).s===404,'another user sees none of them and cannot write into them');
+const ib=(await api('admin','/api/admin/support')).j.list.filter(x=>x.userId===U);ok(ib.length===2&&ib.every(x=>x.unread===1&&x.title&&x.chatId),'the administrator sees one row per chat with its unread count');
+const ad=await api('admin','/api/admin/support/chat/'+c1.j.id);ok(ad.j.messages.length===1&&ad.j.messages[0].mine===false&&ad.j.title===c1.j.title,'the administrator opens a chat (the user message is not "mine")');
+ok((await api('admin','/api/admin/support/chat/'+c1.j.id,'POST',{text:'Здравствуйте! Обновите приложение, это исправлено.'})).s===200,'the administrator replies in that chat');
+const l2=(await api(U,'/api/support/chats')).j.chats,a1=l2.find(c=>c.id===c1.j.id),a2=l2.find(c=>c.id===c2.j.id);
+ok(a1.unread===1&&a2.unread===0&&l2[0].id===c1.j.id&&a1.lastMine===false,'only the answered chat is unread and it moves to the top');
+ok((await api(U,'/api/bootstrap')).j.me.supportUnread===1,'the unread counter in the app counts messages from the support');
+const m1=(await api(U,'/api/support/chats/'+c1.j.id)).j;ok(m1.messages.length===2&&m1.messages[1].mine===false&&(await api(U,'/api/support/chats')).j.chats.find(c=>c.id===c1.j.id).unread===0,'opening the chat shows the whole conversation and marks the answer as read');
+ok((await api(U,'/api/support/chats/'+c2.j.id,'POST',{text:'И ещё: хочется закладки по главам'})).s===200&&(await api(U,'/api/support/chats/'+c2.j.id)).j.messages.length===2,'the user writes in an existing chat');
+ok((await api(U,'/api/support/chats/'+c1.j.id,'DELETE')).s===200&&!(await api(U,'/api/support/chats')).j.chats.some(c=>c.id===c1.j.id)&&(await api('admin','/api/admin/support')).j.list.some(x=>x.chatId===c1.j.id),'deleting a chat removes it from the user list only; the administrator keeps it');
+await api('admin','/api/admin/support/chat/'+c1.j.id,'POST',{text:'Напишите, если не поможет.'});
+ok((await api(U,'/api/support/chats')).j.chats.some(c=>c.id===c1.j.id&&c.unread===1),'a new answer brings a deleted chat back');
+let limited=0;for(let i=0;i<12;i++){const r=await api(U,'/api/support/chats/'+c2.j.id,'POST',{text:'сообщение '+i});if(r.s===429)limited++}
+ok(limited>=1,'sending too fast is limited');
+ok((await api(U,'/api/support/chats','POST',{text:''})).s===400,'an empty message is refused');}
 /* audit */
 const au=(await api('admin','/api/admin/audit')).j.list.map(x=>x.action);ok(['import','rights','text','audio','demo'].every(a=>au.includes(a)),'rights and import actions are written to the audit log');
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

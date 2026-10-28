@@ -132,6 +132,26 @@ if(fs.existsSync(FX+'/book.pdf')){await sp.setInputFiles('#wzFile',FX+'/book.pdf
 const csp=await (await fetch(B+'/')).headers.get('content-security-policy');ok(/frame-ancestors/.test(csp)&&/default-src 'self'/.test(csp),'app shell is served with a Content-Security-Policy');
 await sp.close();
 
+/* support chats in the app */
+{const su=await page('supui');await su.goto(B+'/?as=supui&open=profile');await su.waitForTimeout(1200);
+await su.click('[data-a=openSupport]');await su.waitForTimeout(800);
+ok((await su.textContent('#screen')).includes('Чатов пока нет'),'support starts with an empty list and a "new chat" button');
+await su.click('[data-a=supNew]');await su.waitForTimeout(300);
+await su.fill('#chatIn','Не получается открыть профиль автора, подскажите');await su.press('#chatIn','Enter');await su.waitForTimeout(1200);
+ok((await su.textContent('.chatbox')).includes('Не получается открыть профиль автора'),'the first message creates the chat and appears as a bubble');
+await su.click('[data-a=back]');await su.waitForTimeout(900);
+ok((await su.textContent('.list')).includes('Не получается открыть профиль автора'),'the chat is in the history list, titled by its first message');
+const cid=(await api('supui','/api/support/chats')).j.chats[0].id;
+await api('admin','/api/admin/support/chat/'+cid,'POST',{text:'Откройте «Профиль», затем «Студия автора».'});
+await su.goto(B+'/?as=supui&open=profile');await su.waitForTimeout(1000);await su.click('[data-a=openSupport]');await su.waitForTimeout(900);
+ok((await su.textContent('.list')).includes('Откройте «Профиль»')&&await su.locator('.list .badge, .list .nbadge, .list [class*=badge]').count()>=1,'the answer shows in the list with an unread mark');
+await su.click('[data-a=supOpen]');await su.waitForTimeout(900);
+ok((await su.textContent('.chatbox')).includes('Студия автора')&&(await su.textContent('.chatbox')).includes('Не получается открыть профиль'),'opening the chat shows the whole conversation');
+await su.screenshot({path:'/tmp/ui_support_chat.png'});
+await su.click('[data-a=supDelete]');await su.waitForTimeout(300);await su.click('[data-a=supDeleteGo]');await su.waitForTimeout(900);
+ok((await su.textContent('#screen')).includes('Чатов пока нет'),'a chat can be deleted from the list');
+await su.close()}
+
 /* G. no JS errors anywhere */
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,4)));
 await br.close();console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0)})();

@@ -217,21 +217,39 @@ export function initAdmin(x){
   function tabChat(){
     if(!A.inbox)return loading();
     if(!A.inbox.list.length)return empty('chat','Сообщений нет','Когда пользователь напишет в поддержку, диалог появится здесь.');
-    return `<div class="list">${A.inbox.list.map(c=>`<button class="li" data-a="openChatWith" data-id="${esc(c.userId)}">${avatar(c.name,1)}<div class="grow" style="min-width:0"><b style="font-size:14px">${esc(c.name)}</b><div class="mute" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.last)}</div></div><div style="text-align:right"><small class="mute">${ago(c.at)}</small><div>${badge(c.unread)}</div></div></button>`).join('')}</div>`;
+    return `<div class="list">${A.inbox.list.map(c=>`<button class="li" data-a="openChatWith" data-id="${esc(c.chatId)}">${avatar(c.name,1)}<div class="grow" style="min-width:0"><b style="font-size:14px">${esc(c.name)}</b> <span class="tag">${esc(c.title)}</span><div class="mute" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.last)}</div></div><div style="text-align:right"><small class="mute">${ago(c.at)}</small><div>${badge(c.unread)}</div></div></button>`).join('')}</div>`;
   }
-  ACT.openChatWith=async el=>{closeSheet();A.chat={uid:el.dataset.id,name:'',msgs:[]};M.chatText='';go('adminchat');
-    try{const r=await api('/api/admin/support/'+encodeURIComponent(A.chat.uid));A.chat.name=r.name;A.chat.msgs=r.messages;A.fresh.stats=false;if(here('adminchat')){x.refresh();toBottom()}}catch(e){toast('Не удалось открыть диалог')}};
-  SCREENS.adminchat=()=>`<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:20px">${esc(A.chat.name||'Диалог')}</h2><span class="mute" style="font-size:12px">ID ${esc(A.chat.uid||'')}</span></div></header><div class="px chatbox">${bubbles(A.chat.msgs)}</div>${chatForm('adChatSend','chatText','Ответ…')}`;
-  AFTER.adminchat=()=>{toBottom();poll('adminchat',()=>api('/api/admin/support/'+encodeURIComponent(A.chat.uid)),()=>A.chat.msgs,r=>{A.chat.msgs=r.messages;A.chat.name=r.name})};
+  const adminChatUrl=()=>'/api/admin/support/chat/'+encodeURIComponent(A.chat.id);
+  ACT.openChatWith=async el=>{closeSheet();A.chat={id:el.dataset.id,uid:'',name:'',title:'',msgs:[]};M.chatText='';go('adminchat');
+    try{const r=await api(adminChatUrl());Object.assign(A.chat,{uid:r.userId,name:r.name,title:r.title,msgs:r.messages});A.fresh.stats=false;if(here('adminchat')){x.refresh();toBottom()}}catch(e){toast('Не удалось открыть диалог')}};
+  SCREENS.adminchat=()=>`<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:20px">${esc(A.chat.name||'Диалог')}</h2><span class="mute" style="font-size:12px">${esc(A.chat.title||'')} · ID ${esc(A.chat.uid||'')}</span></div></header><div class="px chatbox">${bubbles(A.chat.msgs)}</div>${chatForm('adChatSend','chatText','Ответ…')}`;
+  AFTER.adminchat=()=>{toBottom();poll('adminchat',()=>api(adminChatUrl()),()=>A.chat.msgs,r=>{A.chat.msgs=r.messages;A.chat.name=r.name})};
   FORMS.adChatSend=f=>{const v=f.t.value.trim();if(!v)return;M.chatText='';f.t.value='';
-    bg(api('/api/admin/support/'+encodeURIComponent(A.chat.uid),'POST',{text:v}).then(async()=>{const r=await api('/api/admin/support/'+encodeURIComponent(A.chat.uid));A.chat.msgs=r.messages;x.refresh();toBottom();$('#chatIn')&&$('#chatIn').focus()}))};
+    bg(api(adminChatUrl(),'POST',{text:v}).then(async()=>{const r=await api(adminChatUrl());A.chat.msgs=r.messages;x.refresh();toBottom();$('#chatIn')&&$('#chatIn').focus()}))};
 
-  /* user-side support */
-  SCREENS.support=()=>`<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="${tr('Назад','Orqaga')}">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">${tr('Поддержка','Yordam')}</h2></div></header><div class="px chatbox"><p class="mute" style="font-size:13px;margin-bottom:14px">${tr('Напишите нам: вопрос, ошибка или предложение. Ответ придёт сюда и в бота.','Bizga yozing: savol, xato yoki taklif. Javob shu yerga va botga keladi.')}</p>${bubbles(A.sup.msgs)}</div>${chatForm('supSend','supText',tr('Сообщение…','Xabar…'))}`;
-  ACT.openSupport=async()=>{M.supText='';A.sup.msgs=[];go('support');try{A.sup.msgs=(await api('/api/support')).messages;if(x.S.me)x.S.me.supportUnread=0;if(here('support')){x.refresh();toBottom()}}catch(e){}};
-  AFTER.support=()=>{toBottom();poll('support',()=>api('/api/support'),()=>A.sup.msgs,r=>{A.sup.msgs=r.messages})};
+  /* ---------- user-side support: a list of chats and a conversation, like in a messenger ---------- */
+  A.sup={chats:null,cur:null,title:'',msgs:[]};
+  const chatUrl=()=>'/api/support/chats/'+encodeURIComponent(A.sup.cur);
+  SCREENS.support=()=>{
+    const l=A.sup.chats;
+    const body=!l?'<div class="sk" style="height:76px;border-radius:18px;margin-bottom:10px"></div><div class="sk" style="height:76px;border-radius:18px"></div>'
+      :!l.length?empty('chat',tr('Чатов пока нет','Chatlar hozircha yo‘q'),tr('Нажмите «Новый чат», чтобы написать в поддержку: вопрос, ошибка или предложение.','Yordamga yozish uchun «Yangi chat» tugmasini bosing: savol, xato yoki taklif.'),`<button class="btn" data-a="supNew">${ico('plus',16)} ${tr('Новый чат','Yangi chat')}</button>`)
+      :`<div class="list">${l.map(c=>`<button class="li" data-a="supOpen" data-id="${esc(c.id)}"><span class="schat">${ico('chat',20)}</span><div class="grow" style="min-width:0"><b style="font-size:14.5px">${esc(c.title)}</b><div class="mute" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.lastMine?tr('Вы: ','Siz: '):''}${esc(c.last)}</div></div><div style="text-align:right"><small class="mute">${ago(c.at)}</small><div>${badge(c.unread)}</div></div></button>`).join('')}</div>`;
+    return `<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="${tr('Назад','Orqaga')}">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">${tr('Поддержка','Yordam')}</h2></div>${l&&l.length?`<button class="btn sm" data-a="supNew">${ico('plus',15)} ${tr('Новый чат','Yangi chat')}</button>`:''}</header><div class="px"><p class="mute" style="font-size:13px;margin-bottom:14px">${tr('Каждый вопрос — отдельный чат. Ответ придёт сюда и в бота.','Har bir savol alohida chat. Javob shu yerga va botga keladi.')}</p>${body}</div>`;
+  };
+  async function loadChats(){try{A.sup.chats=(await api('/api/support/chats')).chats;if(x.S.me)x.S.me.supportUnread=A.sup.chats.reduce((n,c)=>n+c.unread,0)}catch(e){A.sup.chats=A.sup.chats||[]}if(here('support'))x.refresh()}
+  ACT.openSupport=()=>{A.sup={chats:null,cur:null,title:'',msgs:[]};go('support');loadChats()};
+  AFTER.support=()=>{if(A.sup.stale){A.sup.stale=false;loadChats()}}; /* reload the list once after coming back from a chat (never from every render) */
+  ACT.supNew=()=>{A.sup.stale=true;A.sup.cur=null;A.sup.title='';A.sup.msgs=[];M.supText='';go('supportchat')};
+  ACT.supOpen=async el=>{A.sup.stale=true;A.sup.cur=el.dataset.id;A.sup.title=(A.sup.chats.find(c=>c.id===el.dataset.id)||{}).title||'';A.sup.msgs=[];M.supText='';go('supportchat');
+    try{const r=await api(chatUrl());A.sup.title=r.title;A.sup.msgs=r.messages;if(here('supportchat')){x.refresh();toBottom()}}catch(e){toast(tr('Не удалось открыть чат','Chatni ochib bo‘lmadi'))}};
+  SCREENS.supportchat=()=>`<header class="topbar px"><button class="iconbtn" data-a="back" aria-label="${tr('Назад','Orqaga')}">${ico('back')}</button><div class="grow" style="min-width:0"><h2 class="display" style="font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(A.sup.cur?A.sup.title:tr('Новый чат','Yangi chat'))}</h2></div>${A.sup.cur?`<button class="btn sm ghost" data-a="supDelete">${tr('Удалить','O‘chirish')}</button>`:''}</header><div class="px chatbox">${A.sup.cur?'':`<p class="mute" style="font-size:13px;margin-bottom:14px">${tr('Опишите вопрос, ошибку или предложение. Первое сообщение станет названием чата.','Savol, xato yoki taklifni yozing. Birinchi xabar chat nomi bo‘ladi.')}</p>`}${bubbles(A.sup.msgs)}</div>${chatForm('supSend','supText',tr('Сообщение…','Xabar…'))}`;
+  AFTER.supportchat=()=>{toBottom();poll('supportchat',()=>A.sup.cur?api(chatUrl()):Promise.resolve({messages:A.sup.msgs}),()=>A.sup.msgs,r=>{A.sup.msgs=r.messages})};
   FORMS.supSend=f=>{const v=f.t.value.trim();if(!v)return;M.supText='';f.t.value='';
-    bg(api('/api/support','POST',{text:v}).then(async()=>{A.sup.msgs=(await api('/api/support')).messages;x.refresh();toBottom();$('#chatIn')&&$('#chatIn').focus()}))};
+    if(!A.sup.cur)bg(api('/api/support/chats','POST',{text:v}).then(async r=>{A.sup.cur=r.id;A.sup.title=r.title;const d=await api(chatUrl());A.sup.msgs=d.messages;x.refresh();toBottom()}));
+    else bg(api(chatUrl(),'POST',{text:v}).then(async()=>{A.sup.msgs=(await api(chatUrl())).messages;x.refresh();toBottom();$('#chatIn')&&$('#chatIn').focus()}))};
+  ACT.supDelete=()=>openSheet(`<h2>${tr('Удалить чат?','Chatni o‘chirasizmi?')}</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">${tr('Чат пропадёт из вашего списка. Если администратор ответит, он появится снова.','Chat ro‘yxatingizdan yo‘qoladi. Administrator javob bersa, qayta paydo bo‘ladi.')}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">${tr('Отмена','Bekor qilish')}</button><button class="btn grow" data-a="supDeleteGo">${tr('Удалить','O‘chirish')}</button></div>`);
+  ACT.supDeleteGo=()=>{closeSheet();const id=A.sup.cur;bg(api('/api/support/chats/'+encodeURIComponent(id),'DELETE').then(()=>{A.sup.chats=(A.sup.chats||[]).filter(c=>c.id!==id);A.sup.cur=null;ACT.back()}))};
 
   /* ---------- users ---------- */
   const UF=[['all','Все'],['admin','Админы'],['banned','Заблокированные'],['blocked','Бот остановлен']];

@@ -380,18 +380,57 @@ route('POST','/api/admin/submissions/:id/approve',async(c,id)=>{
 },true);
 
 /* ---------- support chat (user side) ---------- */
-route('GET','/api/support',async c=>{
-  const msgs=await all(c,'SELECT id,from_admin,text,created FROM support_messages WHERE user_id=? ORDER BY id DESC LIMIT 100',c.user.id);
-  await run(c,'UPDATE support_messages SET read=1 WHERE user_id=? AND from_admin=1 AND read=0',c.user.id);
-  return json({messages:msgs.reverse().map(m=>({id:m.id,mine:!m.from_admin,text:m.text,at:m.created}))});
+/* ---------- support: conversations (chats) like in a messenger ---------- */
+const SUP_MAX_CHATS=60;
+const supTitle=t=>clip(String(t).replace(/\s+/g,' '),40)||'Обращение';
+/** Appends a message to a chat and moves the chat up the list. */
+async function supAdd(c,uid,chatId,fromAdmin,text){
+  const now=Date.now();
+  await batch(c,[stmt(c,'INSERT INTO support_messages(user_id,chat_id,from_admin,text,created,read) VALUES(?,?,?,?,?,0)',uid,chatId,fromAdmin?1:0,text,now),
+    stmt(c,'UPDATE support_chats SET updated=?,hidden_user=0 WHERE id=?',now,chatId)]);
+}
+/** The user's most recent chat, or a new one when there is none (used by the bot). */
+async function supLatest(c,uid,firstText){
+  const ch=await get(c,'SELECT id,title FROM support_chats WHERE user_id=? ORDER BY updated DESC LIMIT 1',uid);
+  if(ch)return ch;
+  const id='c'+id8(),now=Date.now();await run(c,'INSERT INTO support_chats(id,user_id,title,created,updated) VALUES(?,?,?,?,?)',id,uid,supTitle(firstText),now,now);
+  return{id,title:supTitle(firstText)};
+}
+const supLimited=async(c,uid)=>(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND created>?',uid,Date.now()-6e4)).n>=10;
+const supMsgs=m=>m.map(x=>({id:x.id,mine:!x.from_admin,text:x.text,at:x.created}));
+route('GET','/api/support/chats',async c=>{
+  const rows=await all(c,`SELECT ch.id,ch.title,ch.updated,(SELECT text FROM support_messages WHERE chat_id=ch.id ORDER BY id DESC LIMIT 1) last,(SELECT from_admin FROM support_messages WHERE chat_id=ch.id ORDER BY id DESC LIMIT 1) lastAdmin,(SELECT COUNT(*) FROM support_messages WHERE chat_id=ch.id AND from_admin=1 AND read=0) unread FROM support_chats ch WHERE ch.user_id=? AND ch.hidden_user=0 ORDER BY ch.updated DESC LIMIT 100`,c.user.id);
+  return json({chats:rows.map(r=>({id:r.id,title:r.title,last:r.last||'',lastMine:!r.lastAdmin,at:r.updated,unread:r.unread}))});
 });
-route('POST','/api/support',async c=>{
+route('POST','/api/support/chats',async c=>{
   const text=clip(c.body.text,2000);if(!text)return bad();
-  if((await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND created>?',c.user.id,Date.now()-6e4)).n>=10)return bad(429,'slow down');
-  const unreadBefore=(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND read=0',c.user.id)).n;
-  await run(c,'INSERT INTO support_messages(user_id,from_admin,text,created,read) VALUES(?,?,?,?,0)',c.user.id,0,text,Date.now());
-  if(!unreadBefore)await notifyAdmins(c,'support',`Новое сообщение в поддержку\n${personName(c.user.name,c.user.id)}: «${text.slice(0,200)}»`);
+  if(await supLimited(c,c.user.id))return bad(429,'slow down');
+  if((await get(c,'SELECT COUNT(*) n FROM support_chats WHERE user_id=?',c.user.id)).n>=SUP_MAX_CHATS)return bad(429,'too_many_chats');
+  const id='c'+id8(),now=Date.now(),title=supTitle(c.body.title||text);
+  await run(c,'INSERT INTO support_chats(id,user_id,title,created,updated) VALUES(?,?,?,?,?)',id,c.user.id,title,now,now);
+  await supAdd(c,c.user.id,id,false,text);
+  await notifyAdmins(c,'support',`Новый чат в поддержку «${title}»\n${personName(c.user.name,c.user.id)}: «${text.slice(0,200)}»`);
+  return json({id,title});
+});
+const myChat=(c,id)=>get(c,'SELECT id,title FROM support_chats WHERE id=? AND user_id=?',id,c.user.id);
+route('GET','/api/support/chats/:id',async(c,id)=>{
+  const ch=await myChat(c,id);if(!ch)return bad(404);
+  const msgs=await all(c,'SELECT id,from_admin,text,created FROM support_messages WHERE chat_id=? ORDER BY id DESC LIMIT 200',id);
+  await run(c,'UPDATE support_messages SET read=1 WHERE chat_id=? AND from_admin=1 AND read=0',id);
+  return json({id,title:ch.title,messages:supMsgs(msgs.reverse())});
+});
+route('POST','/api/support/chats/:id',async(c,id)=>{
+  const ch=await myChat(c,id);if(!ch)return bad(404);
+  const text=clip(c.body.text,2000);if(!text)return bad();
+  if(await supLimited(c,c.user.id))return bad(429,'slow down');
+  const unreadBefore=(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE chat_id=? AND from_admin=0 AND read=0',id)).n;
+  await supAdd(c,c.user.id,id,false,text);
+  if(!unreadBefore)await notifyAdmins(c,'support',`Сообщение в чате «${ch.title}»\n${personName(c.user.name,c.user.id)}: «${text.slice(0,200)}»`);
   return json({ok:true});
+});
+route('DELETE','/api/support/chats/:id',async(c,id)=>{
+  if(!await myChat(c,id))return bad(404);
+  await run(c,'UPDATE support_chats SET hidden_user=1 WHERE id=?',id);return json({ok:true});
 });
 
 /* ---------- admin: overview ---------- */
@@ -408,7 +447,7 @@ route('GET','/api/admin/stats',async c=>{
     ['reviews',`SELECT COUNT(*) n FROM reviews WHERE book_id IN (SELECT id FROM books WHERE ${PUB_REAL})`],['threads','SELECT COUNT(*) n FROM threads'],['comments','SELECT COUNT(*) n FROM comments'],
     ['pending',"SELECT COUNT(*) n FROM submissions WHERE status='moderation'"],
     ['reports',"SELECT COUNT(*) n FROM (SELECT 1 FROM reports WHERE status='open' GROUP BY kind,target)"],
-    ['supportUnread','SELECT COUNT(DISTINCT user_id) n FROM support_messages WHERE from_admin=0 AND read=0'],
+    ['supportUnread','SELECT COUNT(DISTINCT chat_id) n FROM support_messages WHERE from_admin=0 AND read=0'],
     ['reachable',"SELECT COUNT(*) n FROM users WHERE blocked=0 AND banned=0 AND id GLOB '[0-9]*'"]];
   const out={signups:[],errors:[]};
   /* each metric is isolated, so one failing query cannot blank the whole overview */
@@ -487,24 +526,24 @@ route('GET','/api/admin/broadcasts/:id/results',async(c,id)=>{
   return json({broadcast:bcOut(b,await voteCounts(c,id,opts.length))});
 },true);
 
-/* ---------- admin: support inbox ---------- */
+/* ---------- admin: support inbox (one row per conversation) ---------- */
 route('GET','/api/admin/support',async c=>{
-  const rows=await all(c,`SELECT m.user_id,u.name,
-    (SELECT text FROM support_messages WHERE user_id=m.user_id ORDER BY id DESC LIMIT 1) last,
-    MAX(m.created) at,SUM(CASE WHEN m.from_admin=0 AND m.read=0 THEN 1 ELSE 0 END) unread
-    FROM support_messages m LEFT JOIN users u ON u.id=m.user_id GROUP BY m.user_id ORDER BY unread DESC,at DESC LIMIT 100`);
-  return json({list:rows.map(r=>({userId:r.user_id,name:r.name||r.user_id,last:r.last,at:r.at,unread:r.unread}))});
+  const rows=await all(c,`SELECT ch.id,ch.user_id,ch.title,ch.updated,u.name,
+    (SELECT text FROM support_messages WHERE chat_id=ch.id ORDER BY id DESC LIMIT 1) last,
+    (SELECT COUNT(*) FROM support_messages WHERE chat_id=ch.id AND from_admin=0 AND read=0) unread
+    FROM support_chats ch LEFT JOIN users u ON u.id=ch.user_id ORDER BY (unread>0) DESC,ch.updated DESC LIMIT 100`);
+  return json({list:rows.map(r=>({chatId:r.id,userId:r.user_id,name:r.name||r.user_id,title:r.title,last:r.last||'',at:r.updated,unread:r.unread}))});
 },true);
-route('GET','/api/admin/support/:uid',async(c,uid)=>{
-  const msgs=await all(c,'SELECT id,from_admin,text,created FROM support_messages WHERE user_id=? ORDER BY id DESC LIMIT 200',uid);
-  await run(c,'UPDATE support_messages SET read=1 WHERE user_id=? AND from_admin=0 AND read=0',uid);
-  const u=await get(c,'SELECT name FROM users WHERE id=?',uid);
-  return json({name:u?.name||uid,messages:msgs.reverse().map(m=>({id:m.id,mine:!!m.from_admin,text:m.text,at:m.created}))});
+route('GET','/api/admin/support/chat/:id',async(c,id)=>{
+  const ch=await get(c,'SELECT ch.id,ch.user_id,ch.title,u.name FROM support_chats ch LEFT JOIN users u ON u.id=ch.user_id WHERE ch.id=?',id);if(!ch)return bad(404);
+  const msgs=await all(c,'SELECT id,from_admin,text,created FROM support_messages WHERE chat_id=? ORDER BY id DESC LIMIT 200',id);
+  await run(c,'UPDATE support_messages SET read=1 WHERE chat_id=? AND from_admin=0 AND read=0',id);
+  return json({chatId:id,userId:ch.user_id,title:ch.title,name:ch.name||ch.user_id,messages:supMsgs(msgs.reverse()).map(m=>({...m,mine:!m.mine}))});
 },true);
-route('POST','/api/admin/support/:uid',async(c,uid)=>{
-  const text=clip(c.body.text,2000);if(!text||!await get(c,'SELECT 1 x FROM users WHERE id=?',uid))return bad();
-  await run(c,'INSERT INTO support_messages(user_id,from_admin,text,created,read) VALUES(?,?,?,?,0)',uid,1,text,Date.now());
-  notify(c,uid,`💬 Поддержка Muloqot Books: ${text}`);return json({ok:true});
+route('POST','/api/admin/support/chat/:id',async(c,id)=>{
+  const ch=await get(c,'SELECT id,user_id,title FROM support_chats WHERE id=?',id),text=clip(c.body.text,2000);if(!ch||!text)return bad();
+  await supAdd(c,ch.user_id,id,true,text);
+  notify(c,ch.user_id,`💬 Поддержка Muloqot Books · «${ch.title}»\n${text}`);return json({ok:true});
 },true);
 
 /* ---------- admin: users ---------- */
@@ -1062,10 +1101,10 @@ async function onBotMessage(c,m){
   if(cmd==='/support')return void await send(T('Напишите ваш вопрос одним сообщением прямо сюда. Ответ придёт в этот чат.','Savolingizni shu yerga yozing. Javob shu chatga keladi.'));
   if(cmd)return void await help();
   if(cmd==='/help')return;
-  if((await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND created>?',uid,Date.now()-6e4)).n>=10)return;
-  const unreadBefore=(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE user_id=? AND from_admin=0 AND read=0',uid)).n;
-  await run(c,'INSERT INTO support_messages(user_id,from_admin,text,created,read) VALUES(?,?,?,?,0)',uid,0,clip(text,2000),Date.now());
-  if(!unreadBefore)await notifyAdmins(c,'support',`Новое сообщение в поддержку\n${personName(name,uid)}: «${clip(text,200)}»`);
+  if(await supLimited(c,uid))return;
+  const sc=await supLatest(c,uid,text),unreadBefore=(await get(c,'SELECT COUNT(*) n FROM support_messages WHERE chat_id=? AND from_admin=0 AND read=0',sc.id)).n;
+  await supAdd(c,uid,sc.id,false,clip(text,2000));
+  if(!unreadBefore)await notifyAdmins(c,'support',`Новое сообщение в поддержку «${sc.title}»\n${personName(name,uid)}: «${clip(text,200)}»`);
   await tgApi(env,'sendMessage',{chat_id:chat,text:T('Спасибо! Сообщение передано администратору, ответ придёт сюда ✅','Rahmat! Xabaringiz administratorga yuborildi, javob shu yerga keladi ✅')});
 }
 
