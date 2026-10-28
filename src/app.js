@@ -656,7 +656,8 @@ document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.datas
 const hasName=()=>/[\p{L}\p{N}]/u.test(S.name||'');
 const dispName=()=>hasName()?S.name:tr('Читатель','O‘quvchi');
 SCREENS.profile=()=>{
-  const fin=S.finished.length;let pages=0;S.finished.forEach(id=>{const b=book(id);if(b)pages+=b.pages});readingIds().forEach(id=>{pages+=Math.round(book(id).pages*pctRaw(id)/100)});
+  /* only books that exist in the catalog now: ids of removed or hidden (demo) books must not count as read */
+  const finBooks=S.finished.filter(book),fin=finBooks.length;let pages=0;finBooks.forEach(id=>{pages+=book(id).pages||0});readingIds().forEach(id=>{pages+=Math.round(book(id).pages*pctRaw(id)/100)});
   const sw=(k,label)=>`<div class="li"><span class="grow" style="font-weight:600">${label}</span><button class="sw ${S.notif[k]?'on':''}" role="switch" aria-checked="${!!S.notif[k]}" aria-label="${label}" data-a="toggleN" data-k="${k}"></button></div>`;
   const seg=(arr,cur,act)=>`<div class="seg">${arr.map(([k,n])=>`<button class="${String(cur)===String(k)?'on':''}" data-a="${act}" data-v="${k}">${n}</button>`).join('')}</div>`;
   const grp=(id,title,sub,body)=>`<details class="dgroup" data-pg="${id}" ${PROF.open[id]?'open':''}><summary><b>${title}</b><span>${sub}</span></summary><div class="dbody">${body}</div></details>`;

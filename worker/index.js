@@ -761,21 +761,23 @@ const ACH=[
 ];
 const bestStreak=days=>{const d=[...new Set(days||[])].sort();let best=0,run=0,prev=null;for(const x of d){const t=Date.parse(x+'T00:00:00Z');run=prev!==null&&t-prev===864e5?run+1:1;prev=t;if(run>best)best=run}return best};
 async function achFacts(c,uid){
+  const demoOn=await demoVisible(c);
   const own="FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?1";
   const [u,rv,th,cm,don,fol,bk,my,st,rt,orv,up,rp]=await batch(c,[
     stmt(c,'SELECT state FROM users WHERE id=?',uid),stmt(c,'SELECT COUNT(*) n FROM reviews WHERE user_id=?',uid),stmt(c,'SELECT COUNT(*) n FROM threads WHERE user_id=?',uid),stmt(c,'SELECT COUNT(*) n FROM comments WHERE user_id=?',uid),
     stmt(c,"SELECT COALESCE(SUM(amount),0) s FROM donations WHERE status='paid' AND user_id=?",uid),stmt(c,'SELECT COUNT(*) n FROM follows WHERE user_id=?',uid),
-    stmt(c,"SELECT id,json_extract(data,'$.lang') l FROM books"),
+    stmt(c,`SELECT id,json_extract(data,'$.lang') l FROM books WHERE json_extract(data,'$.publish') IS NOT 'draft'${demoOn?'':" AND json_extract(data,'$.demo') IS NOT 1"}`),
     stmt(c,`SELECT COUNT(*) n ${own}`,uid),
     stmt(c,"SELECT COALESCE(SUM(s.views),0) v,COALESCE(SUM(s.reads),0) r,COALESCE(SUM(s.finishes),0) f FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
     stmt(c,"SELECT COUNT(*) n,COALESCE(AVG(r.value),0) avg FROM ratings r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
     stmt(c,"SELECT COUNT(*) n FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?",uid),
     stmt(c,"SELECT COUNT(*) n FROM submissions WHERE user_id=? AND status='approved' AND update_book_id IS NOT NULL",uid),
-    stmt(c,'SELECT COUNT(*) n FROM reading_progress WHERE user_id=?',uid)]);
+    stmt(c,'SELECT book_id FROM reading_progress WHERE user_id=?',uid)]);
   const state=P(u[0]?.state||'{}'),lang=Object.fromEntries(bk.map(b=>[b.id,b.l]));
-  const fin=state.finished||[];
+  /* only books that exist (and are visible) count: ids left over from removed or hidden test books must not unlock achievements */
+  const fin=(state.finished||[]).filter(id=>id in lang);
   const ratings=rt[0];
-  return{opened:Math.max(Object.keys(state.progress||{}).length,rp[0].n),finished:fin.length,streak:bestStreak(state.days),reviews:rv[0].n,saved:(state.saved||[]).length,quotes:(state.myQuotes||[]).length,
+  return{opened:new Set([...Object.keys(state.progress||{}),...rp.map(r=>r.book_id)].filter(id=>id in lang)).size,finished:fin.length,streak:bestStreak(state.days),reviews:rv[0].n,saved:(state.saved||[]).filter(id=>id in lang).length,quotes:(state.myQuotes||[]).length,
     langs:new Set(fin.map(id=>lang[id]).filter(Boolean)).size,talk:th[0].n+cm[0].n,follows:fol[0].n,patron:don[0].s>0?1:0,
     books:my[0].n,views:st[0].v,reads:st[0].r,finishes:st[0].f,loved:ratings.avg>=4.5?ratings.n:Math.min(ratings.n,4),ownreviews:orv[0].n,updates:up[0].n};
 }

@@ -87,6 +87,9 @@ const starter=JSON.parse(readFileSync(new URL('../../data/catalog.classics.json'
 for(let i=0;i<starter.length;i+=8)res.push(...(await api('admin','/api/admin/import','POST',{records:starter.slice(i,i+8)})).j.results);
 ok(res.length===starter.length&&res.every(r=>r.id&&!r.fullText),`starter catalog: ${res.length} cards imported without text`);
 const sb=(await api('r1','/api/bootstrap')).j;ok(sb.books.filter(b=>!b.fullText).length>=starter.length&&sb.authors.length>=10,'cards and authors appear in the catalog');
+/* achievements ignore ids of books that are gone or hidden (demo) */
+await api('ghost','/api/state','PUT',{finished:['b1','b2','b3','gone1'],saved:['b1','b2','b3','b4','b5','gone2']});
+{const a=(await api('ghost','/api/achievements')).j.list;const g=id=>a.find(x=>x.id===id);ok(!g('r_fin1').unlocked&&!g('r_save5').unlocked,'finished/saved ids of hidden or missing books do not unlock achievements');}
 /* audit */
 const au=(await api('admin','/api/admin/audit')).j.list.map(x=>x.action);ok(['import','rights','text','audio','demo'].every(a=>au.includes(a)),'rights and import actions are written to the audit log');
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);
