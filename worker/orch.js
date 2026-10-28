@@ -273,6 +273,9 @@ export function registerOrch(d){
   A('POST','/api/admin/ai/jobs/:id/resume',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='paused')return bad(409,'not_paused');
     if(c.body.limits){job.config.limits=limitsFrom(c.env,{...job.config.limits,...c.body.limits});await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),id)}
+    else if(/^budget:(calls|tokens)/.test(job.pause_reason)){ /* "continue" after a call/token limit lifts the job's own limit up to the server ceiling, so it does not have to be raised by hand each time */
+      const cap=limitsFrom(c.env,{});job.config.limits={...job.config.limits,maxCalls:cap.maxCalls,maxTokens:cap.maxTokens};await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),id);
+    }
     if(/^budget:/.test(job.pause_reason)&&budgetCheck(job,job.config.limits)) /* the limit is still used up: the server cap is the ceiling */
       return json({error:'limit_too_low',reason:budgetCheck(job,job.config.limits),cap:limitsFrom(c.env,{}),limits:job.config.limits,used:{calls:job.calls,tokens:job.tokens_in+job.tokens_out}},409);
     if(c.body.skipExpert===true&&/^all_failed:chapter_expert/.test(job.pause_reason)){ /* the expert is unavailable: the administrator decides about the chapter */

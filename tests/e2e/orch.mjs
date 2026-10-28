@@ -184,6 +184,10 @@ ok((await A(`/jobs/${J7}/step`,'POST',{})).j.waiting==='paused'&&(await mcalls()
 r=await A(`/jobs/${J7}/resume`,'POST',{limits:{maxCalls:5}});ok(r.s===409&&r.j.error==='limit_too_low'&&r.j.cap.maxCalls===60,'resuming without raising an exhausted limit is refused, with the server cap reported');
 r=await A(`/jobs/${J7}/resume`,'POST',{limits:{maxCalls:9999}});ok(r.s===200&&r.j.job.config.limits.maxCalls<=300,'limits can be raised on resume, but never above the server cap');
 await A(`/jobs/${J7}/cancel`,'POST',{});
+r=await create({title:'Лимит снимается',limits:{maxCalls:5}});const JL=r.j.job.id;await drive(JL);await A(`/jobs/${JL}/approve-plan`,'POST',{confirm:true});r=await drive(JL);
+ok(r.j.waiting==='paused'&&r.j.job.pauseReason==='budget:calls','(limit) the job stops at its own call limit');
+r=await A(`/jobs/${JL}/resume`,'POST',{});ok(r.s===200&&r.j.job.config.limits.maxCalls===60&&r.j.job.status==='running','(limit) plain "continue" lifts the job limit up to the server ceiling, nothing to type');
+await A(`/jobs/${JL}/cancel`,'POST',{});
 r=await drive((await create({title:'Нет провайдера'})).j.job.id,()=>false,3);void r;
 
 

@@ -41,7 +41,7 @@ export function candidatesFor(roles,task,hasKey=()=>true){
 const num=(v,d,min,max)=>{const n=Number(v);return Number.isFinite(n)&&String(v??'')!==''?Math.max(min,Math.min(max,n)):d};
 /** Limits from server variables, tightened (never loosened beyond the caps) by the admin per job. */
 export function limitsFrom(env,over={}){
-  const cap={maxCalls:num(env.AI_MAX_CALLS,200,5,1000),maxTokens:num(env.AI_MAX_TOKENS,400000,5000,2000000),maxCostUsd:env.AI_MAX_COST_USD!=null&&String(env.AI_MAX_COST_USD)!==''?num(env.AI_MAX_COST_USD,null,0,1000):null,fixRounds:num(env.AI_FIX_ROUNDS,2,0,4),maxJobs:num(env.AI_MAX_JOBS,2,1,5)};
+  const cap={maxCalls:num(env.AI_MAX_CALLS,5000,5,20000),maxTokens:num(env.AI_MAX_TOKENS,20000000,5000,200000000),maxCostUsd:env.AI_MAX_COST_USD!=null&&String(env.AI_MAX_COST_USD)!==''?num(env.AI_MAX_COST_USD,null,0,1000):null,fixRounds:num(env.AI_FIX_ROUNDS,2,0,4),maxJobs:num(env.AI_MAX_JOBS,2,1,5)};
   const own=(k,min)=>over[k]==null||over[k]===''?cap[k]:Math.max(min,Math.min(cap[k]??Infinity,Number(over[k])));
   return{maxCalls:own('maxCalls',5),maxTokens:own('maxTokens',5000),maxCostUsd:cap.maxCostUsd==null?(over.maxCostUsd!=null&&over.maxCostUsd!==''?Math.max(0,Number(over.maxCostUsd)):null):own('maxCostUsd',0),fixRounds:own('fixRounds',0),maxJobs:cap.maxJobs};
 }

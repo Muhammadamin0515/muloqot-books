@@ -32,7 +32,7 @@ test('limits can be tightened per job but never loosened beyond the server caps'
   const e={AI_MAX_CALLS:'50',AI_MAX_TOKENS:'100000',AI_MAX_COST_USD:'2',AI_FIX_ROUNDS:'2',AI_MAX_JOBS:'1'};
   const l=limitsFrom(e,{maxCalls:500,maxTokens:20000,maxCostUsd:5,fixRounds:3});
   assert.equal(l.maxCalls,50);assert.equal(l.maxTokens,20000);assert.equal(l.maxCostUsd,2);assert.equal(l.fixRounds,2);assert.equal(l.maxJobs,1);
-  assert.equal(limitsFrom({},{}).maxCalls,200);assert.equal(limitsFrom({},{}).maxCostUsd,null);
+  assert.equal(limitsFrom({},{}).maxCalls,5000);assert.equal(limitsFrom({},{}).maxTokens,20000000);assert.equal(limitsFrom({},{}).maxCostUsd,null);
   assert.equal(limitsFrom({},{maxCostUsd:1.5}).maxCostUsd,1.5);
 });
 test('cost: known prices give a cost, unknown ones give null (never a guess)',()=>{
