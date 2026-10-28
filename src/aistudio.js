@@ -153,7 +153,7 @@ export function initAiStudio(x,adm){
       <p class="hint">При достижении лимита работа встаёт на паузу, написанное сохраняется.</p>
     </div></details>`;
   }
-  const modelsLine=c=>{const r=c.roles||{},m=x=>x?esc(x.primary.model):'нет';return `<div class="mute" style="font-size:12px;margin-top:6px">Писатель: ${m(r.draft)} · Редактор: ${m(r.editor)} · Эксперт: ${m(r.expert)}${c.autoModels?' (подобраны автоматически)':''}</div>`};
+  const modelsLine=c=>{const r=c.roles||{},m=x=>x?esc(x.primary.model):'нет';return `<div class="mute" style="font-size:12px;margin-top:6px">Писатель: ${m(r.draft)} · Редактор: ${m(r.editor)} · Эксперт: ${m(r.expert)}${c.autoModels?' (подобраны автоматически)':''}</div>${(c.dropped||[]).length?`<div class="mute" style="font-size:12px;margin-top:4px">Не используются, этих моделей нет в списке сервиса: ${c.dropped.map(x=>esc(x.provider+':'+x.model)).join(', ')}</div>`:''}`};
   const head=d=>`<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
     <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage)}</div>${modelsLine(d.job.config)}</div>`;
   function planView(d){

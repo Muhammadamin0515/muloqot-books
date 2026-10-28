@@ -24,6 +24,10 @@ const KEY='k_TESTKEY1234567890abcdef';
 for(const p of ['groq','gemini','openrouter'])await A('/key','POST',{provider:p,key:KEY+p});
 const mods=await A('/models?provider=gemini');ok(mods.s===200&&mods.j.models.some(m=>m.id==='editor-model')&&!mods.j.models.some(m=>m.id==='embed-only'),'live model list: only models that can generate text');
 r=await create({roles:{draft:{model:'invented-model'}}});ok(r.s===422&&r.j.error==='unknown_model'&&r.j.models[0].model==='invented-model','a model that is not in the provider list is refused');
+r=await create({roles:{expert:{model:'gone-expert'},draft:{fallbacks:['openrouter:gone-fallback','gemini:editor-model']}}});
+ok(r.s===200&&r.j.job.config.roles.expert===null&&r.j.job.config.roles.draft.fallbacks.map(x=>x.model).join()==='editor-model'&&r.j.job.config.dropped.length===2,'an expert or fallback missing from the provider list is left out (and reported), it does not block the job');
+await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
+r=await create({roles:{editor:{model:'gone-editor'}}});ok(r.s===422&&r.j.error==='unknown_model','an unknown writer or editor still blocks the job');
 r=await create({limits:{maxCostUsd:1}});ok(r.s===422&&r.j.error==='price_unknown','a cost limit needs known prices for every model used');
 r=await create({idea:'коротко'});ok(r.s===400,'the idea must be described');
 
