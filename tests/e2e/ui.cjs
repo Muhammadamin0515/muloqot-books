@@ -17,7 +17,7 @@ await p.close();
 
 /* B. admin imports an EPUB with rights */
 const a=await page('admin');await a.goto(B+'/?as=admin&open=profile');await a.waitForTimeout(900);
-await a.click('[data-a=openAdmin]');await a.waitForTimeout(400);await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(900);
+await a.click('[data-a=openAdmin]');await a.waitForTimeout(400);await a.click('[data-a=admGroup][data-v=books]');await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(900);
 ok((await a.textContent('.tiles')).includes('Опубликовано'),'catalog tab opens');
 await a.click('summary:has-text("Одна книга")');
 await a.setInputFiles('#ciFile',FX+'/classic.epub');await a.waitForTimeout(900);
@@ -31,16 +31,16 @@ await a.fill('#ciDt','1900');await a.fill('#ciSe','Дворовые истори
 ok((await a.textContent('.card:has-text("✓")')).includes('(текст)'),'EPUB imported with full text');
 ok((await a.textContent('.tiles')).includes('1'),'stats updated');
 await a.screenshot({path:'/tmp/ui_admin_catalog.png'});
-await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(700);
+await a.click('[data-a=admGroup][data-v=books]');await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(700);
 {ok((await a.textContent('.adm')).includes('Новая книга')&&(await a.textContent('.adm')).includes('Ключи сервисов')&&(await a.textContent('.adm')).includes('Groq ✕'),'AI tab opens with the job list and the key status');
-ok((await a.locator('.tabs, .admbar').first().textContent()).includes('ИИ-книга')&&!(await a.locator('.admbar').first().textContent()).includes('ИИ: быстро'),'there is one AI tab');
+ok((await a.locator('.admhead').textContent()).includes('ИИ-книга')&&!(await a.locator('.admhead').textContent()).includes('ИИ: быстро')&&(await a.locator('.admhead').textContent()).split('ИИ-книг').length===2,'there is one AI tab');
 await a.click('[data-a=asNew]');await a.waitForTimeout(300);
 const t=await a.textContent('.adm');ok(t.includes('Ваш план книги')&&t.includes('Всё остальное ИИ сделает сам')&&t.includes('Сначала добавьте ключи'),'the form is just a plan field; without keys it says so');
 await a.fill('.card textarea','Детектив в старой Бухаре: торговец находит письмо.');await a.click('[data-a=asCreate]');await a.waitForTimeout(700);
 ok((await a.textContent('.card')).includes('Не удалось подобрать модели автоматически'),'without keys the models cannot be chosen and the reason is clear');
 await a.click('[data-a=aiKeys]');await a.waitForTimeout(300);ok((await a.textContent('.sheet, [role=dialog]')).includes('Ключи ИИ-сервисов'),'keys can be added from the same tab');await a.click('#scrim',{position:{x:10,y:10}});await a.waitForTimeout(300);
 await a.screenshot({path:'/tmp/ui_admin_ai.png'});}
-await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(700);
+await a.click('[data-a=admGroup][data-v=books]');await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(700);
 
 /* metadata-only card */
 const meta=await api('admin','/api/admin/import','POST',{records:[{title:'Только карточка',author:'Иван Тестов',lang:'ru',genre:'novel',description:'Карточка без текста.',source:{name:'Каталог издательства'},rights:{status:'unverified'}}]});
