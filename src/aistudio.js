@@ -63,6 +63,11 @@ export function initAiStudio(x,adm){
   ACT.asSkipExpert=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/resume`,'POST',{skipExpert:true});if(r)await reloadJob()};
   ACT.asResume=async()=>{const lim=S.d&&/^budget:/.test(S.d.job.pauseReason)?0:+M.as_maxCalls;const r=await call(`/api/admin/ai/jobs/${S.cur}/resume`,'POST',lim?{limits:{maxCalls:lim}}:{});if(r){await reloadJob();runLoop()}};
   ACT.asCancel=()=>openSheet(`<h2>Отменить задание?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Написанные главы и журнал останутся, но задание нельзя будет продолжить.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asCancelGo">Отменить задание</button></div>`);
+  const DEAD=['cancelled','published','awaiting_publish'];
+  ACT.asDel=()=>openSheet(`<h2>Удалить задание?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">${S.d&&S.d.job.status==='published'?'Задание и журнал будут удалены, а опубликованная книга останется в каталоге.':'Задание, написанные главы и журнал будут удалены без возможности восстановления.'}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asDelGo">Удалить</button></div>`);
+  ACT.asDelGo=async()=>{closeSheet();const r=await call(`/api/admin/ai/jobs/${S.cur}`,'DELETE');if(r){toast('Задание удалено');ACT.asBack()}};
+  ACT.asDelAll=()=>{const n=S.jobs.filter(j=>j.status==='cancelled').length;openSheet(`<h2>Удалить все отменённые (${n})?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Их главы и журналы будут удалены без возможности восстановления.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asDelAllGo">Удалить</button></div>`)};
+  ACT.asDelAllGo=async()=>{closeSheet();for(const j of S.jobs.filter(j=>j.status==='cancelled'))if(!await call(`/api/admin/ai/jobs/${j.id}`,'DELETE'))break;toast('Отменённые задания удалены');loadList()};
   ACT.asCancelGo=async()=>{closeSheet();S.loop=false;await call(`/api/admin/ai/jobs/${S.cur}/cancel`);await reloadJob()};
   ACT.asLog=()=>{S.showLog=!S.showLog;refresh()};
   ACT.asChapter=async el=>{const i=el.dataset.i;if(S.chText&&S.chText.i===i){S.chText=null;refresh();return}const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${i}`,'GET');if(r){S.chText={i,...r};M.as_edit=r.chapter.text;refresh()}};
@@ -115,7 +120,7 @@ export function initAiStudio(x,adm){
     return `<button class="btn block" data-a="asNew">${ico('pen',18)} Новая книга</button>
       <p class="hint">Groq пишет черновики, Gemini строит план и проверяет текст, выбранная вами модель OpenRouter помогает со сложными главами. Публикация только после вашего подтверждения.</p>
       ${keyLine()}${err()}
-      <div class="sec"><div class="sec-h"><h2>Задания</h2></div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
+      <div class="sec"><div class="sec-h"><h2>Задания</h2>${S.jobs.some(j=>j.status==='cancelled')?`<button class="btn sm ghost" data-a="asDelAll">Удалить отменённые</button>`:''}</div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
   }
   const OPEN={};document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.dataset.asg)OPEN[d.dataset.asg]=d.open},true);
   const roleCard=(id,key,icon,title,who,what,provider,ph,optional)=>`<div class="rolecard"><div class="rolehead"><span class="roleico">${icon}</span><div class="grow"><b>${title}</b><small>${who}</small></div></div>
@@ -226,7 +231,7 @@ export function initAiStudio(x,adm){
         <button class="btn block" data-a="asPublish">Опубликовать в каталог…</button><button class="btn block ghost" style="margin-top:8px" data-a="asCancel">Отменить задание</button></div>`;
     }else if(j.status==='published')body=`<div class="card" style="text-align:center"><div style="font-size:36px">📚</div><b>Книга опубликована</b><button class="btn block" style="margin-top:12px" data-a="asOpenBook">Открыть книгу</button></div>`;
     else body=`<div class="card"><b>${esc(STATUS[j.status]||j.status)}</b></div>`;
-    return `${head(d)}${err()}${body}<div class="sec"><div class="sec-h"><h2>Главы</h2></div><div class="list">${chapterRows(d)}</div>${chapterPanel(d)}</div>${journal(d)}`;
+    return `${head(d)}${err()}${body}<div class="sec"><div class="sec-h"><h2>Главы</h2></div><div class="list">${chapterRows(d)}</div>${chapterPanel(d)}</div>${journal(d)}${DEAD.includes(j.status)?`<button class="btn block ghost" style="margin-top:20px" data-a="asDel">${ico('trash',17)} Удалить задание</button>`:''}`;
   }
   ACT.asResume2=()=>{runLoop()};
   function tabStudio(){
