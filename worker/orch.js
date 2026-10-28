@@ -24,7 +24,7 @@ export function registerOrch(d){
   const addVersion=(c,job,chapter,kind,text,who,note='')=>stmt(c,'INSERT INTO ai_versions(job_id,chapter,kind,text,provider,model,note,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,text,who?.provider||'',who?.model||'',note,Date.now());
   const addCheck=(c,job,chapter,kind,ok,issues,who)=>stmt(c,'INSERT INTO ai_checks(job_id,chapter,kind,ok,issues,provider,model,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,ok?1:0,J(issues),who?.provider||'',who?.model||'',Date.now());
 
-  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{onFail:job.config.onFail==='accept'?'accept':'ask',freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
+  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{onFail:job.config.onFail==='ask'?'ask':'accept',freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
     state:job.state,usage:{calls:job.calls,tokensIn:job.tokens_in,tokensOut:job.tokens_out,cost:job.cost,costUnknown:!!job.cost_unknown},bookId:job.book_id||null});
 
   /* ---------- calling a role: fallbacks, retries, limits, journal ---------- */
@@ -86,7 +86,7 @@ export function registerOrch(d){
     const issuesNow=()=>st.issues||[];
     const nextAfterFailure=()=>{ // out of fix rounds: expert once, then the administrator (or the best version is kept, when the administrator chose so)
       if(!st.expert&&job.config.roles.expert){st.phase='expert';return}
-      if(job.config.onFail==='accept'){acceptBest(st,i,issuesNow());return}
+      if(job.config.onFail!=='ask'){acceptBest(st,i,issuesNow());return}
       job.status='needs_admin';st.phase='needs_admin';
     };
     switch(st.phase){
@@ -175,7 +175,7 @@ export function registerOrch(d){
           job.state.finalSecond={skipped:true};job.state.phase='annotation';await batch(c,[saveJob(c,job)]);
           return{s:200,j:{job:view(await loadJob(c,id))}};
         }
-        if(job.config.onFail==='accept'&&/^all_failed:chapter_expert/.test(e.reason)&&job.state.phase==='expert'){ // the expert is out of reach: keep going with the best version
+        if(job.config.onFail!=='ask'&&/^all_failed:chapter_expert/.test(e.reason)&&job.state.phase==='expert'){ // the expert is out of reach: keep going with the best version
           job.state.expert=1;acceptBest(job.state,job.state.chapter,job.state.issues);await batch(c,[saveJob(c,job)]);
           return{s:200,j:{job:view(await loadJob(c,id))}};
         }
