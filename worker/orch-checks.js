@@ -79,3 +79,9 @@ export function parseAnalysis(text){
   return{summary:j.summary.trim().slice(0,900),facts:(Array.isArray(j.facts)?j.facts:[]).slice(0,10).map(x=>String(x).slice(0,240)).filter(Boolean),
     characters:(Array.isArray(j.characters)?j.characters:[]).slice(0,8).map(x=>({name:String(x?.name||'').slice(0,60),state:String(x?.state||'').slice(0,240)})).filter(x=>x.name)};
 }
+
+/** The language of a text by its script: Cyrillic → ru, otherwise Latin → uz. */
+export function detectLang(text){
+  const L=letters(text),cyr=L.filter(ch=>/\p{Script=Cyrillic}/u.test(ch)).length;
+  return L.length&&cyr/L.length>=.3?'ru':'uz';
+}

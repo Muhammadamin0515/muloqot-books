@@ -35,9 +35,9 @@ await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(700);
 {ok((await a.textContent('.adm')).includes('Новая книга')&&(await a.textContent('.adm')).includes('Ключи сервисов')&&(await a.textContent('.adm')).includes('Groq ✕'),'AI tab opens with the job list and the key status');
 ok((await a.locator('.tabs, .admbar').first().textContent()).includes('ИИ-книга')&&!(await a.locator('.admbar').first().textContent()).includes('ИИ: быстро'),'there is one AI tab');
 await a.click('[data-a=asNew]');await a.waitForTimeout(300);
-const t=await a.textContent('.adm');ok(t.includes('Что писать')&&t.includes('Подберёт ИИ')&&t.includes('Как это работает'),'the form asks for a plan and leaves genre, chapters and size to the author model');
+const t=await a.textContent('.adm');ok(t.includes('Ваш план книги')&&t.includes('Всё остальное ИИ сделает сам')&&t.includes('Сначала добавьте ключи'),'the form is just a plan field; without keys it says so');
 await a.fill('.card textarea','Детектив в старой Бухаре: торговец находит письмо.');await a.click('[data-a=asCreate]');await a.waitForTimeout(700);
-ok((await a.textContent('.demo-banner')).includes('Укажите модели'),'without models and keys the job is not started and the reason is clear');
+ok((await a.textContent('.card')).includes('Не удалось подобрать модели автоматически'),'without keys the models cannot be chosen and the reason is clear');
 await a.click('[data-a=aiKeys]');await a.waitForTimeout(300);ok((await a.textContent('.sheet, [role=dialog]')).includes('Ключи ИИ-сервисов'),'keys can be added from the same tab');await a.click('#scrim',{position:{x:10,y:10}});await a.waitForTimeout(300);
 await a.screenshot({path:'/tmp/ui_admin_ai.png'});}
 await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(700);

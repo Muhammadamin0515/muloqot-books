@@ -2,8 +2,8 @@
    Each POST /api/admin/ai/jobs/:id/step performs exactly one unit of work (one model call or one programmatic check) and saves the result,
    so a job can be stopped and resumed at any time without losing chapters or repeating successful calls. */
 import {PROVIDERS,AiError,callModel,listModels} from './ai.js';
-import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,ROLE_PROVIDER} from './orch-route.js';
-import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words} from './orch-checks.js';
+import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,pickModels,ROLE_PROVIDER} from './orch-route.js';
+import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang} from './orch-checks.js';
 import * as PR from './orch-prompts.js';
 
 const LOCK_MS=100000,MAX_ACTIVE=10,RETRIES=1,MAX_VERSIONS=240;
@@ -24,7 +24,7 @@ export function registerOrch(d){
   const addVersion=(c,job,chapter,kind,text,who,note='')=>stmt(c,'INSERT INTO ai_versions(job_id,chapter,kind,text,provider,model,note,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,text,who?.provider||'',who?.model||'',note,Date.now());
   const addCheck=(c,job,chapter,kind,ok,issues,who)=>stmt(c,'INSERT INTO ai_checks(job_id,chapter,kind,ok,issues,provider,model,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,ok?1:0,J(issues),who?.provider||'',who?.model||'',Date.now());
 
-  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{auto:!!job.config.auto,lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
+  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{auto:!!job.config.auto,autoModels:!!job.config.autoModels,lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
     state:job.state,usage:{calls:job.calls,tokensIn:job.tokens_in,tokensOut:job.tokens_out,cost:job.cost,costUnknown:!!job.cost_unknown},bookId:job.book_id||null});
 
   /* ---------- calling a role: fallbacks, retries, limits, journal ---------- */
@@ -179,10 +179,17 @@ export function registerOrch(d){
   A('POST','/api/admin/ai/jobs',async c=>{
     const b=c.body,idea=String(b.idea||'').trim().slice(0,8000);if(idea.length<10)return bad(400,'idea');
     const auto=b.auto!==false&&!b.chapters&&!b.genre&&!b.words||b.auto===true;
-    const lang=b.lang==='uz'?'uz':'ru',genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel';
+    const lang=b.lang==='uz'||b.lang==='ru'?b.lang:detectLang(idea),genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel';
     const chapters=Math.max(2,Math.min(12,Math.round(+b.chapters)||6)),wordsN=Math.max(300,Math.min(2000,Math.round(+b.words)||900));
     if((await get(c,`SELECT COUNT(*) n FROM ai_jobs WHERE status IN (${ACTIVE.map(()=>'?').join(',')})`,...ACTIVE)).n>=MAX_ACTIVE)return bad(429,'too_many_active');
-    const m=mergeRoles(rolesFromEnv(c.env),b.roles||{});if(m.error)return json({error:m.error==='roles_required'?'roles_required':'model',detail:m.error},422);
+    let m=mergeRoles(b.autoModels===true?{}:rolesFromEnv(c.env),b.roles||{}),picked=null;
+    if(m.error==='roles_required'){ /* nothing configured: choose from the models the keys can really use */
+      const lists={};for(const p of Object.keys(PROVIDERS)){const {key}=await aiKey(c,p);if(!key)continue;try{lists[p]=(await listModels(c.env,key,p)).map(x=>x.id)}catch{}}
+      picked=pickModels(lists);
+      if(!picked.draft||!picked.editor)return json({error:'no_models',detail:`${picked.draft?'':'Groq '}${picked.editor?'':'Gemini'}`.trim()},422);
+      m=mergeRoles({},{draft:{model:picked.draft,fallbacks:lists.gemini&&picked.editor?[`gemini:${picked.editor}`]:[]},editor:{model:picked.editor},expert:picked.expert?{model:picked.expert}:null});
+    }
+    if(m.error)return json({error:m.error==='roles_required'?'roles_required':'model',detail:m.error},422);
     const roles=m.roles,limits=limitsFrom(c.env,b.limits||{}),prices={...pricesFromEnv(c.env)};
     /* models are never assumed: each one must be in the provider's own list, and each provider needs a key */
     const used=[...new Set(Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).map(x=>x.provider))],available={};
@@ -197,7 +204,7 @@ export function registerOrch(d){
     const bad_=unknownModels(roles,available);if(bad_.length)return json({error:'unknown_model',models:bad_},422);
     if(limits.maxCostUsd!=null){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
     const used2=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]);
-    const cfg={auto,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
+    const cfg={auto,autoModels:!!picked,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
     await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});

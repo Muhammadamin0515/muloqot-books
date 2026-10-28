@@ -128,6 +128,16 @@ await A(`/jobs/${J7}/cancel`,'POST',{});
 r=await drive((await create({title:'Нет провайдера'})).j.job.id,()=>false,3);void r;
 
 
+/* ---------- fully automatic: only a plan; language and models are chosen by the server ---------- */
+await reset();
+r=await A('/jobs','POST',{idea:'Мой план: письмо торговца, погоня по Бухаре и развязка на рынке.',autoModels:true});
+ok(r.s===200&&r.j.job.config.autoModels===true&&r.j.job.config.auto===true,'a plan alone is enough');
+ok(r.j.job.config.roles.draft.primary.model==='llama-3.3-70b-versatile'&&r.j.job.config.roles.editor.primary.model==='gemini-3.5-flash-lite'&&r.j.job.config.roles.expert.primary.model==='google/gemma-4-31b-it:free','models were chosen from the providers lists (draft: a large Groq model, editor: the newest Gemini flash, expert: a free OpenRouter model)');
+ok(r.j.job.config.lang==='ru','the language was detected from the plan');
+const JU=r.j.job.id;r=await drive(JU);ok(r.j.waiting==='plan_ready'&&(await mcalls()).some(x=>x.task==='plan'&&x.model==='gemini-3.5-flash-lite'),'the planning call went to the automatically chosen editor model');
+await A(`/jobs/${JU}/cancel`,'POST',{});
+r=await A('/jobs','POST',{idea:'Mening rejam: Buxoro savdogari xat topadi va izga tushadi.',autoModels:true});ok(r.j.job.config.lang==='uz','a Latin-script plan is detected as Uzbek');await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
+
 /* ---------- the author model chooses genre, chapters and size ---------- */
 await reset();
 r=await A('/jobs','POST',{idea:'Мой готовый план: 1. Письмо. 2. Погоня. 3. Развязка. Историческая драма о торговце из Бухары.',lang:'ru'});

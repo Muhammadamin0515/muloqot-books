@@ -13,9 +13,9 @@ const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on(
   const m=/^\/(groq|openrouter|gemini)\/(models|chat\/completions|[^/]+:generateContent)$/.exec(u);if(!m){res.statusCode=404;return res.end('{}')}
   const provider=m[1];
   if(m[2]==='models'){
-    if(provider==='groq')return res.end(JSON.stringify({data:[{id:'draft-model'},{id:'other-groq'}]}));
-    if(provider==='gemini')return res.end(JSON.stringify({models:[{name:'models/editor-model',supportedGenerationMethods:['generateContent']},{name:'models/embed-only',supportedGenerationMethods:['embedContent']}]}));
-    return res.end(JSON.stringify({data:[{id:'expert-model',pricing:{prompt:'0.000001',completion:'0.000002'}},{id:'free-model',pricing:{prompt:'0',completion:'0'}}]}));
+    if(provider==='groq')return res.end(JSON.stringify({data:[{id:'draft-model'},{id:'other-groq'},{id:'llama-3.3-70b-versatile'},{id:'whisper-large-v3'}]}));
+    if(provider==='gemini')return res.end(JSON.stringify({models:[{name:'models/editor-model',supportedGenerationMethods:['generateContent']},{name:'models/gemini-3.5-flash-lite',supportedGenerationMethods:['generateContent']},{name:'models/gemini-2.5-flash',supportedGenerationMethods:['generateContent']},{name:'models/gemini-3.5-flash-lite-preview-09',supportedGenerationMethods:['generateContent']},{name:'models/embed-only',supportedGenerationMethods:['embedContent']}]}));
+    return res.end(JSON.stringify({data:[{id:'expert-model',pricing:{prompt:'0.000001',completion:'0.000002'}},{id:'free-model',pricing:{prompt:'0',completion:'0'}},{id:'google/gemma-4-31b-it:free',pricing:{prompt:'0',completion:'0'}}]}));
   }
   const j=JSON.parse(b),prompt=provider==='gemini'?j.contents[0].parts[0].text:j.messages[1].content;
   const task=(/^\[task:(\w+)\]/.exec(prompt)||[])[1]||'?',ch=+((/ТЕКСТ ГЛАВЫ (\d+)/.exec(prompt)||/Глава (\d+) «/.exec(prompt)||/Текущая глава (\d+)/.exec(prompt)||[])[1]||0);

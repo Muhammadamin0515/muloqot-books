@@ -12,10 +12,10 @@ a.on('pageerror',e=>errs.push(e.message));a.on('console',m=>{if(m.type()==='erro
 await a.goto(B+'/?as=admin&open=profile');await a.waitForTimeout(900);
 await a.click('[data-a=openAdmin]');await a.waitForTimeout(400);await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(900);
 ok((await a.textContent('.adm')).includes('Новая книга'),'AI studio opens with the job list');
-await a.click('[data-a=asNew]');await a.waitForTimeout(300);await a.screenshot({path:'/tmp/ui_studio_form.png',fullPage:true});
+await a.click('[data-a=asNew]');await a.waitForTimeout(300);await a.screenshot({path:'/tmp/ui_studio_form.png'});await a.click('summary:has-text("Дополнительно")');await a.waitForTimeout(200);
 ok((await a.inputValue('#asMd'))==='draft-model'&&(await a.inputValue('#asMe'))==='editor-model'&&(await a.inputValue('#asMx'))==='expert-model','model fields are prefilled from the server variables');
 await a.click('[data-a=asModels][data-p=gemini]');await a.waitForTimeout(500);
-ok((await a.locator('#l_asMe option').count())===1,'the live model list of the service fills the suggestions');
+ok((await a.locator('#l_asMe option').count())>=1,'the live model list of the service fills the suggestions');
 await a.fill('#asMd','invented-model');await a.fill('.card textarea','Детектив в старой Бухаре: торговец находит письмо.');
 ok(await a.locator('[data-a=asSet][data-k=chapters]').count()===0,'by default genre, chapters and size are left to the author model');
 await a.click('[data-a=asCreate]');await a.waitForTimeout(1200);
@@ -37,6 +37,13 @@ await a.click('[data-a=asPublish]');await a.waitForTimeout(300);await a.click('[
 const bk=(await api('admin','/api/bootstrap')).j.books.find(b=>b.title==='Письмо из Бухары');
 ok(bk&&bk.ai&&bk.fullText&&bk.nch===3,'published after the confirmation: in the catalog, readable, marked as AI-made');
 await a.screenshot({path:'/tmp/ui_studio_done.png'});
+
+/* fully automatic: only a plan is typed */
+await a.click('[data-a=asBack]');await a.waitForTimeout(600);await a.click('[data-a=asNew]');await a.waitForTimeout(300);
+await a.fill('.card textarea','План: 1. Письмо. 2. Погоня. 3. Развязка. Историческая драма о торговце из Бухары.');
+await a.click('[data-a=asCreate]');await a.waitForSelector('[data-a=asApprove]',{timeout:20000});
+ok((await a.textContent('.adm')).includes('ИИ-автор выбрал')&&(await a.textContent('.adm')).includes('Писатель: draft-model'),'a plan alone is enough: the rest is chosen automatically and shown');
+await a.screenshot({path:'/tmp/ui_studio_auto.png'});
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,3)));
 await br.close();mock.close();
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

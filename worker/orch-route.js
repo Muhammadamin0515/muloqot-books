@@ -63,3 +63,19 @@ export function unknownModels(roles,available){
   for(const r of Object.values(roles)){if(!r)continue;for(const x of [r.primary,...r.fallbacks]){const list=available[x.provider];if(list&&!list.includes(x.model))out.push(x)}}
   return out;
 }
+
+const BAD_MODEL=/(whisper|guard|tts|embed|image|vision-only|moderation|safeguard|audio|live|preview|exp\b|-exp-|thinking-exp)/i;
+/** Picks one model per role from the providers' own lists when nothing is configured. lists: {groq:[id],gemini:[id],openrouter:[id]}.
+    Only real list entries are returned; a role with no suitable entry is null. */
+export function pickModels(lists){
+  const has=(p,id)=>(lists[p]||[]).includes(id),all=p=>(lists[p]||[]).filter(id=>!BAD_MODEL.test(id));
+  const first=(p,prefs)=>prefs.find(id=>has(p,id))||null;
+  let draft=first('groq',['openai/gpt-oss-120b','llama-3.3-70b-versatile']);
+  if(!draft)draft=all('groq').filter(id=>/(120b|70b|versatile)/i.test(id)).sort()[0]||null;
+  /* Gemini: the newest flash model (a full flash before a lite one of the same version) */
+  const gem=all('gemini').map(id=>{const m=/^gemini-(\d+(?:\.\d+)?)-flash(-lite)?$/.exec(id);return m?{id,v:parseFloat(m[1]),lite:!!m[2]}:null}).filter(Boolean).sort((a,b)=>b.v-a.v||a.lite-b.lite);
+  const editor=gem[0]?gem[0].id:null;
+  let expert=first('openrouter',['google/gemma-4-31b-it:free','meta-llama/llama-3.3-70b-instruct:free']);
+  if(!expert)expert=all('openrouter').filter(id=>/:free$/.test(id)&&/(70b|120b|31b|gemma|llama)/i.test(id)).sort()[0]||null;
+  return{draft,editor,expert};
+}

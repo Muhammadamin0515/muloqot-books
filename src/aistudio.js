@@ -8,14 +8,14 @@ const STATUS={draft:'Составляется план',plan_ready:'План ж�
 const PHASE={plan:'Gemini составляет план',draft:'Groq пишет черновик главы',check:'Программная проверка текста',review:'Gemini проверяет главу',fix:'Groq исправляет по замечаниям',expert:'Эксперт (OpenRouter) правит главу',analyze:'Gemini фиксирует факты и краткое содержание',final:'Gemini проверяет книгу целиком',final2:'Эксперт (OpenRouter) даёт вторую оценку',annotation:'Groq пишет аннотацию'};
 const PAUSE={manual:'Остановлено вручную','budget:calls':'Достигнут лимит вызовов','budget:tokens':'Достигнут лимит токенов','budget:cost':'Достигнут лимит стоимости'};
 const pauseText=r=>PAUSE[r]||(/^no_provider:/.test(r)?'Нет ключа или модели для задачи «'+r.split(':')[1]+'»':/^all_failed:/.test(r)?`Все провайдеры не ответили (${r.split(':')[1]}: ${r.split(':')[2]}). Подождите и продолжите`:r);
-const CREATE_ERR={no_key:'Не добавлен ключ сервиса: ',roles_required:'Укажите модели для черновика (Groq) и редактора (Gemini)',unknown_model:'Этих моделей нет в списке сервиса: ',price_unknown:'Для лимита стоимости нужны цены всех моделей (список OpenRouter даёт цены, для Groq и Gemini добавьте AI_PRICES)',models_unverified:'Не удалось получить список моделей сервиса: ',too_many_active:'Слишком много незавершённых заданий: завершите или отмените старые',idea:'Опишите идею книги хотя бы одним предложением',model:'Название модели указано неверно'};
+const CREATE_ERR={no_models:'Не удалось подобрать модели автоматически: добавьте ключи Groq и Gemini (нужны оба). Не хватает: ',no_key:'Не добавлен ключ сервиса: ',roles_required:'Укажите модели для черновика (Groq) и редактора (Gemini)',unknown_model:'Этих моделей нет в списке сервиса: ',price_unknown:'Для лимита стоимости нужны цены всех моделей (список OpenRouter даёт цены, для Groq и Gemini добавьте AI_PRICES)',models_unverified:'Не удалось получить список моделей сервиса: ',too_many_active:'Слишком много незавершённых заданий: завершите или отмените старые',idea:'Опишите идею книги хотя бы одним предложением',model:'Название модели указано неверно'};
 const words=t=>(String(t).match(/\S+/g)||[]).length;
 
 export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
   Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
-  const S={jobs:null,cfg:null,keys:null,models:{},form:{lang:'ru',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  const S={jobs:null,cfg:null,keys:null,models:{},form:{lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
   const errOf=e=>{const b=e&&e.body||{};const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
@@ -39,17 +39,17 @@ export function initAiStudio(x,adm){
   const call=async(path,method='POST',body={})=>{try{const r=await api(path,method,method==='GET'?undefined:body);S.err='';return r}catch(e){S.err=errOf(e);toast(S.err);refresh();return null}};
 
   /* ---------- list / create ---------- */
-  ACT.asNew=()=>{S.cur='new';S.d=null;S.err='';refresh()};
+  ACT.asNew=()=>{S.cur='new';S.d=null;S.err='';S.chText=null;S.showLog=false;refresh()};
   ACT.asBack=()=>{S.cur=null;S.d=null;S.err='';S.loop=false;loadList()};
   ACT.asOpen=el=>openJob(el.dataset.id);
   ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'||el.dataset.k==='auto'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
   CHG.asSel=el=>{S.form[el.dataset.k]=el.value;refresh()};
   ACT.asModels=async el=>{const p=el.dataset.p;try{S.models[p]=(await api('/api/admin/ai/models?provider='+p)).models.map(m=>m.id);toast(`${p}: моделей в списке сервиса — ${S.models[p].length}`)}catch(e){toast(e.body&&e.body.error==='no_key'?'Сначала добавьте ключ сервиса (кнопка «Ключи сервисов» выше)':'Не удалось получить список: '+errOf(e))}refresh()};
   ACT.asCreate=async()=>{
-    const f=S.form,roles={draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null};
+    const f=S.form,roles=M.as_draft.trim()&&M.as_editor.trim()?{draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null}:undefined;
     const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
-    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,lang:f.lang,...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,noSecondOpinion:!f.second});
-    if(r){S.cur=r.job.id;S.d=null;await reloadJob();runLoop()}
+    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,noSecondOpinion:!f.second});
+    if(r){S.cur=r.job.id;S.d=null;S.chText=null;S.showLog=false;await reloadJob();runLoop()}
   };
 
   /* ---------- plan ---------- */
@@ -118,40 +118,44 @@ export function initAiStudio(x,adm){
     <input id="${id}" class="in" data-m="adm:${key}" list="l_${id}" value="${esc(M[key])}" placeholder="${esc(ph)}" autocomplete="off" aria-label="${esc(title)}: модель" style="width:100%"><button class="btn sm ghost" style="margin-top:8px" data-a="asModels" data-p="${provider}">Выбрать из списка моделей</button>
     <datalist id="l_${id}">${(S.models[provider]||[]).map(m=>`<option value="${esc(m)}">`).join('')}</datalist>${optional?'<p class="hint" style="margin:6px 0 0">Можно оставить пустым: тогда сложные главы вы будете дорабатывать сами.</p>':''}</div>`;
   function createView(){
-    const f=S.form,noModels=!M.as_draft.trim()||!M.as_editor.trim();
+    const f=S.form,noModels=!M.as_draft.trim()||!M.as_editor.trim(),anyKey=S.keys&&Object.values(S.keys.providers).some(c=>c.set);
     return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
-    <div class="card howto2"><b>Как это работает</b><ol><li>Вы даёте план или идею.</li><li>ИИ составляет план книги, вы проверяете его.</li><li>ИИ пишет и проверяет главы по очереди.</li><li>Вы читаете и сами нажимаете «Опубликовать».</li></ol></div>
-    <div class="card" style="margin-top:12px">
-      ${step(1,'Что писать')}
-      <textarea class="in" data-m="adm:as_idea" maxlength="8000" style="min-height:190px" aria-label="План или идея книги" placeholder="Вставьте готовый план по главам или напишите идею. Например: детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека.">${esc(M.as_idea)}</textarea>
+    <div class="card">
+      <b style="font-size:16px">Ваш план книги</b>
+      <p class="hint" style="margin:6px 0 10px">Вставьте готовый план по главам или просто идею. Всё остальное ИИ сделает сам: определит язык, жанр, число глав и длину, подберёт модели, напишет и проверит главы. Опубликуется книга только по вашей кнопке.</p>
+      <textarea class="in" data-m="adm:as_idea" maxlength="8000" style="min-height:230px" aria-label="План или идея книги" placeholder="Например: детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека. Или вставьте весь план по главам.">${esc(M.as_idea)}</textarea>
       <div class="counter"><span>${M.as_idea.length} / 8000</span></div>
-      <div class="field"><label for="asT">Название книги <span class="mute">(необязательно, иначе придумает ИИ)</span></label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
-      ${step(2,'Язык книги').replace('class="step"','class="step" style="margin-top:20px"')}
-      ${seg('lang',[['ru','Русский'],['uz','Oʻzbekcha']],f.lang)}
-      ${step(3,'Жанр, число глав и размер').replace('class="step"','class="step" style="margin-top:20px"')}
-      ${seg('auto',[['1','Подберёт ИИ'],['0','Задам сам']],f.auto?'1':'0')}
-      ${f.auto?'<p class="hint">ИИ-автор сам выберет жанр, число глав и длину главы. Вы увидите выбор в плане и сможете его поправить до начала работы.</p>':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
-      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
-      <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}
-      <p class="hint">Около ${Math.round(f.chapters*f.words/250)} страниц.</p>`}
-      ${step(4,'Кто будет работать').replace('class="step"','class="step" style="margin-top:20px"')}
-      ${keyLine()}
-      <p class="hint" style="margin:0 0 10px">${noModels?'Модели ещё не выбраны: нажмите «Выбрать из списка» у каждой. ':'Модели уже выбраны. '}В списке только модели, доступные с вашими ключами.</p>
-      ${roleCard('asMd','as_draft','✍️','Писатель','Groq','Быстро пишет черновик каждой главы и исправляет текст по замечаниям редактора.','groq','Модель Groq')}
-      ${roleCard('asMe','as_editor','🔎','Редактор','Gemini','Составляет план, проверяет главы на ошибки и противоречия, ведёт краткое содержание и факты.','gemini','Модель Gemini')}
-      ${roleCard('asMx','as_expert','🎓','Эксперт','OpenRouter (по желанию)','Вызывается, только когда писатель и редактор не справились с главой. Даёт независимую оценку.','openrouter','Модель OpenRouter',true)}
-      <div class="lbl" style="margin:14px 0 6px">Проверить готовую книгу ещё и экспертом</div>
-      ${seg('second',[['1','Да'],['0','Нет']],f.second?'1':'0')}
-      <details class="dgroup" data-asg="lim" ${OPEN.lim?'open':''} style="margin-top:18px"><summary><b>Ограничить расходы</b><span>необязательно: по умолчанию действуют лимиты сервера</span></summary><div class="dbody">
-        <div class="field"><label for="asLc">Не больше запросов к ИИ на всю книгу</label><input id="asLc" class="in" type="number" inputmode="numeric" min="5" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${S.cfg?'по умолчанию '+esc(S.cfg.limits.maxCalls):'по умолчанию'}"></div>
-        <div class="field"><label for="asLm">Не больше потратить, $ <span class="mute">(только для платных моделей)</span></label><input id="asLm" class="in" type="number" inputmode="decimal" min="0" step="0.1" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без ограничения"></div>
-        <p class="hint">Когда лимит будет достигнут, работа встанет на паузу, и вы решите, продолжать ли. Всё написанное сохранится. Стоимость считается, когда известна цена модели; для бесплатных моделей ограничивайте число запросов.</p></div></details>
+      ${S.keys&&!anyKey?`<div class="demo-banner" style="margin:10px 0;flex-direction:column;align-items:flex-start"><b>Сначала добавьте ключи ИИ-сервисов</b><button class="btn sm" data-a="aiKeys">Добавить ключи</button></div>`:''}
       ${err()}
-      <button class="btn block" style="margin-top:16px" data-a="asCreate">Составить план книги</button>
-      <p class="hint" style="text-align:center">Пока вы не утвердите план, ни одна глава не пишется.</p></div>`;
+      <button class="btn block" style="margin-top:12px" data-a="asCreate">Составить план книги</button>
+      <p class="hint" style="text-align:center">Пока вы не утвердите план, ни одна глава не пишется.</p>
+    </div>
+    <details class="dgroup" data-asg="more" ${OPEN.more?'open':''} style="margin-top:12px"><summary><b>Дополнительно</b><span>название, язык, ручные настройки, модели, лимиты</span></summary><div class="dbody">
+      <div class="field"><label for="asT">Название книги <span class="mute">(иначе придумает ИИ)</span></label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
+      <div class="lbl" style="margin:12px 0 6px">Язык книги</div>
+      ${seg('lang',[['auto','По тексту плана'],['ru','Русский'],['uz','Oʻzbekcha']],f.lang)}
+      <div class="lbl" style="margin:16px 0 6px">Жанр, число глав и размер</div>
+      ${seg('auto',[['1','Подберёт ИИ'],['0','Задам сам']],f.auto?'1':'0')}
+      ${f.auto?'':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
+      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
+      <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
+      <div class="lbl" style="margin:16px 0 6px">Проверить готовую книгу ещё и экспертом</div>
+      ${seg('second',[['1','Да'],['0','Нет']],f.second?'1':'0')}
+      <div class="lbl" style="margin:16px 0 6px">Модели ИИ</div>
+      ${keyLine()}
+      <p class="hint" style="margin:0 0 10px">${noModels?'Если ничего не выбирать, модели подберутся сами из доступных вашим ключам.':'Заданы на сервере. Можно заменить; список — только доступные вашим ключам.'}</p>
+      ${roleCard('asMd','as_draft','✍️','Писатель','Groq','Быстро пишет черновик каждой главы и исправляет текст по замечаниям редактора.','groq','Подберётся сам')}
+      ${roleCard('asMe','as_editor','🔎','Редактор','Gemini','Составляет план, проверяет главы на ошибки и противоречия, ведёт краткое содержание и факты.','gemini','Подберётся сам')}
+      ${roleCard('asMx','as_expert','🎓','Эксперт','OpenRouter (по желанию)','Вызывается, только когда писатель и редактор не справились с главой. Даёт независимую оценку.','openrouter','Подберётся сам',true)}
+      <div class="lbl" style="margin:16px 0 6px">Ограничить расходы <span class="mute">(необязательно)</span></div>
+      <div class="field"><label for="asLc">Не больше запросов к ИИ на всю книгу</label><input id="asLc" class="in" type="number" inputmode="numeric" min="5" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${S.cfg?'по умолчанию '+esc(S.cfg.limits.maxCalls):'по умолчанию'}"></div>
+      <div class="field"><label for="asLm">Не больше потратить, $ <span class="mute">(только для платных моделей)</span></label><input id="asLm" class="in" type="number" inputmode="decimal" min="0" step="0.1" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без ограничения"></div>
+      <p class="hint">При достижении лимита работа встаёт на паузу, написанное сохраняется.</p>
+    </div></details>`;
   }
+  const modelsLine=c=>{const r=c.roles||{},m=x=>x?esc(x.primary.model):'нет';return `<div class="mute" style="font-size:12px;margin-top:6px">Писатель: ${m(r.draft)} · Редактор: ${m(r.editor)} · Эксперт: ${m(r.expert)}${c.autoModels?' (подобраны автоматически)':''}</div>`};
   const head=d=>`<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
-    <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage)}</div></div>`;
+    <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage)}</div>${modelsLine(d.job.config)}</div>`;
   function planView(d){
     const p=d.plan;
     return `${head(d)}<div class="card">${step(1,'План книги: проверьте и утвердите')}
@@ -167,7 +171,7 @@ export function initAiStudio(x,adm){
   const chapterRows=d=>d.plan?d.plan.chapters.map((c,i)=>{const ch=d.chapters[i]||{status:'pending'},cur=d.job.state.chapter===i&&['running','needs_admin','paused'].includes(d.job.status);
     return `<button class="li" style="text-align:left" data-a="asChapter" data-i="${i}"><div class="grow" style="min-width:0"><b>${i+1}. ${esc(c.title)}</b><div class="mute" style="font-size:12.5px">${ch.status==='approved'?`Принята · ${ch.words} слов`:ch.status==='draft'?`Черновик · ${ch.words} слов`:cur?'В работе':'Ждёт очереди'}</div></div>${ico('chev',18)}</button>`}).join(''):'';
   function chapterPanel(d){
-    const c=S.chText;if(!c)return'';const i=+c.i,cur=d.job.state.chapter===i;
+    const c=S.chText;if(!c||!d.plan)return'';const i=+c.i,cur=d.job.state.chapter===i;
     const issues=(d.checks.find(x=>x.chapter===i&&!x.ok)||{}).issues;
     return `<div class="card" style="margin-top:10px"><b>Глава ${i+1}: ${esc(d.plan.chapters[i].title)}</b>
       ${c.shown?`<p class="mute" style="font-size:12.5px">Версия «${esc(c.shown.kind)}» ${esc(c.shown.provider)} ${esc(c.shown.model)}</p><div class="chtext">${esc(c.shown.text)}</div><button class="btn sm ghost" data-a="asChapter" data-i="${i}">Закрыть</button>`

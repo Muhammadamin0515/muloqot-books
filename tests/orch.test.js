@@ -122,3 +122,15 @@ test('router prices (negative = variable) are not turned into a cost',async()=>{
   globalThis.fetch=async()=>new Response(JSON.stringify({data:[{id:'openrouter/auto',pricing:{prompt:'-1',completion:'-1'}},{id:'openrouter/free',pricing:{prompt:'0',completion:'0'}},{id:'x/y',pricing:{prompt:'0.000001',completion:'0.000002'}}]}),{status:200});
   try{const l=await listModels({},'K','openrouter');assert.equal(l.find(m=>m.id==='openrouter/auto').price,undefined);assert.deepEqual(l.find(m=>m.id==='openrouter/free').price,[0,0]);assert.deepEqual(l.find(m=>m.id==='x/y').price,[1,2])}finally{globalThis.fetch=real}
 });
+
+import {pickModels} from '../worker/orch-route.js';
+import {detectLang} from '../worker/orch-checks.js';
+test('automatic model choice uses only real list entries',()=>{
+  const l={groq:['whisper-large-v3','llama-3.3-70b-versatile','openai/gpt-oss-120b','llama-guard-4'],gemini:['gemini-2.5-flash','gemini-3.5-flash-lite','gemini-3.5-flash','gemini-3.6-flash-preview','gemini-3.5-flash-image','embedding-001'],openrouter:['openrouter/free','google/gemma-4-31b-it:free','meta-llama/llama-3.3-70b-instruct:free','openai/gpt-5']};
+  assert.deepEqual(pickModels(l),{draft:'openai/gpt-oss-120b',editor:'gemini-3.5-flash',expert:'google/gemma-4-31b-it:free'},'a full flash before a lite one of the same version; previews and image models are skipped');
+  assert.equal(pickModels({groq:['llama-3.3-70b-versatile']}).draft,'llama-3.3-70b-versatile');
+  assert.deepEqual(pickModels({}),{draft:null,editor:null,expert:null},'nothing is invented when the lists are empty');
+  assert.equal(pickModels({groq:['whisper-large-v3','llama-guard-4']}).draft,null);
+  assert.equal(pickModels({openrouter:['x/some-70b-chat:free']}).expert,'x/some-70b-chat:free');assert.equal(pickModels({openrouter:['x/paid-70b']}).expert,null,'the expert is free or none');
+});
+test('language is detected by script',()=>{assert.equal(detectLang('Детектив в Бухаре'),'ru');assert.equal(detectLang('Buxoro savdogari xat topadi'),'uz');assert.equal(detectLang('Роман и Mening'),'ru')});
