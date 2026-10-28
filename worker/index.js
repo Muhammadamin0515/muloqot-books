@@ -1124,7 +1124,11 @@ async function onBotMessage(c,m){
   const text=m.text.trim(),cmd=text.startsWith('/')?text.split(/[\s@]/)[0].toLowerCase():'';
   const send=(t,open)=>tgApi(env,'sendMessage',{chat_id:chat,text:t,...openBtn(env,{lang,open})});
   const help=()=>send(T('Что я умею:\n/library — продолжить чтение\n/donate — поддержать проект\n/support — написать в поддержку\n/notifications — настроить уведомления\n/stop — отключить все уведомления\n\nЛюбое обычное сообщение попадёт к администратору, ответ придёт сюда.','Men nimalar qila olaman:\n/library — o‘qishni davom ettirish\n/donate — loyihani qo‘llab-quvvatlash\n/support — yordamga yozish\n/notifications — bildirishnomalarni sozlash\n/stop — barcha bildirishnomalarni o‘chirish\n\nIstalgan oddiy xabar administratorga yetadi, javob shu yerga keladi.'));
-  if(cmd==='/start')return void await send(await getWelcome(c,lang));
+  if(cmd==='/start'){ /* the greeting must always arrive: if Telegram rejects the app button, send the text alone and log why */
+    const t=await getWelcome(c,lang),r=await tgJson(env,'sendMessage',{chat_id:chat,text:t,...openBtn(env,{lang})});
+    if(!r?.ok){console.error(JSON.stringify({event:'welcome_failed',description:r?.description||'no response'}));await tgApi(env,'sendMessage',{chat_id:chat,text:t})}
+    return;
+  }
   if(cmd==='/notifications'){const {notif}=await getNotif(c,uid);return void await tgApi(env,'sendMessage',{chat_id:chat,text:notifText(lang),reply_markup:notifKeyboard(notif,lang)})}
   if(cmd==='/stop'){const {st,notif}=await getNotif(c,uid);Object.keys(notif).forEach(k=>notif[k]=false);await saveNotif(c,uid,st,notif);return void await send(T('Уведомления отключены. Включить снова: /notifications','Bildirishnomalar o‘chirildi. Qayta yoqish: /notifications'))}
   if(cmd==='/library')return void await send(T('Ваша библиотека и прогресс чтения:','Kutubxonangiz va o‘qish jarayoni:'),'library');
