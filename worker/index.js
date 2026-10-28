@@ -5,6 +5,7 @@ import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,right
 import {registerLibrary,tokenCheck} from './library.js';
 import {registerAi} from './ai.js';
 import {registerOrch} from './orch.js';
+import {registerRetell} from './retell.js';
 import {WorkflowEntrypoint} from 'cloudflare:workers';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
@@ -83,7 +84,7 @@ function bookOut(row,agg,extra={}){const b=P(row.data);const a=agg[row.id]||{n:0
   const full=canRead(b);
   /* The catalog list stays small: chapter text is fetched on demand (/api/books/:id/chapter/:n) and covers are served as images (/api/cover/:id). */
   const {rights,chapters,img,lit,pendingToc,pendingNch,pendingChars,...rest}=b;
-  return{...rest,chapters:full&&!b.lazy?chapters.map(ch=>({t:ch.t})):[],nch:b.lazy?b.nch:chapters.length,ver:b.ver||'',fullText:full&&hasText(b),rights:publicRights(b),...(lit?{collection:lit.collection}:{}),...(img&&!b.imgAuto?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,dist:a.d||[0,0,0,0,0]}}
+  return{...rest,chapters:full&&!b.lazy?chapters.map(ch=>({t:ch.t})):[],nch:b.lazy?b.nch:chapters.length,ver:b.ver||'',fullText:full&&hasText(b),rights:publicRights(b),...(lit?{collection:lit.collection}:{}),...(img&&!b.imgAuto?{img:`/api/cover/${row.id}?v=${img.length}`}:{}),count,rating,pop:extra.pop||0,audio:extra.audio||0,retell:extra.retell||[],dist:a.d||[0,0,0,0,0]}}
 const DIST=',SUM(value=1) c1,SUM(value=2) c2,SUM(value=3) c3,SUM(value=4) c4,SUM(value=5) c5';
 const distOf=r=>[r.c1,r.c2,r.c3,r.c4,r.c5].map(x=>x||0);
 const ratingAgg=async c=>{const o={};(await all(c,`SELECT book_id,COUNT(*) n,SUM(value) s${DIST} FROM ratings GROUP BY book_id`)).forEach(r=>o[r.book_id]={n:r.n,s:r.s,d:distOf(r)});return o};
@@ -156,15 +157,17 @@ async function bustCache(c,all=true){
 const BUST_ALL=/^\/api\/(author\/|admin\/(books|import|demo|collections|weekly|submissions|goals|donate-settings|donations|reviews|threads|comments|reports|ai\/jobs\/[^/]+\/publish))/,BUST_COMM=/^\/api\/(reviews|threads|quotes)/;
 async function buildPublic(c){
   const demo=await demoVisible(c),since=new Date(Date.now()-29*864e5).toISOString().slice(0,10);
-  const [books,authors,fol,meta,stats,aud]=await batch(c,[
+  const [books,authors,fol,meta,stats,aud,rtl]=await batch(c,[
     stmt(c,`SELECT * FROM books WHERE (hidden=0 OR hidden IS NULL) AND json_extract(data,'$.publish') IS NOT 'draft'${demo?'':" AND json_extract(data,'$.demo') IS NOT 1"}`),
     stmt(c,`SELECT * FROM authors${demo?'':" WHERE json_extract(data,'$.demo') IS NOT 1"}`),stmt(c,'SELECT author_id,COUNT(*) n FROM follows GROUP BY author_id'),
     stmt(c,"SELECT key,value FROM meta WHERE key NOT LIKE 'aikey:%' AND key NOT LIKE 'cache:%'"),
     stmt(c,'SELECT book_id,SUM(views) v,SUM(reads) r,SUM(finishes) f FROM book_stats WHERE day>=? GROUP BY book_id',since),
-    stmt(c,'SELECT book_id,COUNT(*) n FROM audio_tracks GROUP BY book_id')]);
+    stmt(c,'SELECT book_id,COUNT(*) n FROM audio_tracks GROUP BY book_id'),
+    stmt(c,"SELECT book_id,GROUP_CONCAT(lang) l FROM book_retellings WHERE status='published' GROUP BY book_id")]);
+  const rt=Object.fromEntries(rtl.map(x=>[x.book_id,String(x.l).split(',')]));
   const agg=await ratingAgg(c),m=Object.fromEntries(meta.map(x=>[x.key,P(x.value)])),ds=await getDonateSettings(c),goals=await goalRows(c);
   const st=Object.fromEntries(stats.map(x=>[x.book_id,{views:x.v,reads:x.r,finishes:x.f}])),au=Object.fromEntries(aud.map(x=>[x.book_id,x.n]));
-  const out=books.map(b=>bookOut(b,agg,{pop:popularity(st[b.id]||{},agg[b.id]?.n),audio:au[b.id]||0})),ids=new Set(out.map(b=>b.id));
+  const out=books.map(b=>bookOut(b,agg,{pop:popularity(st[b.id]||{},agg[b.id]?.n),audio:au[b.id]||0,retell:rt[b.id]||[]})),ids=new Set(out.map(b=>b.id));
   const collections=(m.collections||[]).map(x=>({...x,ids:x.ids.filter(i=>ids.has(i))})).filter(x=>x.ids.length);
   const folN=Object.fromEntries(fol.map(f=>[f.author_id,f.n]));
   const pub={demo,donateGoal:goals[0]||null,donateOn:!!c.env.BOT_TOKEN,appLink:m.applink||'',books:out,
@@ -1124,7 +1127,11 @@ async function onBotMessage(c,m){
   const text=m.text.trim(),cmd=text.startsWith('/')?text.split(/[\s@]/)[0].toLowerCase():'';
   const send=(t,open)=>tgApi(env,'sendMessage',{chat_id:chat,text:t,...openBtn(env,{lang,open})});
   const help=()=>send(T('Что я умею:\n/library — продолжить чтение\n/donate — поддержать проект\n/support — написать в поддержку\n/notifications — настроить уведомления\n/stop — отключить все уведомления\n\nЛюбое обычное сообщение попадёт к администратору, ответ придёт сюда.','Men nimalar qila olaman:\n/library — o‘qishni davom ettirish\n/donate — loyihani qo‘llab-quvvatlash\n/support — yordamga yozish\n/notifications — bildirishnomalarni sozlash\n/stop — barcha bildirishnomalarni o‘chirish\n\nIstalgan oddiy xabar administratorga yetadi, javob shu yerga keladi.'));
-  if(cmd==='/start')return void await send(await getWelcome(c,lang));
+  if(cmd==='/start'){ /* the greeting must always arrive: if Telegram rejects the app button, send the text alone and log why */
+    const t=await getWelcome(c,lang),r=await tgJson(env,'sendMessage',{chat_id:chat,text:t,...openBtn(env,{lang})});
+    if(!r?.ok){console.error(JSON.stringify({event:'welcome_failed',description:r?.description||'no response'}));await tgApi(env,'sendMessage',{chat_id:chat,text:t})}
+    return;
+  }
   if(cmd==='/notifications'){const {notif}=await getNotif(c,uid);return void await tgApi(env,'sendMessage',{chat_id:chat,text:notifText(lang),reply_markup:notifKeyboard(notif,lang)})}
   if(cmd==='/stop'){const {st,notif}=await getNotif(c,uid);Object.keys(notif).forEach(k=>notif[k]=false);await saveNotif(c,uid,st,notif);return void await send(T('Уведомления отключены. Включить снова: /notifications','Bildirishnomalar o‘chirildi. Qayta yoqish: /notifications'))}
   if(cmd==='/library')return void await send(T('Ваша библиотека и прогресс чтения:','Kutubxonangiz va o‘qish jarayoni:'),'library');
@@ -1183,6 +1190,7 @@ const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKE
 LIB=registerLibrary({route,stmt,get,all,run,batch,json,bad,P,J,audit,id8});
 const AID={route,get,run,json,bad,P,J,audit};registerAi(AID);
 const ORCH=registerOrch({...AID,stmt,all,batch,id8,importOne,aiKey:AID.aiKey});
+registerRetell({route,get,all,run,batch,stmt,json,bad,audit,clip,P,J,canRead,isPublished,aiKey:AID.aiKey,globalConfig:ORCH.globalConfig});
 export class AiBookWorkflow extends WorkflowEntrypoint{
   async run(event,step){
     const jobId=String(event.payload?.jobId||'');if(!jobId)return;

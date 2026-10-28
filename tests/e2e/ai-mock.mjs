@@ -38,6 +38,8 @@ const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on(
   if(task==='analyze')return reply(res,provider,JSON.stringify({summary:`Краткое содержание главы ${ch}: Алишер идёт дальше.`,facts:[`Факт главы ${ch}`],characters:[{name:'Алишер',state:`после главы ${ch} стал решительнее`}]}));
   if(task==='final_review')return reply(res,provider,JSON.stringify({issues:ctl.finalFail?[{type:'plot',severity:'major',where:ctl.finalWhere||'финал',note:'Развязка не вытекает из сюжета',fix:'Переписать финал'}]:[]}));
   if(task==='final_second')return reply(res,provider,JSON.stringify({issues:[]}));
+  if(task==='retell_chapter')return reply(res,provider,`Краткое содержание главы ${ch}: Алишер идёт дальше и узнаёт новое.`);
+  if(task==='retell_final')return reply(res,provider,['Это книга о торговце из Бухары, который находит старое письмо и идёт по следу.','В пути Алишер встречает людей, которые помнят прошлое, и понимает, что письмо связано с его семьёй. Он не сдаётся, хотя дорога становится всё труднее.','Развязка наступает на рынке, где всё становится на свои места, и герой находит то, что искал, а вместе с этим и покой, которого ему так не хватало.'].join('\n\n'));
   if(task==='annotation')return reply(res,provider,'Торговец из Бухары находит письмо и отправляется по следу.');
   return reply(res,provider,'?');
 })}).listen(MOCK);

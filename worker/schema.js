@@ -17,6 +17,7 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS achievements(user_id TEXT,key TEXT,ts INTEGER,seen INTEGER DEFAULT 0,PRIMARY KEY(user_id,key))',
   'CREATE TABLE IF NOT EXISTS audio_tracks(id INTEGER PRIMARY KEY AUTOINCREMENT,book_id TEXT,idx INTEGER,title TEXT,url TEXT,duration INTEGER DEFAULT 0,created INTEGER)',
   'CREATE INDEX IF NOT EXISTS idx_audio_book ON audio_tracks(book_id,idx)',
+  'CREATE TABLE IF NOT EXISTS book_retellings(book_id TEXT,lang TEXT,text TEXT,status TEXT,summaries TEXT,progress INTEGER DEFAULT 0,total INTEGER DEFAULT 0,model TEXT,created INTEGER,updated INTEGER,PRIMARY KEY(book_id,lang))',
   'CREATE TABLE IF NOT EXISTS lit_files(book_id TEXT,version TEXT,hash TEXT,chapters INTEGER,chunks INTEGER,chars INTEGER,bytes INTEGER,format TEXT,storage TEXT,toc TEXT,prep_version TEXT,ready INTEGER DEFAULT 0,created INTEGER,PRIMARY KEY(book_id,version))',
   'CREATE TABLE IF NOT EXISTS book_chunks(book_id TEXT,version TEXT,ch INTEGER,seq INTEGER,body TEXT,PRIMARY KEY(book_id,version,ch,seq))',
   'CREATE TABLE IF NOT EXISTS reading_progress(user_id TEXT,book_id TEXT,ver TEXT,locator TEXT,percent REAL,rev INTEGER,updated INTEGER,PRIMARY KEY(user_id,book_id))',

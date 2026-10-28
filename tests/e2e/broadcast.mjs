@@ -85,6 +85,16 @@ const text='# Глава первая\n\n'+'Он вышел во двор и у�
 const pub=await api(1,'/api/admin/import','POST',{records:[{title:'Книга ИИ',author:'Muloqot Books',lang:'ru',genre:'novel',description:'Тест',text,rights:{status:'author',note:'ИИ'},source:{name:'Muloqot Books (ИИ)'},ai:{provider:'groq',model:'llama-3.3-70b-versatile'}}]});
 ok(pub.j.results[0].id&&pub.j.results[0].fullText,'AI book is published through the import route');
 const bk=(await api(1,'/api/bootstrap')).j.books.find(b=>b.id===pub.j.results[0].id);ok(bk&&bk.ai&&bk.ai.model==='llama-3.3-70b-versatile'&&bk.fullText&&bk.nch===2,'published AI book is in the catalog, readable, marked as AI-made');
+/* /start from a brand-new user: the welcome message with the app button, in the user's language; also with a deep-link payload */
+{let n=since();let st=await hook({update_id:9001,message:{message_id:1,from:{id:9101,first_name:'Новичок',language_code:'ru'},chat:{id:9101,type:'private'},text:'/start'}});
+const w=after(n).filter(c=>c.method==='sendMessage'&&c.body.chat_id===9101);
+ok(st===200&&w.length===1&&/Добро пожаловать/.test(w[0].body.text)&&w[0].body.reply_markup.inline_keyboard[0][0].web_app,'a new user sending /start gets the welcome message with the "open app" button');
+n=since();await hook({update_id:9002,message:{message_id:1,from:{id:9102,first_name:'Yangi',language_code:'uz'},chat:{id:9102,type:'private'},text:'/start ref123'}});
+const u=after(n).filter(c=>c.method==='sendMessage'&&c.body.chat_id===9102);
+ok(u.length===1&&/xush kelibsiz/.test(u[0].body.text),'/start with a payload and an Uzbek user: the Uzbek welcome');
+await api(1,'/api/admin/welcome','POST',{text:'   '});n=since();await hook({update_id:9003,message:{message_id:1,from:{id:9103,first_name:'Пустой',language_code:'ru'},chat:{id:9103,type:'private'},text:'/start'}});
+const e=after(n).filter(c=>c.method==='sendMessage'&&c.body.chat_id===9103);
+ok(e.length===1&&e[0].body.text.trim().length>20,'an empty welcome text saved by the admin falls back to the default instead of sending nothing')}
 ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:''})).s===200&&!(await api(1,'/api/admin/ai/config')).j.providers.groq.set,'key can be deleted');}
 mock.close();
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

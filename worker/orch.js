@@ -370,5 +370,5 @@ export function registerOrch(d){
     await audit(c,'ai_job_publish',id,{book:res.id,override:!!fin&&!fin.ok});return json({ok:true,bookId:res.id,job:view(await loadJob(c,id))});
   });
   void ROLE_PROVIDER;
-  return{step:(env,id)=>step({env},id)};
+  return{step:(env,id)=>step({env},id),globalConfig};
 }

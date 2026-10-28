@@ -69,6 +69,23 @@ await api(1,`/api/admin/books/${bk.id}/own`,'POST',{on:true});ok((await api(11,'
 ok((await A(`/jobs/${J1}/publish`,'POST',{confirm:true})).s===409,'a job cannot be published twice');
 const J0=r.j.job.id;void J0;
 
+/* ---------- audio retelling of a book (admin generates and approves, readers get the published text) ---------- */
+{const BK=(await A('/jobs/'+J1)).j.job.bookId,ad=(p,m='GET',b)=>api(1,'/api/admin/books/'+BK+p,m,b),rd=p=>api(11,'/api/books/'+BK+p);
+ok((await rd('/retelling')).j.retellings.length===0,'retelling: none at first');
+ok((await api(11,'/api/admin/books/'+BK+'/retelling/start','POST',{lang:'ru'})).s===403,'retelling: only administrators generate');
+ok((await ad('/retelling/start','POST',{lang:'de'})).s===422,'retelling: language is ru or uz');
+let r2=await ad('/retelling/start','POST',{lang:'ru'});const total=r2.j.retelling.total;ok(r2.s===200&&r2.j.retelling.status==='generating'&&total===4,'retelling: started (3 chapters + the final text)');
+for(let i=0;i<total&&r2.j.retelling.status==='generating';i++)r2=await ad('/retelling/step','POST',{lang:'ru'});
+ok(r2.j.retelling.status==='draft'&&r2.j.retelling.text.split('\n\n').length===3&&r2.j.retelling.progress===total,'retelling: a draft is written step by step');
+ok((await rd('/retelling')).j.retellings.length===0,'retelling: a draft is invisible to readers');
+ok((await ad('/retelling','PUT',{lang:'ru',status:'published',text:'коротко'})).s===422,'retelling: a too short text is not published');
+r2=await ad('/retelling','PUT',{lang:'ru',text:r2.j.retelling.text+'\n\nПравка администратора.',status:'published'});ok(r2.s===200&&r2.j.retelling.status==='published','retelling: the administrator edits and publishes');
+const lst=(await rd('/retelling')).j.retellings;ok(lst.length===1&&lst[0].lang==='ru'&&/Правка администратора/.test(lst[0].text),'retelling: readers get the published text');
+ok((await api(11,'/api/bootstrap')).j.books.find(b=>b.id===BK).retell.join()==='ru','retelling: the book in the catalog says which languages exist');
+r2=await ad('/retelling/start','POST',{lang:'uz'});for(let i=0;i<total&&r2.j.retelling.status==='generating';i++)r2=await ad('/retelling/step','POST',{lang:'uz'});
+ok(r2.j.retelling.status==='draft'&&(await rd('/retelling')).j.retellings.length===1,'retelling: Uzbek is a separate retelling');
+await ad('/retelling/delete','POST',{lang:'uz'});await ad('/retelling/delete','POST',{lang:'ru'});ok((await ad('/retelling')).j.retellings.length===0,'retelling: can be deleted')}
+
 /* ---------- 2. provider switching and unusable answers ---------- */
 await reset();await mctl({groqMode:'429'});
 r=await create({title:'Переключение'});const J2=r.j.job.id;await drive(J2);await A(`/jobs/${J2}/approve-plan`,'POST',{confirm:true});

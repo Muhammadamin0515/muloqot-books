@@ -12,6 +12,7 @@ import {initAchievements} from './achievements.js';
 import {search as fuzzySearch,suggest as suggestWord,key as skey} from './search.js';
 import {recommend} from './reco.js';
 import {initAudio} from './audio.js';
+import {initRetell} from './retell.js';
 
 const KEY='muloqot.proto.v1';
 const $=(s,el=document)=>el.querySelector(s);
@@ -310,7 +311,7 @@ SCREENS.book=({id})=>{
   ${b.series?`<button class="au-link" style="margin-top:2px;font-size:13px" data-a="openSeries" data-v="${esc(b.series)}">${tr('Серия','Seriya')}: ${esc(b.series)}${b.seriesNo?` · №${b.seriesNo}`:''}</button>`:''}
   <div class="facts"><span class="tag acc">${b.lang.toUpperCase()}</span><span class="tag">${gl(b.genre)}</span>${b.pages>0?`<span class="tag">${b.pages} ${t('pages')}</span>`:''}${b.year?`<span class="tag">${b.year}</span>`:''}<span class="tag ${canRead?'':'dim'}">${canRead?tr('Текст полностью','Matn to‘liq'):tr('Только описание','Faqat tavsif')}</span>${b.audio?`<span class="tag acc">${tr('Аудио','Audio')}</span>`:''}</div>
   <div class="row" style="justify-content:center;margin-top:14px;gap:8px">${st.n>0?`${stars(st.avg,17)}<b>${st.avg}</b><span class="mute" style="font-size:12.5px">· ${st.n} ${t('ratings_n')}</span>`:`<span class="mute" style="font-size:13px">${tr('Оценок пока нет. Будьте первым!','Hali baho yo‘q. Birinchi bo‘ling!')}</span>`}</div>
-  <div class="cta">${canRead?`<button class="btn" data-a="read" data-id="${id}">${cta} ${ico('arrow',18)}</button>`:''}${b.audio?`<button class="btn ${canRead?'ghost':''}" data-a="audioOpen" data-id="${id}">${ico('headphones',18)} ${tr('Слушать','Tinglash')}</button>`:''}<button class="btn ghost" data-a="toggleSave" data-id="${id}" aria-pressed="${sv}">${ico(sv?'check':'plus',18)} ${sv?t('in_lib'):t('add_lib')}</button></div></div></div>
+  <div class="cta">${canRead?`<button class="btn" data-a="read" data-id="${id}">${cta} ${ico('arrow',18)}</button>`:''}${b.audio?`<button class="btn ${canRead?'ghost':''}" data-a="audioOpen" data-id="${id}">${ico('headphones',18)} ${tr('Слушать','Tinglash')}</button>`:''}${b.retell&&b.retell.length?`<button class="btn ghost" data-a="retellOpen" data-id="${id}">${ico('headphones',18)} ${tr('Пересказ','Qayta hikoya')}</button>`:''}<button class="btn ghost" data-a="toggleSave" data-id="${id}" aria-pressed="${sv}">${ico(sv?'check':'plus',18)} ${sv?t('in_lib'):t('add_lib')}</button></div></div></div>
   <div class="px" style="margin:2px 0 18px"><div class="seg" role="tablist">${[['about',t('about')],['reviews',`${t('reviews')} ${revs.length}`],['discussion',t('discussion')]].map(([k,n])=>`<button role="tab" aria-selected="${BK.tab===k}" class="${BK.tab===k?'on':''}" data-a="bookTab" data-v="${k}">${n}</button>`).join('')}</div></div>${body}`;
 };
 ACT.bookTab=el=>{BK.tab=el.dataset.v;refresh()};
@@ -789,6 +790,7 @@ initAiStudio({ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go,refresh
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
 initAchievements(ctx2);
 initAudio(ctx2);
+initRetell(ctx2,admApi);
 initStudio(ctx2);
 /* things that can unlock an achievement ask the server to re-check shortly after they happen */
 ['toggleSave','revSubmit','follow','rQuote','rFinish'].forEach(n=>{const f=ACT[n];if(f)ACT[n]=function(){const r=f.apply(this,arguments);ctx2.checkAch();return r}});
