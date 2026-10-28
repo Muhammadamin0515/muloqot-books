@@ -251,6 +251,10 @@ export function registerOrch(d){
   A('POST','/api/admin/ai/jobs/:id/resume',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='paused')return bad(409,'not_paused');
     if(c.body.limits){job.config.limits=limitsFrom(c.env,{...job.config.limits,...c.body.limits});await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),id)}
+    if(c.body.skipExpert===true&&/^all_failed:chapter_expert/.test(job.pause_reason)){ /* the expert is unavailable: the administrator decides about the chapter */
+      job.state={...job.state,expert:1,phase:'needs_admin'};job.status='needs_admin';job.pause_reason='';
+      await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,state=?,updated=? WHERE id=?','needs_admin','',J(job.state),Date.now(),id);return json({job:view(job)});
+    }
     job.status=job.plan&&job.state.chapter!==undefined&&job.state.phase&&job.state.phase!=='plan'?'running':'draft';job.pause_reason='';
     await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,updated=? WHERE id=?',job.status,'',Date.now(),id);return json({job:view(job)});
   });

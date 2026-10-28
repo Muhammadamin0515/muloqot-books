@@ -121,6 +121,16 @@ ok((await A(`/jobs/${J6}/chapters/0`)).j.versions.some(v=>v.kind==='admin'),'the
 r=await A(`/jobs/${J6}/publish`,'POST',{confirm:true});ok(r.s===409&&r.j.error==='final_issues','publication is blocked while the final review reports a major problem');
 r=await A(`/jobs/${J6}/publish`,'POST',{confirm:true,override:true});ok(r.s===200&&r.j.bookId,'the administrator can publish anyway, explicitly');
 
+
+/* an unavailable expert (free models have strict limits) does not trap the job */
+await reset();await mctl({reviewAlways:[1],openrouterMode:'429'});
+r=await create({title:'Эксперт недоступен'});const JX=r.j.job.id;await drive(JX);await A(`/jobs/${JX}/approve-plan`,'POST',{confirm:true});
+r=await drive(JX);d=await detail(JX);
+ok(r.j.waiting==='paused'&&/^all_failed:chapter_expert:rate_limit/.test(r.j.job.pauseReason)&&d.calls.some(x=>x.provider==='openrouter'&&x.status==='rate_limit'),'a rate-limited expert pauses the job with a clear reason');
+ok((await A(`/jobs/${JX}/resume`,'POST',{skipExpert:true})).j.job.status==='needs_admin','"continue without the expert" hands the chapter to the administrator');
+ok((await A(`/jobs/${JX}/chapters/0/resolve`,'POST',{action:'accept'})).j.job.status==='running','the administrator can accept the chapter and the job goes on');
+await A(`/jobs/${JX}/cancel`,'POST',{});
+
 /* ---------- 5. budget ---------- */
 await reset();
 r=await create({title:'Бюджет',limits:{maxCalls:5}});const J7=r.j.job.id;await drive(J7);await A(`/jobs/${J7}/approve-plan`,'POST',{confirm:true});

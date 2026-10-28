@@ -22,6 +22,7 @@ const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on(
   const call={provider,task,chapter:ch,prompt:task==='plan'?prompt:undefined,model:provider==='gemini'?decodeURIComponent(m[2].replace(':generateContent','')):j.model};rec.push(call);
   if(ctl.delayMs)await sleep(ctl.delayMs);
   const key=provider+task+ch;seen[key]=(seen[key]||0)+1;const nth=seen[key];
+  if(provider==='openrouter'&&ctl.openrouterMode==='429'){res.statusCode=429;return res.end(JSON.stringify({error:{message:'free models rate limit'}}))}
   if(provider==='groq'&&ctl.groqMode==='429'){res.statusCode=429;return res.end(JSON.stringify({error:{message:'rate limit'}}))}
   if(provider==='groq'&&ctl.groqMode==='empty-once'&&task==='chapter_draft'&&nth===1)return reply(res,provider,'');
   if(provider==='groq'&&ctl.groqMode==='short-once'&&task==='chapter_draft'&&nth===1)return reply(res,provider,'Слишком коротко.');
