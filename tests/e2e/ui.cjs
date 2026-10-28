@@ -31,10 +31,14 @@ await a.fill('#ciDt','1900');await a.fill('#ciSe','Дворовые истори
 ok((await a.textContent('.card:has-text("✓")')).includes('(текст)'),'EPUB imported with full text');
 ok((await a.textContent('.tiles')).includes('1'),'stats updated');
 await a.screenshot({path:'/tmp/ui_admin_catalog.png'});
-await a.click('[data-a=admTab][data-v=ai]');await a.waitForTimeout(700);
-{const t=await a.textContent('.adm');ok(t.includes('Сервис и модель')&&t.includes('Ваш план или идея')&&t.includes('Подберёт ИИ-автор')&&t.includes('ключ не добавлен'),'AI tab opens and says that no key is added');
-ok(await a.locator('[data-a=aiPlan]').isDisabled(),'plan button is disabled until a key exists');
-await a.click('[data-a=aiSet][data-k=provider][data-v=groq]');await a.waitForTimeout(200);ok((await a.inputValue('#aiModel'))===''&&(await a.getAttribute('#aiModel','placeholder'))==='llama-3.3-70b-versatile','switching the service shows its default model');
+await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(700);
+{ok((await a.textContent('.adm')).includes('Новая книга')&&(await a.textContent('.adm')).includes('Ключи сервисов')&&(await a.textContent('.adm')).includes('Groq ✕'),'AI tab opens with the job list and the key status');
+ok((await a.locator('.tabs, .admbar').first().textContent()).includes('ИИ-книга')&&!(await a.locator('.admbar').first().textContent()).includes('ИИ: быстро'),'there is one AI tab');
+await a.click('[data-a=asNew]');await a.waitForTimeout(300);
+const t=await a.textContent('.adm');ok(t.includes('Ваш план или идея')&&t.includes('Подберёт ИИ-автор'),'the form asks for a plan and leaves genre, chapters and size to the author model');
+await a.fill('.card textarea','Детектив в старой Бухаре: торговец находит письмо.');await a.click('[data-a=asCreate]');await a.waitForTimeout(700);
+ok((await a.textContent('.demo-banner')).includes('Укажите модели'),'without models and keys the job is not started and the reason is clear');
+await a.click('[data-a=aiKeys]');await a.waitForTimeout(300);ok((await a.textContent('.sheet, [role=dialog]')).includes('Ключи ИИ-сервисов'),'keys can be added from the same tab');await a.click('#scrim',{position:{x:10,y:10}});await a.waitForTimeout(300);
 await a.screenshot({path:'/tmp/ui_admin_ai.png'});}
 await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(700);
 

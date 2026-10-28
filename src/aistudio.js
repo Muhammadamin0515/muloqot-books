@@ -14,12 +14,13 @@ const words=t=>(String(t).match(/\S+/g)||[]).length;
 export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
-  Object.assign(M,{as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
-  const S={jobs:null,cfg:null,models:{},form:{lang:'ru',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
+  const S={jobs:null,cfg:null,keys:null,models:{},form:{lang:'ru',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
   const errOf=e=>{const b=e&&e.body||{};const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
-  async function loadList(){try{const [j,c]=await Promise.all([api('/api/admin/ai/jobs'),S.cfg?S.cfg:api('/api/admin/ai/jobs-config')]);S.jobs=j.jobs;S.cfg=c;if(!M.as_draft&&c.roles.draft)M.as_draft=c.roles.draft.model;if(!M.as_editor&&c.roles.editor)M.as_editor=c.roles.editor.model;if(!M.as_expert&&c.roles.expert)M.as_expert=c.roles.expert.model}catch(e){S.jobs=[];S.err='Не удалось загрузить: '+errOf(e)}refresh()}
+  async function loadKeys(){try{S.keys=await api('/api/admin/ai/config')}catch(e){S.keys={providers:{},canSetKeys:false}}}
+  async function loadList(){loadKeys().then(refresh);try{const [j,c]=await Promise.all([api('/api/admin/ai/jobs'),S.cfg?S.cfg:api('/api/admin/ai/jobs-config')]);S.jobs=j.jobs;S.cfg=c;if(!M.as_draft&&c.roles.draft)M.as_draft=c.roles.draft.model;if(!M.as_editor&&c.roles.editor)M.as_editor=c.roles.editor.model;if(!M.as_expert&&c.roles.expert)M.as_expert=c.roles.expert.model}catch(e){S.jobs=[];S.err='Не удалось загрузить: '+errOf(e)}refresh()}
   async function openJob(id){S.cur=id;S.d=null;S.err='';S.chText=null;refresh();await reloadJob();if(S.d&&['draft','running'].includes(S.d.job.status))runLoop()}
   async function reloadJob(){try{S.d=await api('/api/admin/ai/jobs/'+S.cur)}catch(e){S.err=errOf(e)}refresh()}
 
@@ -43,7 +44,7 @@ export function initAiStudio(x,adm){
   ACT.asOpen=el=>openJob(el.dataset.id);
   ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'||el.dataset.k==='auto'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
   CHG.asSel=el=>{S.form[el.dataset.k]=el.value;refresh()};
-  ACT.asModels=async el=>{const p=el.dataset.p;try{S.models[p]=(await api('/api/admin/ai/models?provider='+p)).models.map(m=>m.id);toast(`${p}: моделей в списке сервиса — ${S.models[p].length}`)}catch(e){toast(e.body&&e.body.error==='no_key'?'Сначала добавьте ключ сервиса (вкладка «ИИ: быстро» → Ключи)':'Не удалось получить список: '+errOf(e))}refresh()};
+  ACT.asModels=async el=>{const p=el.dataset.p;try{S.models[p]=(await api('/api/admin/ai/models?provider='+p)).models.map(m=>m.id);toast(`${p}: моделей в списке сервиса — ${S.models[p].length}`)}catch(e){toast(e.body&&e.body.error==='no_key'?'Сначала добавьте ключ сервиса (кнопка «Ключи сервисов» выше)':'Не удалось получить список: '+errOf(e))}refresh()};
   ACT.asCreate=async()=>{
     const f=S.form,roles={draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null};
     const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
@@ -81,6 +82,20 @@ export function initAiStudio(x,adm){
   };
   ACT.asOpenBook=()=>go('book',{id:S.d.job.bookId});
 
+
+  /* keys of the services: the owner can save them here instead of Cloudflare */
+  ACT.aiKeys=()=>openSheet(keysSheet());
+  const keysSheet=()=>`<h2>Ключи ИИ-сервисов</h2><p class="mute" style="font-size:13px;margin-bottom:12px">Ключ хранится на сервере и больше нигде не показывается. Получить бесплатно: Groq (console.groq.com), Gemini (aistudio.google.com), OpenRouter (openrouter.ai).</p>
+    ${Object.entries(S.keys.providers).map(([p,c])=>`<div class="card" style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span class="tag ${c.set?'acc':''}">${c.set?(c.source==='env'?'ключ в Cloudflare':'ключ добавлен'):'нет ключа'}</span></div>
+      ${c.source==='env'?`<p class="hint">Ключ задан секретом ${esc(c.env)} в Cloudflare.</p>`:S.keys.canSetKeys?`<div class="row" style="gap:8px;margin-top:10px"><input class="in grow" type="password" data-m="adm:ai_key_${p}" placeholder="${c.set?'Заменить ключ':'Вставьте ключ'}" autocomplete="off" aria-label="Ключ ${esc(c.name)}"><button class="btn sm" data-a="aiKeySave" data-p="${p}">Сохранить</button></div>${c.set?`<button class="btn sm ghost" style="margin-top:8px" data-a="aiKeySave" data-p="${p}" data-del="1">Удалить ключ</button>`:''}`:`<p class="hint">Ключи может менять только владелец.</p>`}</div>`).join('')}`;
+  ACT.aiKeySave=async el=>{
+    const p=el.dataset.p,key=el.dataset.del?'':(M['ai_key_'+p]||'').trim();
+    if(!el.dataset.del&&!key)return toast('Вставьте ключ');
+    try{await api('/api/admin/ai/key','POST',{provider:p,key});M['ai_key_'+p]='';await loadKeys();toast(el.dataset.del?'Ключ удалён':'Ключ сохранён');openSheet(keysSheet())}
+    catch(e){const c=e.body&&e.body.error;toast(c==='key'?'Ключ выглядит неверно':c==='superadmin'?'Ключи может менять только владелец':'Не удалось сохранить')}
+  };
+  const keyLine=()=>S.keys?`<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0">${Object.values(S.keys.providers).map(c=>`<span class="tag ${c.set?'acc':''}">${esc(c.name)} ${c.set?'✓':'✕'}</span>`).join('')}<button class="btn sm ghost" data-a="aiKeys">Ключи сервисов</button></div>`:'';
+
   /* ---------- views ---------- */
   const tag=(t,cls='')=>`<span class="tag ${cls}">${esc(t)}</span>`;
   const money=u=>u.cost>0||!u.costUnknown?`$${(u.cost||0).toFixed(4)}${u.costUnknown?' + неизвестно':''}`:'цена неизвестна';
@@ -95,7 +110,7 @@ export function initAiStudio(x,adm){
     if(!S.jobs)return loading();
     return `<button class="btn block" data-a="asNew">${ico('pen',18)} Новая книга</button>
       <p class="hint">Groq пишет черновики, Gemini строит план и проверяет текст, выбранная вами модель OpenRouter помогает со сложными главами. Публикация только после вашего подтверждения.</p>
-      ${err()}
+      ${keyLine()}${err()}
       <div class="sec"><div class="sec-h"><h2>Задания</h2></div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
   }
   function createView(){
@@ -113,7 +128,8 @@ export function initAiStudio(x,adm){
       ${f.auto?'<p class="hint">Подбор увидите в плане и сможете поправить его до начала работы.</p>':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
       <div class="lbl" style="margin:12px 0 6px">Глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
       <div class="lbl" style="margin:12px 0 6px">Слов в главе</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
-      <div class="step" style="margin-top:18px"><i>3</i><b>Модели</b></div>
+      <div class="step" style="margin-top:18px"><i>3</i><b>Ключи и модели</b></div>
+      ${keyLine()}
       <p class="hint" style="margin:0 0 8px">Названия моделей берутся только из списка самого сервиса: нажмите «Список». Неизвестная модель будет отклонена.</p>
       ${modelField('asMd','as_draft','Groq: черновики и правки','groq','id модели Groq')}
       ${modelField('asMe','as_editor','Gemini: план и редактор','gemini','id модели Gemini')}
@@ -182,5 +198,5 @@ export function initAiStudio(x,adm){
     if(S.cur){if(!S.d)return S.err?`<button class="btn sm ghost" data-a="asBack">← К заданиям</button>${err()}`:loading();return jobView(S.d)}
     return listView();
   }
-  T.push(['aistudio','ИИ-студия']);bodies.aistudio=tabStudio;loaders.aistudio=loadList;
+  T.push(['aistudio','ИИ-книга']);bodies.aistudio=tabStudio;loaders.aistudio=loadList;
 }
