@@ -95,6 +95,7 @@ await A(`/jobs/${J4}/cancel`,'POST',{});
 
 /* ---------- 3. interruption, resuming, locking ---------- */
 await reset();
+r=await A('/jobs','POST',{idea:'Любовная история на фоне Великого шёлкового пути.',lang:'ru',chapters:3,words:300});const JG=r.j.job.id;await drive(JG);ok(r.s===200&&(await detail(JG)).job.config.genre==='historical'&&(await detail(JG)).job.config.chapters===3,'without a genre the model picks it (chapters stay as asked)');await A(`/jobs/${JG}/cancel`,'POST',{});
 r=await create({title:'Возобновление'});const J5=r.j.job.id;await drive(J5);await A(`/jobs/${J5}/approve-plan`,'POST',{confirm:true});
 await drive(J5,j=>j.state.chapter===1&&j.state.phase==='draft');
 const cnt=async task=>(await mcalls()).filter(x=>x.task===task).length;const before=[await cnt('chapter_draft'),await cnt('chapter_review'),await cnt('analyze')].join();

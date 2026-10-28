@@ -88,7 +88,7 @@ export function registerOrch(d){
       if(job.config.auto){ /* the author model chose the genre, the number of chapters and their size */
         job.config.chapters=plan.chapters.length;job.config.genre=plan.genre||'novel';job.config.words=plan.wordsPerChapter||900;
         await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id);
-      }else if(job.config.revision){job.config.chapters=plan.chapters.length;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
+      }else if(job.config.genreAuto||job.config.revision){if(job.config.genreAuto)job.config.genre=plan.genre||'novel';if(job.config.revision)job.config.chapters=plan.chapters.length;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
       if(job.config.revision){delete job.config.revision;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
       if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
       job.plan=plan;job.title=plan.title;job.status='plan_ready';job.pause_reason='';
@@ -222,7 +222,7 @@ export function registerOrch(d){
     const defaults=await globalConfig(c),requested=Number.isFinite(+b.chapters)&&+b.chapters>0?Math.round(+b.chapters):requestedChapterCount(idea);
     if(requested!=null&&(requested<MIN_CH||requested>MAX_CH))return json({error:'chapter_limit',min:MIN_CH,max:MAX_CH,got:requested},400);
     const auto=requested==null&&(typeof b.auto==='boolean'?b.auto:defaults.auto);
-    const lang=b.lang==='uz'||b.lang==='ru'?b.lang:detectLang(idea),genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel';
+    const lang=b.lang==='uz'||b.lang==='ru'?b.lang:detectLang(idea),genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel',genreAuto=!['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre);
     const chapters=requested||defaults.chapters,wordsN=Math.max(300,Math.min(2000,Math.round(+b.words)||defaults.words));
     if((await get(c,`SELECT COUNT(*) n FROM ai_jobs WHERE status IN (${ACTIVE.map(()=>'?').join(',')})`,...ACTIVE)).n>=MAX_ACTIVE)return bad(429,'too_many_active');
     let m=mergeRoles(b.autoModels===true?{}:defaults.roles,b.roles||{}),picked=null;
@@ -256,7 +256,7 @@ export function registerOrch(d){
     if(!roles.draft||!roles.editor)return json({error:'no_models',detail:'нет бесплатных моделей'},422);
     if(limits.maxCostUsd!=null&&!free){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
     const used2=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]);
-    const cfg={auto,autoModels:!!picked,freeOnly:free,onFail:b.onFail==='ask'?'ask':'accept',dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
+    const cfg={auto,genreAuto:!auto&&genreAuto,autoModels:!!picked,freeOnly:free,onFail:b.onFail==='ask'?'ask':'accept',dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
     await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});await ensureWorkflow(c,id);
@@ -281,7 +281,7 @@ export function registerOrch(d){
     let np;try{np=parsePlan(J(c.body),{chapters:job.config.auto?0:job.config.chapters})}catch{return bad(422,'plan')}
     if(!np.title)np.title=job.plan.title;if(!np.genre)np.genre=job.config.genre;if(!np.wordsPerChapter)np.wordsPerChapter=job.config.words;
     job.plan={...job.plan,...np};job.title=job.plan.title;
-    if(job.config.auto){job.config.chapters=job.plan.chapters.length;job.config.genre=np.genre;job.config.words=np.wordsPerChapter}
+    if(job.config.auto){job.config.chapters=job.plan.chapters.length;job.config.genre=np.genre;job.config.words=np.wordsPerChapter}else if(job.config.genreAuto&&np.genre)job.config.genre=np.genre;
     await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=?,config=? WHERE id=?',job.title,J(job.config),id)]);return json({job:view(job),plan:job.plan});
   });
   /* "change the plan": the editor model rewrites the current plan following the administrator's request */
