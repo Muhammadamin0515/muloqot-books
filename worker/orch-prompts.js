@@ -73,14 +73,14 @@ export const analyzePrompt=(job,i,text)=>`[task:analyze]
 ${text}
 
 Верни ТОЛЬКО JSON: {"summary":"краткое содержание главы, 3-4 предложения","facts":["новый установленный факт сюжета или мира"],"characters":[{"name":"имя из списка персонажей","state":"что изменилось в герое или его положении"}]}`;
-export const finalPrompt=(job,chapters,issuesSoFar)=>`[task:final_review]
+export const finalPrompt=(job,chapters,issuesSoFar,round=0)=>`[task:final_review]
 Книга «${job.plan.title}». О чём: ${job.plan.synopsis}
 Требования к стилю: ${JSON.stringify(job.plan.style||{})}
 Все главы:
 ${chapters.map((c,i)=>`${i+1}. «${job.plan.chapters[i].title}» (${c.words} слов). Содержание: ${c.summary}\nНачало: «${c.text.slice(0,300)}…»\nКонец: «…${c.text.slice(-300)}»`).join('\n\n')}
 ${issuesSoFar.length?`\nУже найденные программные замечания:\n${issuesSoFar.map(x=>'— '+x.note).join('\n')}`:''}
 
-Оцени книгу целиком: сквозной сюжет, последовательность событий, развитие персонажей, развязку, единство стиля, противоречия между главами.
+${round>=1?`Книга уже прошла ${round} круг(а) исправлений по замечаниям. Не ищи новых стилистических недочётов и не придирайся. Отметь severity "major" ТОЛЬКО прямые фактические противоречия (имена, даты, кто жив или пропал, порядок событий), которые остались. Если таких нет, верни {"issues":[]}.\n`:''}Оцени книгу целиком: сквозной сюжет, последовательность событий, развитие персонажей, развязку, единство стиля, противоречия между главами.
 Верни ТОЛЬКО JSON: {"issues":[{"type":"continuity|character|style|logic|language|plot|other","severity":"major|minor","where":"глава или место","note":"проблема","fix":"что сделать"}]}`;
 export const annotationPrompt=job=>`[task:annotation]
 Книга «${job.plan.title}». Жанр: ${genreName(job.config.genre)}. Содержание: ${job.plan.synopsis}

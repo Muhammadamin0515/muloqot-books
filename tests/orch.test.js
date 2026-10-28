@@ -163,3 +163,12 @@ test('the fix plan groups the notes by chapter and leaves whole-book notes out',
   const fp=fixPlan(issues,14);assert.deepEqual(fp.chapters,[8,9]);assert.equal(fp.byChapter[9].length,2);assert.equal(fp.global.length,1);
   assert.deepEqual(fixPlan(issues,14,'major').chapters,[8,9]);assert.equal(fixPlan(issues,14,'major').byChapter[9].length,1);
 });
+
+import {tameFinal} from '../worker/orch-checks.js';
+test('the final check always ends: notes get softer after each repair round',()=>{
+  const raw=[{type:'continuity',severity:'major',note:'a'},{type:'style',severity:'major',note:'b'},{type:'other',severity:'minor',note:'c'},{type:'quality',severity:'minor',source:'program',note:'d'}];
+  const r0=tameFinal({raw},0);assert.equal(r0.issues.length,4);assert.equal(r0.ok,false);assert.equal(r0.limited,false);
+  const r1=tameFinal({raw},1);assert.deepEqual(r1.issues.map(x=>x.note),['a','d'],'style and other remarks are dropped after one round');assert.equal(r1.ok,false);
+  const r2=tameFinal({raw},2);assert.equal(r2.ok,true);assert.equal(r2.limited,true);assert.ok(r2.issues.every(x=>x.severity!=='major'),'after two rounds nothing blocks');assert.equal(r2.issues[0].advisory,true);
+  assert.equal(tameFinal(null,3),null);assert.equal(tameFinal({issues:[{type:'logic',severity:'major',note:'x'}]},0).ok,false,'old results without raw notes still work');
+});

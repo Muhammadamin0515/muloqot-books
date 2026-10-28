@@ -3,7 +3,7 @@
    so a job can be stopped and resumed at any time without losing chapters or repeating successful calls. */
 import {PROVIDERS,AiError,callModel,listModels} from './ai.js';
 import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,pickModels,freeOnly,ROLE_PROVIDER} from './orch-route.js';
-import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang,fixPlan} from './orch-checks.js';
+import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang,fixPlan,tameFinal} from './orch-checks.js';
 import * as PR from './orch-prompts.js';
 
 const LOCK_MS=100000,MAX_ACTIVE=10,RETRIES=1,MAX_VERSIONS=240;
@@ -144,16 +144,16 @@ export function registerOrch(d){
     const full=chapters.map((x,i)=>({title:job.plan.chapters[i].title,text:x.text,summary:x.summary||job.plan.chapters[i].summary,words:words(x.text)}));
     if(st.phase==='final'){
       const prog=checkBook(full,{count:job.config.chapters,lang:job.config.lang});
-      const r=await callRole(c,job,'final_review',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.finalPrompt(job,full,prog),max:2500,temperature:.2,json:true,parse:parseReview});
+      const r=await callRole(c,job,'final_review',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.finalPrompt(job,full,prog,st.fixRound||0),max:2500,temperature:.2,json:true,parse:parseReview});
       const flagged=(st.flagged||[]).map(x=>({type:'quality',severity:'minor',source:'program',where:`Глава ${x.chapter+1}`,note:`Глава ${x.chapter+1} принята без полного одобрения редактора${x.notes.length?': '+x.notes.join('; '):''}`,fix:'Прочитайте и при необходимости поправьте главу'}));
-      const issues=[...prog,...r.value.issues,...flagged];st.final={ok:!issues.some(x=>x.severity==='major'),issues};
+      const issues=[...prog,...r.value.issues,...flagged];st.final=tameFinal({raw:issues},st.fixRound||0);
       st.phase=job.config.roles.expert&&!job.config.noSecondOpinion?'final2':'annotation';
       await batch(c,[addCheck(c,job,-1,'final',st.final.ok,issues,r),saveJob(c,job)]);return;
     }
     if(st.phase==='final2'){
-      const r=await callRole(c,job,'final_second',{system:PR.SYS_EXPERT(job.config.lang).replace('Оцениваешь текст','Оцениваешь книгу')+' Отвечаешь только валидным JSON.',prompt:PR.finalPrompt(job,full,[]).replace('[task:final_review]','[task:final_second]'),max:2500,temperature:.2,json:true,parse:parseReview});
+      const r=await callRole(c,job,'final_second',{system:PR.SYS_EXPERT(job.config.lang).replace('Оцениваешь текст','Оцениваешь книгу')+' Отвечаешь только валидным JSON.',prompt:PR.finalPrompt(job,full,[],st.fixRound||0).replace('[task:final_review]','[task:final_second]'),max:2500,temperature:.2,json:true,parse:parseReview});
       st.finalSecond={ok:r.value.ok,issues:r.value.issues};
-      if(!r.value.ok)st.final={ok:false,issues:[...(st.final?.issues||[]),...r.value.issues.map(x=>({...x,source:'expert'}))]};
+      if(!r.value.ok||r.value.issues.length)st.final=tameFinal({raw:[...(st.final?.raw||st.final?.issues||[]),...r.value.issues.map(x=>({...x,source:'expert'}))]},st.fixRound||0);
       st.phase='annotation';
       await batch(c,[addCheck(c,job,-1,'final_expert',r.value.ok,r.value.issues,r),saveJob(c,job)]);return;
     }
@@ -244,8 +244,9 @@ export function registerOrch(d){
   A('GET','/api/admin/ai/jobs/:id',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);
     const chs=await chaptersOf(c,id),checks=await all(c,'SELECT id,chapter,kind,ok,issues,provider,model,created FROM ai_checks WHERE job_id=? ORDER BY id DESC LIMIT 40',id),calls=await all(c,'SELECT id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created FROM ai_calls WHERE job_id=? ORDER BY id DESC LIMIT 60',id);
-    const fp=job.state.final?fixPlan(job.state.final.issues||[],job.config.chapters,'all'):null;
-    return json({job:view(job),caps:limitsFrom(c.env,{}),fixPlan:fp?{chapters:fp.chapters.map(x=>x+1),global:fp.global.length}:null,plan:job.plan,chapters:chs.map(x=>({idx:x.idx,status:x.status,words:words(x.text),summary:x.summary})),checks:checks.map(x=>({...x,ok:!!x.ok,issues:P(x.issues||'[]')})),calls:calls.map(x=>({...x,estimated:!!x.estimated}))});
+    const effFinal=job.state.final?tameFinal(job.state.final,job.state.fixRound||0):null;
+    const fp=effFinal?fixPlan(effFinal.issues||[],job.config.chapters,'all'):null;
+    return json({job:{...view(job),state:{...job.state,final:effFinal}},caps:limitsFrom(c.env,{}),fixPlan:fp?{chapters:fp.chapters.map(x=>x+1),global:fp.global.length}:null,plan:job.plan,chapters:chs.map(x=>({idx:x.idx,status:x.status,words:words(x.text),summary:x.summary})),checks:checks.map(x=>({...x,ok:!!x.ok,issues:P(x.issues||'[]')})),calls:calls.map(x=>({...x,estimated:!!x.estimated}))});
   });
   A('GET','/api/admin/ai/jobs/:id/chapters/:i',async(c,id,i)=>{
     const ch=await get(c,'SELECT idx,status,text,summary FROM ai_chapters WHERE job_id=? AND idx=?',id,+i);if(!ch)return bad(404);
@@ -311,7 +312,7 @@ export function registerOrch(d){
   /* "Fix with AI": the chapters named in the final review are rewritten against its notes, checked again, and the book is reviewed once more */
   A('POST','/api/admin/ai/jobs/:id/fix-final',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='awaiting_publish')return bad(409,'not_awaiting_publish');
-    const only=c.body.only==='major'?'major':'all',fp=fixPlan(job.state.final?.issues||[],job.config.chapters,only);
+    const only=c.body.only==='major'?'major':'all',fp=fixPlan((job.state.final?tameFinal(job.state.final,job.state.fixRound||0).issues:[])||[],job.config.chapters,only);
     if(!fp.chapters.length)return json({error:'nothing_to_fix',global:fp.global.length},409);
     const [first,...rest]=fp.chapters;
     job.state={...job.state,refix:rest,refixTotal:fp.chapters.length,refixIssues:fp.byChapter,chapter:first,phase:'fix',fix:0,expert:0,issues:fp.byChapter[first],fixRound:(job.state.fixRound||0)+1};
@@ -325,7 +326,7 @@ export function registerOrch(d){
     const job=await loadJob(c,id);if(!job)return bad(404);
     if(job.status==='published')return bad(409,'already_published');if(job.status!=='awaiting_publish')return bad(409,'not_ready');
     if(c.body.confirm!==true)return bad(400,'confirm');
-    const fin=job.state.final;if(fin&&!fin.ok&&c.body.override!==true)return json({error:'final_issues',issues:fin.issues},409);
+    const fin=job.state.final?tameFinal(job.state.final,job.state.fixRound||0):null;if(fin&&!fin.ok&&c.body.override!==true)return json({error:'final_issues',issues:fin.issues},409);
     const chs=await chaptersOf(c,id);if(chs.length!==job.config.chapters||chs.some(x=>x.status!=='approved'))return bad(409,'chapters_not_approved');
     const title=String(c.body.title||job.plan.title).trim(),author=String(c.body.author||'').trim()||'Muloqot Books';
     const text=chs.map((x,k)=>`# ${job.plan.chapters[k].title}\n\n${x.text.trim()}`).join('\n\n');

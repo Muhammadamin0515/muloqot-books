@@ -109,3 +109,14 @@ export function fixPlan(issues,n,only='all'){
   }
   return{chapters:Object.keys(byChapter).map(Number).sort((a,b)=>a-b),byChapter,global};
 }
+
+/** The final-review notes as they count after repair rounds, so the check always ends:
+    after one round only substantive notes stay (style, language and "other" remarks are dropped);
+    after two rounds everything that is left is advisory and does not block publication. */
+export function tameFinal(fin,round=0){
+  if(!fin)return null;
+  let list=(fin.raw||fin.issues||[]);
+  if(round>=1)list=list.filter(i=>i.source==='program'||!['style','language','other'].includes(i.type));
+  if(round>=2)list=list.map(i=>i.severity==='major'?{...i,severity:'minor',advisory:true}:i);
+  return{...fin,issues:list,ok:!list.some(i=>i.severity==='major'),limited:round>=2,round};
+}

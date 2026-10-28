@@ -175,6 +175,17 @@ r=await create({title:'Без глав'});const JN=r.j.job.id;await drive(JN);aw
 ok((await A(`/jobs/${JN}/fix-final`,'POST',{})).j.error==='nothing_to_fix','notes about the whole book (no chapter named) cannot be fixed chapter by chapter');
 await mctl({finalFail:false});await A(`/jobs/${JN}/cancel`,'POST',{});
 
+
+/* the loop ends: a reviewer that keeps finding new problems cannot keep the book from publication forever */
+await reset();await mctl({finalFail:true,finalWhere:'главы 1, 2'});
+r=await create({title:'Не заканчивается'});const JE=r.j.job.id;await drive(JE);await A(`/jobs/${JE}/approve-plan`,'POST',{confirm:true});
+r=await drive(JE);ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.final.ok===false,'(loop) round 0: a serious note blocks');
+await A(`/jobs/${JE}/fix-final`,'POST',{});r=await drive(JE);d=await detail(JE);ok(r.j.waiting==='awaiting_publish'&&d.job.state.final.ok===false&&d.job.state.final.limited===false,'(loop) after one repair the same reviewer still objects');
+await A(`/jobs/${JE}/fix-final`,'POST',{});r=await drive(JE);d=await detail(JE);
+ok(r.j.waiting==='awaiting_publish'&&d.job.state.final.ok===true&&d.job.state.final.limited===true&&d.job.state.final.issues.every(x=>x.severity!=='major'),'(loop) after two repairs the remaining notes are advisory: the check ends');
+const pubE=await A(`/jobs/${JE}/publish`,'POST',{confirm:true});ok(pubE.s===200&&pubE.j.bookId,'(loop) the book can be published without an override');
+await mctl({finalFail:false});
+
 /* ---------- 5. budget ---------- */
 await reset();
 r=await create({title:'Бюджет',limits:{maxCalls:5}});const J7=r.j.job.id;await drive(J7);await A(`/jobs/${J7}/approve-plan`,'POST',{confirm:true});
