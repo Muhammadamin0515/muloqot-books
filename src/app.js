@@ -423,8 +423,8 @@ function libRow(b,mode){
   return `<div class="lrow"><button data-a="openBook" data-id="${b.id}" style="background:none;border:0;padding:0;width:68px;flex:none" aria-label="${esc(b.title)}">${cover(b,'sm')}</button><div class="grow"><h3>${esc(b.title)}</h3><div class="mute" style="font-size:12.5px;margin-top:2px">${esc(a.name)}</div>
   ${mode==='reading'?`<div class="bar"><i style="width:${pctOf(b.id)}%"></i></div><div class="mono mute" style="font-size:12px">${pctOf(b.id)}% · ${t('chapter')} ${pr.ch+1}/${b.chapters.length}</div>`:''}
   <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
-  ${mode==='reading'?`<button class="btn sm" data-a="read" data-id="${b.id}">${t('resume')}</button>`:''}
-  ${mode==='finished'?`<button class="btn sm ghost" data-a="read" data-id="${b.id}">${t('read_again')}</button>`:''}
+  ${mode==='reading'?`<button class="btn sm" data-a="read" data-id="${b.id}">${t('resume')}</button><button class="btn sm ghost" data-a="libRemove" data-id="${b.id}">${t('remove')}</button>`:''}
+  ${mode==='finished'?`<button class="btn sm ghost" data-a="read" data-id="${b.id}">${t('read_again')}</button><button class="btn sm ghost" data-a="libRemove" data-id="${b.id}">${t('remove')}</button>`:''}
   ${mode==='saved'?`<button class="btn sm" data-a="read" data-id="${b.id}">${t('read_now')}</button><button class="btn sm ghost" data-a="toggleSaveLib" data-id="${b.id}">${t('remove')}</button>`:''}
   ${mode==='finished'?stars(S.ratings[b.id]||Math.round(b.rating),13):''}</div></div></div>`;
 }
@@ -441,6 +441,9 @@ SCREENS.library=()=>{
   <div class="seg" style="margin:20px 0 4px" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${LB.tab===k}" class="${LB.tab===k?'on':''}" data-a="libTab" data-v="${k}" style="padding:0 6px;font-size:12px">${n}</button>`).join('')}</div>${body}</div>`;
 };
 ACT.libTab=el=>{LB.tab=el.dataset.v;refresh()};
+/* Remove a book from the library: its reading progress, the "read" mark and the saved mark go (bookmarks have their own delete). The book stays in the catalog. */
+ACT.libRemove=el=>{const b=book(el.dataset.id);if(!b)return;openSheet(`<h2>${esc(tr('Убрать «'+b.title+'» из библиотеки?','«'+b.title+'» kitobni kutubxonadan olib tashlaysizmi?'))}</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">${tr('Прогресс чтения будет удалён. Книга останется в каталоге, закладки сохранятся.','O‘qish jarayoni o‘chiriladi. Kitob katalogda qoladi, xatcho‘plar saqlanadi.')}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">${tr('Отмена','Bekor qilish')}</button><button class="btn grow" data-a="libRemoveGo" data-id="${esc(b.id)}">${t('remove')}</button></div>`)};
+ACT.libRemoveGo=el=>{const id=el.dataset.id;closeSheet();delete S.progress[id];S.finished=S.finished.filter(x=>x!==id);S.saved=S.saved.filter(x=>x!==id);S.outbox=S.outbox||{p:{},b:{}};S.outbox.p[id]='del';save();kickSync(300);toast(t('removed_lib'));refresh()};
 ACT.toggleSaveLib=el=>{S.saved=S.saved.filter(x=>x!==el.dataset.id);save();toast(t('removed_lib'));refresh()};
 ACT.delBm=el=>{S.bookmarks=S.bookmarks.filter(x=>x.id!==el.dataset.id);save();refresh()};
 ACT.openBm=el=>{const x=S.bookmarks.find(b=>b.id===el.dataset.id);openReader(x.bookId,{bm:x})};
@@ -497,6 +500,7 @@ async function syncReading(keepalive){
   if(!net.online||syncBusy)return;syncBusy=true;let failed=false;const ob=S.outbox;
   try{
     for(const id of Object.keys(ob.p)){
+      if(ob.p[id]==='del'){try{await api(`/api/progress/${id}`,'DELETE',undefined,{keepalive});delete ob.p[id]}catch(e){if(e.status===404||e.status===422)delete ob.p[id];else failed=true}continue}
       const pr=S.progress[id];if(!pr){delete ob.p[id];continue}
       const rev=(pr.rev||0)+1,ts=pr.ts;
       try{
@@ -525,6 +529,7 @@ async function syncReading(keepalive){
 function adoptReading(d){
   const sp=d.progress||{},loc=S.progress||{};S.outbox=S.outbox||{p:{},b:{}};
   for(const [id,sv] of Object.entries(sp)){
+    if(S.outbox.p[id]==='del')continue; /* removed here, the server has not been told yet */
     const l=loc[id],lrev=l?(l.rev||0):0;
     if(!l||lrev<sv.rev&&(l.ts||0)<=sv.ts||lrev===sv.rev&&sv.ts>=(l.ts||0))loc[id]=fromServer(sv);
     else{if(lrev<sv.rev)l.rev=sv.rev;S.outbox.p[id]=1}

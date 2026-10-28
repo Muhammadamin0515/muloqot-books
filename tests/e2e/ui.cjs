@@ -70,6 +70,16 @@ const id=(await api('reader2','/api/bootstrap')).j.books.find(b=>b.title==='Ст
 await p2.goto(B+'/?as=reader2&open=read_'+id);await p2.waitForTimeout(1500);
 const back=await p2.evaluate(()=>{const body=document.querySelector('#rbody'),top=body.getBoundingClientRect().top;for(const x of document.querySelectorAll('.rp'))if(x.getBoundingClientRect().bottom>top+60)return +x.dataset.i;return -1});
 ok(Math.abs(back-para)<=1,'second device resumes at the same paragraph ('+back+' vs '+para+')');
+/* removing a book from the library: confirmation, gone from the list and from the server, the book stays in the catalog */
+await p2.goto(B+'/?as=reader2&open=library');await p2.waitForTimeout(1200);
+ok(await p2.locator('.lrow [data-a=libRemove]').count()>=1,'a reading book has a "remove from library" button');
+await p2.click('.lrow [data-a=libRemove] >> nth=0');await p2.waitForTimeout(300);
+ok((await p2.textContent('#sheet')).includes('Прогресс чтения будет удалён'),'removing asks for a confirmation and says what is lost');
+await p2.click('[data-a=libRemoveGo]');await p2.waitForTimeout(1800);
+ok(await p2.locator('.lrow [data-a=libRemove]').count()===0,'the book disappeared from the library list');
+ok(Object.keys((await api('reader2','/api/bootstrap')).j.progress||{}).length===0,'its reading progress was removed on the server too');
+ok((await api('reader2','/api/bootstrap')).j.books.some(b=>b.id===id),'the book itself stays in the catalog');
+await p2.goto(B+'/?as=reader2&open=read_'+id);await p2.waitForTimeout(1500);
 /* changing the font size keeps the place (restore is by paragraph, not by scroll fraction) */
 await p2.click('[data-a=rSet]');await p2.waitForTimeout(200);for(let i=0;i<4;i++)await p2.click('[data-a=rSize][data-d="1"]');await p2.evaluate(()=>document.getElementById('scrim').click());await p2.waitForTimeout(300);
 const bigAt=await p2.evaluate(()=>{const body=document.querySelector('#rbody'),top=body.getBoundingClientRect().top;for(const x of document.querySelectorAll('.rp'))if(x.getBoundingClientRect().bottom>top+60)return +x.dataset.i;return -1});

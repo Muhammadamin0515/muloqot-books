@@ -77,6 +77,7 @@ const stale=await P('reader1',1,2);ok(stale.s===409&&stale.j.stored.rev===1&&sta
 ok((await P('reader1',2,2)).s===200&&(await api('reader1','/api/progress')).j.progress[bookId].locator.ch===2,'a newer revision replaces it');
 ok((await P('reader1',3,-1)).s===422&&(await P('reader1',0)).s===422,'invalid locator or revision is refused');
 ok(Object.keys((await api('reader2','/api/progress')).j.progress).length===0,'another user sees none of it');
+ok((await api('reader2','/api/progress/'+bookId,'DELETE')).s===200&&(await api('reader1','/api/progress')).j.progress[bookId],'deleting my progress does not touch anyone else\'s');
 ok((await P('reader2',1,0)).s===200&&(await api('reader1','/api/progress')).j.progress[bookId].locator.ch===2,'another user has their own row, mine is untouched');
 ok((await api('reader1','/api/bootstrap')).j.progress[bookId].rev===2,'bootstrap returns the progress of this user only');
 /* bookmarks */

@@ -208,6 +208,8 @@ export function registerLibrary(d){
   /* ---------- reading progress (one row per user and book, protected by a revision) ---------- */
   const progOut=r=>({ver:r.ver,locator:P(r.locator),percent:r.percent,rev:r.rev,ts:r.updated});
   route('GET','/api/progress',async c=>json({progress:Object.fromEntries((await all(c,'SELECT book_id,ver,locator,percent,rev,updated FROM reading_progress WHERE user_id=?',c.user.id)).map(r=>[r.book_id,progOut(r)]))}));
+  /* removing a book from the library forgets its reading progress */
+  route('DELETE','/api/progress/:bookId',async(c,bookId)=>{await run(c,'DELETE FROM reading_progress WHERE user_id=? AND book_id=?',c.user.id,bookId);return json({ok:true})});
   route('PUT','/api/progress/:bookId',async(c,bookId)=>{
     const row=await bookRow(c,bookId);if(!row)return bad(404);const b=P(row.data);if(!isPublished(b)&&!c.user.admin)return bad(404);
     const loc=c.body.locator||{},ch=int(loc.ch,0,5000),para=loc.para==null?null:int(loc.para,0,200000),p=typeof loc.p==='number'&&loc.p>=0&&loc.p<=1?Math.round(loc.p*10000)/10000:0;
