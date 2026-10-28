@@ -351,14 +351,17 @@ route('POST','/api/support',async c=>{
 });
 
 /* ---------- admin: overview ---------- */
+/* What readers can see as real books: published, and not the demo sample. */
+const PUB_REAL="json_extract(data,'$.publish') IS NOT 'draft' AND json_extract(data,'$.demo') IS NOT 1";
 route('GET','/api/admin/stats',async c=>{
   const now=Date.now(),D=864e5;
   const Q=[
     ['users','SELECT COUNT(*) n FROM users'],['new24','SELECT COUNT(*) n FROM users WHERE created>?',now-D],['new7','SELECT COUNT(*) n FROM users WHERE created>?',now-7*D],
     ['active24','SELECT COUNT(*) n FROM users WHERE last_seen>?',now-D],['active7','SELECT COUNT(*) n FROM users WHERE last_seen>?',now-7*D],
     ['banned','SELECT COUNT(*) n FROM users WHERE banned=1'],['blocked','SELECT COUNT(*) n FROM users WHERE blocked=1'],
-    ['books','SELECT COUNT(*) n FROM books WHERE hidden=0 OR hidden IS NULL'],['hidden','SELECT COUNT(*) n FROM books WHERE hidden=1'],
-    ['reviews','SELECT COUNT(*) n FROM reviews'],['threads','SELECT COUNT(*) n FROM threads'],['comments','SELECT COUNT(*) n FROM comments'],
+    ['books',`SELECT COUNT(*) n FROM books WHERE (hidden=0 OR hidden IS NULL) AND ${PUB_REAL}`],['hidden',`SELECT COUNT(*) n FROM books WHERE hidden=1 AND ${PUB_REAL}`],
+    ['drafts',"SELECT COUNT(*) n FROM books WHERE json_extract(data,'$.publish')='draft'"],['demoBooks',"SELECT COUNT(*) n FROM books WHERE json_extract(data,'$.demo')=1"],
+    ['reviews',`SELECT COUNT(*) n FROM reviews WHERE book_id IN (SELECT id FROM books WHERE ${PUB_REAL})`],['threads','SELECT COUNT(*) n FROM threads'],['comments','SELECT COUNT(*) n FROM comments'],
     ['pending',"SELECT COUNT(*) n FROM submissions WHERE status='moderation'"],
     ['reports',"SELECT COUNT(*) n FROM (SELECT 1 FROM reports WHERE status='open' GROUP BY kind,target)"],
     ['supportUnread','SELECT COUNT(DISTINCT user_id) n FROM support_messages WHERE from_admin=0 AND read=0'],
@@ -368,7 +371,7 @@ route('GET','/api/admin/stats',async c=>{
   await Promise.all(Q.map(async([k,sql,...a])=>{try{out[k]=(await get(c,sql,...a)).n}catch(e){out[k]=0;out.errors.push(k+': '+String(e.message||e).slice(0,120))}}));
   try{out.signups=await all(c,"SELECT date(created/1000,'unixepoch') d,COUNT(*) n FROM users WHERE created>? GROUP BY d ORDER BY d",now-14*D)}catch(e){out.errors.push('signups: '+String(e.message||e).slice(0,120))}
   try{const since=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
-    const top=await all(c,"SELECT s.book_id,SUM(s.views) v,SUM(s.reads) r,SUM(s.finishes) f,json_extract(b.data,'$.title') t FROM book_stats s JOIN books b ON b.id=s.book_id WHERE s.day>=? GROUP BY s.book_id ORDER BY v DESC LIMIT 5",since);
+    const top=await all(c,"SELECT s.book_id,SUM(s.views) v,SUM(s.reads) r,SUM(s.finishes) f,json_extract(b.data,'$.title') t FROM book_stats s JOIN books b ON b.id=s.book_id WHERE s.day>=? AND json_extract(b.data,'$.publish') IS NOT 'draft' GROUP BY s.book_id ORDER BY v DESC LIMIT 15",since);
     out.top=top.map(x=>({id:x.book_id,title:x.t,views:x.v,reads:x.r,finishes:x.f}))}catch(e){out.top=[];out.errors.push('top: '+String(e.message||e).slice(0,100))}
   return json(out);
 },true);

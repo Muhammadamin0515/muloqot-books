@@ -92,6 +92,8 @@ await api('ghost','/api/state','PUT',{finished:['b1','b2','b3','gone1'],saved:['
 {const a=(await api('ghost','/api/achievements')).j.list;const g=id=>a.find(x=>x.id===id);ok(!g('r_fin1').unlocked&&!g('r_save5').unlocked,'finished/saved ids of hidden or missing books do not unlock achievements');}
 /* share page: Telegram builds the card from these tags */
 {const bid=(await api('r1','/api/bootstrap')).j.books[0].id;const r=await fetch(B+'/b/'+bid),h=await r.text();ok(r.status===200&&/og:site_name" content="Muloqot Books"/.test(h)&&/og:title/.test(h)&&!/⭐ 0/.test(h),'share page /b/:id carries card tags without a fake rating');ok((await fetch(B+'/b/nope')).status===404,'unknown book share page is 404');}
+/* admin overview counts only real published books */
+{const st=(await api('admin','/api/admin/stats')).j,bs=(await api('admin','/api/bootstrap')).j.books;ok(st.books===bs.filter(b=>!b.demo).length&&st.demoBooks>=12&&st.errors.length===0,'admin overview: real books exclude demo and drafts ('+st.books+' real, '+st.demoBooks+' demo)')}
 /* audit */
 const au=(await api('admin','/api/admin/audit')).j.list.map(x=>x.action);ok(['import','rights','text','audio','demo'].every(a=>au.includes(a)),'rights and import actions are written to the audit log');
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

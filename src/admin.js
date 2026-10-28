@@ -60,6 +60,7 @@ export function initAdmin(x){
     return `<div class="admhead"><header class="topbar px"><button class="iconbtn" data-a="back" aria-label="Назад">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">Админ-панель</h2></div></header><div class="admbar px">${tabs}</div></div>
     <div class="px adm" style="margin-top:8px"><p class="pagehint">${HINT[A.tab]||''}</p>${body}</div>`;
   };
+  ACT.topMore=()=>{A.topAll=!A.topAll;x.refresh()};
   ACT.openAdmin=()=>{A.fresh={};A.tab='overview';go('admin')};
   ACT.admTab=el=>{A.tab=el.dataset.v;A.fresh[A.tab]=false;x.refresh();$('#screen').scrollTop=0};
 
@@ -80,9 +81,9 @@ export function initAdmin(x){
     return `${alerts?`<div class="sec"><div class="sec-h"><h2>Требует внимания</h2></div>${alerts}</div>`:''}
     <div class="sec"><div class="sec-h"><h2>Пользователи</h2></div><div class="tiles">${tile(s.users,'Всего',`+${s.new24} за сутки`)}${tile(s.active24,'Активны сегодня',`${s.active7} за неделю`)}${tile(s.new7,'Новых за неделю','')}${tile(s.reachable,'Доступны боту','получат рассылку')}</div>
       <p class="hint" style="margin-top:10px">Заблокировано: ${s.banned} · остановили бота: ${s.blocked}</p></div>
-    <div class="sec"><div class="sec-h"><h2>Контент</h2></div><div class="tiles">${tile(s.books,'Книг',s.hidden?`скрыто: ${s.hidden}`:'')}${tile(s.reviews,'Отзывов','')}${tile(s.threads,'Обсуждений','')}${tile(s.comments,'Комментариев','')}</div></div>
+    <div class="sec"><div class="sec-h"><h2>Контент</h2></div><div class="tiles">${tile(s.books,'Книг',[s.hidden?`скрыто: ${s.hidden}`:'',s.drafts?`черновиков: ${s.drafts}`:'',s.demoBooks?`тестовых: ${s.demoBooks}`:''].filter(Boolean).join(' · '))}${tile(s.reviews,'Отзывов','')}${tile(s.threads,'Обсуждений','')}${tile(s.comments,'Комментариев','')}</div></div>
     <div class="sec"><div class="sec-h"><h2>Регистрации за 14 дней</h2></div>${signupChart(s)}</div>
-    ${s.top&&s.top.length?`<div class="sec"><div class="sec-h"><h2>Популярные книги недели</h2></div><div class="list"><div class="tbl h"><span>Книга</span><span>Просм.</span><span>Читают</span><span>Дочитали</span></div>${s.top.map(b=>`<div class="tbl"><span class="tt">${esc(b.title)}</span><span>${b.views}</span><span>${b.reads}</span><span>${b.finishes}</span></div>`).join('')}</div></div>`:''}
+    ${s.top&&s.top.length?`<div class="sec"><div class="sec-h"><h2>Популярные книги недели</h2></div><div class="list toplist">${s.top.slice(0,A.topAll?15:5).map((b,i)=>`<div class="toprow"><i>${i+1}</i><div class="grow"><b>${esc(b.title)}</b><small>${b.views} просм. · ${b.reads} читают · ${b.finishes} дочитали</small></div></div>`).join('')}${s.top.length>5?`<button class="btn ghost block" data-a="topMore" style="margin-top:8px">${A.topAll?'Свернуть':'Показать ещё '+(s.top.length-5)}</button>`:''}</div></div>`:''}
     ${s.errors&&s.errors.length?`<div class="demo-banner" style="margin-top:14px;flex-direction:column"><b>Часть данных не загрузилась</b>${s.errors.map(e=>`<span>${esc(e)}</span>`).join('')}</div>`:''}`;
   }
 
