@@ -24,7 +24,7 @@ export function registerOrch(d){
   const addVersion=(c,job,chapter,kind,text,who,note='')=>stmt(c,'INSERT INTO ai_versions(job_id,chapter,kind,text,provider,model,note,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,text,who?.provider||'',who?.model||'',note,Date.now());
   const addCheck=(c,job,chapter,kind,ok,issues,who)=>stmt(c,'INSERT INTO ai_checks(job_id,chapter,kind,ok,issues,provider,model,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,ok?1:0,J(issues),who?.provider||'',who?.model||'',Date.now());
 
-  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
+  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{onFail:job.config.onFail==='accept'?'accept':'ask',freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
     state:job.state,usage:{calls:job.calls,tokensIn:job.tokens_in,tokensOut:job.tokens_out,cost:job.cost,costUnknown:!!job.cost_unknown},bookId:job.book_id||null});
 
   /* ---------- calling a role: fallbacks, retries, limits, journal ---------- */
@@ -61,6 +61,11 @@ export function registerOrch(d){
 
   /* ---------- one step ---------- */
   const lastIdx=job=>job.config.chapters-1;
+  /** Keeps the current text of a chapter that did not pass the checks and remembers why, so the final review and the administrator see it. */
+  function acceptBest(st,i,issues){
+    st.flagged=[...(st.flagged||[]).filter(x=>x.chapter!==i),{chapter:i,notes:(issues||[]).filter(x=>x.severity==='major').slice(0,3).map(x=>x.note)}];
+    st.phase='analyze';
+  }
   async function doStep(c,job){
     const lim=job.config.limits;
     if(job.status==='draft'){
@@ -79,8 +84,9 @@ export function registerOrch(d){
     const i=st.chapter,ch=chapters[i],text=ch.text;
     const prevText=i>0?chapters[i-1].text:'';
     const issuesNow=()=>st.issues||[];
-    const nextAfterFailure=()=>{ // out of fix rounds: expert once, then the administrator
+    const nextAfterFailure=()=>{ // out of fix rounds: expert once, then the administrator (or the best version is kept, when the administrator chose so)
       if(!st.expert&&job.config.roles.expert){st.phase='expert';return}
+      if(job.config.onFail==='accept'){acceptBest(st,i,issuesNow());return}
       job.status='needs_admin';st.phase='needs_admin';
     };
     switch(st.phase){
@@ -133,7 +139,8 @@ export function registerOrch(d){
     if(st.phase==='final'){
       const prog=checkBook(full,{count:job.config.chapters,lang:job.config.lang});
       const r=await callRole(c,job,'final_review',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.finalPrompt(job,full,prog),max:2500,temperature:.2,json:true,parse:parseReview});
-      const issues=[...prog,...r.value.issues];st.final={ok:!issues.some(x=>x.severity==='major'),issues};
+      const flagged=(st.flagged||[]).map(x=>({type:'quality',severity:'minor',source:'program',where:`Глава ${x.chapter+1}`,note:`Глава ${x.chapter+1} принята без полного одобрения редактора${x.notes.length?': '+x.notes.join('; '):''}`,fix:'Прочитайте и при необходимости поправьте главу'}));
+      const issues=[...prog,...r.value.issues,...flagged];st.final={ok:!issues.some(x=>x.severity==='major'),issues};
       st.phase=job.config.roles.expert&&!job.config.noSecondOpinion?'final2':'annotation';
       await batch(c,[addCheck(c,job,-1,'final',st.final.ok,issues,r),saveJob(c,job)]);return;
     }
@@ -164,6 +171,14 @@ export function registerOrch(d){
       try{await doStep(c,job)}
       catch(e){
         if(!(e instanceof Halt))throw e;
+        if(/^all_failed:final_second/.test(e.reason)&&job.state.phase==='final2'){ // the second opinion is optional: skip it when the expert is out of reach
+          job.state.finalSecond={skipped:true};job.state.phase='annotation';await batch(c,[saveJob(c,job)]);
+          return{s:200,j:{job:view(await loadJob(c,id))}};
+        }
+        if(job.config.onFail==='accept'&&/^all_failed:chapter_expert/.test(e.reason)&&job.state.phase==='expert'){ // the expert is out of reach: keep going with the best version
+          job.state.expert=1;acceptBest(job.state,job.state.chapter,job.state.issues);await batch(c,[saveJob(c,job)]);
+          return{s:200,j:{job:view(await loadJob(c,id))}};
+        }
         job.status='paused';job.pause_reason=e.reason;await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,updated=? WHERE id=?','paused',e.reason,Date.now(),id);
       }
       return{s:200,j:{job:view(await loadJob(c,id))}};
@@ -213,7 +228,7 @@ export function registerOrch(d){
     if(!roles.draft||!roles.editor)return json({error:'no_models',detail:'нет бесплатных моделей'},422);
     if(limits.maxCostUsd!=null&&!free){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
     const used2=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]);
-    const cfg={auto,autoModels:!!picked,freeOnly:free,dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
+    const cfg={auto,autoModels:!!picked,freeOnly:free,onFail:b.onFail==='ask'?'ask':'accept',dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
     await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});

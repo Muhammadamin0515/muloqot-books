@@ -15,7 +15,7 @@ export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
   Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
-  const S={jobs:null,cfg:null,keys:null,models:{},form:{paid:false,lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  const S={jobs:null,cfg:null,keys:null,models:{},form:{onFail:'accept',paid:false,lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
   const errOf=e=>{const b=e&&e.body||{};const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
@@ -48,7 +48,7 @@ export function initAiStudio(x,adm){
   ACT.asCreate=async()=>{
     const f=S.form,roles=M.as_draft.trim()&&M.as_editor.trim()?{draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null}:undefined;
     const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(f.paid&&+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
-    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,freeOnly:!f.paid,noSecondOpinion:!f.second});
+    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,freeOnly:!f.paid,onFail:f.onFail,noSecondOpinion:!f.second});
     if(r){S.cur=r.job.id;S.d=null;S.chText=null;S.showLog=false;await reloadJob();runLoop()}
   };
 
@@ -140,6 +140,9 @@ export function initAiStudio(x,adm){
       ${f.auto?'':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
       <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
       <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
+      <div class="lbl" style="margin:16px 0 6px">Если глава не проходит проверку</div>
+      ${seg('onFail',[['accept','Принять лучший вариант'],['ask','Остановиться и спросить']],f.onFail)}
+      <p class="hint">${f.onFail==='accept'?'Работа не прерывается: такая глава отмечается в итоговой проверке, и вы прочитаете её перед публикацией.':'Работа остановится на этой главе, и вы решите сами: поправить, принять или переписать.'}</p>
       <div class="lbl" style="margin:16px 0 6px">Платные модели</div>
       ${seg('paid',[['0','Не использовать'],['1','Разрешить']],f.paid?'1':'0')}
       <p class="hint">${f.paid?'Платные модели OpenRouter будут разрешены; расходы считаются по ценам из списка сервиса.':'Используются только бесплатные модели OpenRouter. Groq и Gemini бесплатны, если ключ из бесплатного аккаунта без привязанной карты.'}</p>

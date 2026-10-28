@@ -10,7 +10,7 @@ const {mock,mctl,mcalls,reset}=startMock(MOCK);
 const init=(id,name='User')=>{const p=new URLSearchParams({auth_date:String(Math.floor(Date.now()/1000)),user:JSON.stringify({id,first_name:name})});const str=[...p.entries()].map(([k,v])=>`${k}=${v}`).sort().join('\n');const sk=createHmac('sha256','WebAppData').update(TOKEN).digest();p.set('hash',createHmac('sha256',sk).update(str).digest('hex'));return p.toString()};
 const api=async(uid,path,method='GET',body)=>{const r=await fetch(B+path,{method,headers:{'content-type':'application/json',authorization:'tma '+init(uid)},body:body&&JSON.stringify(body)});return{s:r.status,j:await r.json().catch(()=>null)}};
 const A=(path,method,body)=>api(1,'/api/admin/ai'+path,method,body);
-const create=async(o={})=>(await A('/jobs','POST',{idea:'Детектив в старой Бухаре: торговец находит письмо.',lang:'ru',genre:'detective',chapters:3,words:300,freeOnly:false,...o}));
+const create=async(o={})=>(await A('/jobs','POST',{idea:'Детектив в старой Бухаре: торговец находит письмо.',lang:'ru',genre:'detective',chapters:3,words:300,freeOnly:false,onFail:'ask',...o}));
 /** steps until the job waits (plan_ready, needs_admin, paused, awaiting_publish, published) or `stopWhen` says so */
 async function drive(id,stopWhen=()=>false,max=80){let last;for(let i=0;i<max;i++){const r=await A(`/jobs/${id}/step`,'POST',{});if(r.s!==200){return{...r,stopped:'http'}}last=r.j;if(r.j.waiting||stopWhen(r.j.job))return{s:200,j:last};}return{s:200,j:last,stopped:'max'}}
 const detail=async id=>(await A('/jobs/'+id)).j;
@@ -130,6 +130,18 @@ ok(r.j.waiting==='paused'&&/^all_failed:chapter_expert:rate_limit/.test(r.j.job.
 ok((await A(`/jobs/${JX}/resume`,'POST',{skipExpert:true})).j.job.status==='needs_admin','"continue without the expert" hands the chapter to the administrator');
 ok((await A(`/jobs/${JX}/chapters/0/resolve`,'POST',{action:'accept'})).j.job.status==='running','the administrator can accept the chapter and the job goes on');
 await A(`/jobs/${JX}/cancel`,'POST',{});
+
+
+/* the default (automatic): a chapter that cannot be fixed is kept, flagged, and the job goes on */
+await reset();await mctl({reviewAlways:[1],openrouterMode:'429'});
+r=await create({title:'Автоматически',onFail:'accept'});ok(r.j.job.config.onFail==='accept','automatic mode: keep the best version');const JY=r.j.job.id;await drive(JY);await A(`/jobs/${JY}/approve-plan`,'POST',{confirm:true});
+r=await drive(JY);d=await detail(JY);
+ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.flagged.length===1&&r.j.job.state.flagged[0].chapter===0,'with an unavailable expert the job does not stop: the chapter is flagged, the optional second opinion is skipped and the book is finished');
+ok(r.j.job.state.finalSecond&&r.j.job.state.finalSecond.skipped===true,'the skipped second opinion is recorded');
+ok(d.chapters.every(c=>c.status==='approved')&&r.j.job.state.final.issues.some(x=>x.type==='quality'&&x.severity==='minor'&&/принята без полного одобрения/.test(x.note)),'the final review lists the flagged chapter (a note, not a blocker)');
+await mctl({openrouterMode:'',reviewAlways:[1]});
+await A(`/jobs/${JY}/cancel`,'POST',{});
+r=await A('/jobs','POST',{idea:'Мой план: письмо, погоня, развязка. Проверка режима по умолчанию.',lang:'ru'});ok(r.j.job.config.onFail==='accept','the default is the automatic mode');await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
 
 /* ---------- 5. budget ---------- */
 await reset();
