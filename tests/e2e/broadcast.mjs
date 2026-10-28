@@ -95,20 +95,6 @@ ok(u.length===1&&/xush kelibsiz/.test(u[0].body.text),'/start with a payload and
 await api(1,'/api/admin/welcome','POST',{text:'   '});n=since();await hook({update_id:9003,message:{message_id:1,from:{id:9103,first_name:'Пустой',language_code:'ru'},chat:{id:9103,type:'private'},text:'/start'}});
 const e=after(n).filter(c=>c.method==='sendMessage'&&c.body.chat_id===9103);
 ok(e.length===1&&e[0].body.text.trim().length>20,'an empty welcome text saved by the admin falls back to the default instead of sending nothing')}
-/* podcasts: the administrator adds shows and episodes, readers list and listen; hidden or empty shows are not visible to readers */
-{ok((await api(11,'/api/podcasts')).j.podcasts.length===0,'podcasts: none yet');
-ok((await api(11,'/api/admin/podcasts','POST',{title:'X',lang:'ru'})).s===403,'podcasts: a reader cannot create one');
-ok((await api(1,'/api/admin/podcasts','POST',{lang:'ru'})).s===422&&(await api(1,'/api/admin/podcasts','POST',{title:'X',lang:'de'})).s===422&&(await api(1,'/api/admin/podcasts','POST',{title:'X',lang:'ru',cover:'http://x/y.jpg'})).s===422,'podcasts: title, language (ru/uz) and an https cover are required');
-let pc=await api(1,'/api/admin/podcasts','POST',{title:'Разговоры о книгах',host:'Muloqot',lang:'ru',desc:'Еженедельный подкаст',cover:'https://example.com/c.jpg'});const PID=pc.j.podcast.id;
-ok(pc.s===200&&PID&&pc.j.podcast.episodes===0,'podcasts: an administrator creates a show');
-ok((await api(11,'/api/podcasts')).j.podcasts.length===0,'podcasts: a show without episodes is not listed for readers');
-ok((await api(1,`/api/admin/podcasts/${PID}/episodes`,'POST',{episodes:[{title:'Выпуск 1',url:'http://x/a.mp3'}]})).s===422,'podcasts: an episode link must be https');
-ok((await api(1,`/api/admin/podcasts/${PID}/episodes`,'POST',{episodes:[{title:'Выпуск 1',url:'https://example.com/1.mp3',duration:1800},{title:'Выпуск 2',url:'https://example.com/2.mp3',duration:900}]})).j.episodes===2,'podcasts: episodes are saved');
-let pl=(await api(12,'/api/podcasts')).j.podcasts;ok(pl.length===1&&pl[0].episodes===2&&pl[0].lang==='ru'&&pl[0].title==='Разговоры о книгах','podcasts: readers see the show with its episode count');
-let pd=(await api(12,`/api/podcasts/${PID}`)).j;ok(pd.episodes.map(e=>e.title).join()==='Выпуск 1,Выпуск 2'&&pd.episodes[0].duration===1800&&pd.podcast.desc==='Еженедельный подкаст','podcasts: the page returns the episodes in order');
-await api(1,'/api/admin/podcasts','POST',{id:PID,title:'Новое название'});pd=(await api(12,`/api/podcasts/${PID}`)).j;ok(pd.podcast.title==='Новое название'&&pd.podcast.host==='Muloqot'&&pd.podcast.cover,'podcasts: an update changes only the fields that were sent');
-await api(1,'/api/admin/podcasts','POST',{id:PID,hidden:true});ok((await api(12,'/api/podcasts')).j.podcasts.length===0&&(await api(12,`/api/podcasts/${PID}`)).s===404&&(await api(1,`/api/podcasts/${PID}`)).s===200&&(await api(1,'/api/admin/podcasts')).j.podcasts[0].hidden===true,'podcasts: a hidden show disappears for readers but stays for the administrator');
-await api(1,`/api/admin/podcasts/${PID}/delete`,'POST',{});ok((await api(1,'/api/admin/podcasts')).j.podcasts.length===0&&(await api(1,`/api/podcasts/${PID}`)).s===404,'podcasts: a show can be deleted with its episodes')}
 ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:''})).s===200&&!(await api(1,'/api/admin/ai/config')).j.providers.groq.set,'key can be deleted');}
 mock.close();
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

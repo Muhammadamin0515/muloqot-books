@@ -669,12 +669,3 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .schat{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:var(--acc);flex:none}
 
 .auhero{padding:18px}.aupt{width:64px;height:64px;border-radius:50%;overflow:hidden;flex:none;background:var(--line)}.aupt svg{width:100%;height:100%;display:block}
-
-/* podcasts */
-.pcv{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;flex:none}
-.pcv.ph{--h:30;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 45% 24%),hsl(calc(var(--h) + 40) 55% 38%))}
-.pc{align-items:center;gap:14px;text-align:left}
-.pc .pct{display:block;font-size:15px;line-height:1.25}
-.pc small{display:block;font-size:12.5px;margin-top:3px}
-.pod-cv{width:168px}
-.li.on .grow{color:var(--acc-t)}

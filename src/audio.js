@@ -19,7 +19,7 @@ export function initAudio(x){
 
   el.addEventListener('timeupdate',()=>{A.cur=el.currentTime;const r=document.getElementById('aSeek');if(r&&!r.matches(':active')){r.max=Math.floor(A.dur||0);r.value=Math.floor(A.cur)}ui('aCur',fmt(A.cur));ui('aLeft','-'+fmt(Math.max(0,A.dur-A.cur)));savePos(false)});
   el.addEventListener('loadedmetadata',()=>{A.dur=el.duration||0;A.err=false;const r=document.getElementById('aSeek');if(r)r.max=Math.floor(A.dur);ui('aLeft','-'+fmt(A.dur-A.cur))});
-  el.addEventListener('play',()=>{A.playing=true;setBtn();if(x.podPause)x.podPause()});
+  el.addEventListener('play',()=>{A.playing=true;setBtn()});
   el.addEventListener('pause',()=>{A.playing=false;setBtn();savePos(true)});
   el.addEventListener('error',()=>{A.err=true;A.playing=false;if(onAudio())refresh()});
   el.addEventListener('ended',()=>{if(A.tracks&&A.i<A.tracks.length-1)load(A.i+1,0,true);else{A.playing=false;savePos(true);setBtn()}});
@@ -77,6 +77,5 @@ export function initAudio(x){
       <div class="row" style="justify-content:center;margin-top:6px"><button class="chip" data-a="aSpeed" aria-label="${tr('Скорость','Tezlik')}"><span id="aSpd">${A.speed}×</span></button></div>
       ${A.tracks.length>1?`<div class="list" style="margin-top:22px">${A.tracks.map((x2,i)=>`<button class="li ${i===A.i?'on':''}" data-a="aTrack" data-i="${i}"><span class="grow" style="text-align:left">${i+1}. ${esc(x2.title)}</span><span class="mono mute">${x2.duration?fmt(x2.duration):''}</span></button>`).join('')}</div>`:''}</div>`;
   };
-  x.audioPause=()=>el.pause();
   x.audioState=A;
 }

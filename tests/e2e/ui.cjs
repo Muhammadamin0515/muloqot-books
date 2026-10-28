@@ -167,22 +167,6 @@ const txt2=await ca.textContent('.wz');
 ok(txt2.includes('Кабинет Новый')&&txt2.includes('Хива')&&txt2.includes('Пишу рассказы'),'the changed name, city and bio are shown in the cabinet at once');
 await ca.close()}
 
-/* F2. podcasts: the reader's section in the catalog and the administrator's screens */
-{const pr=await page('reader');await pr.goto(B+'/?as=reader&open=catalog');await pr.waitForTimeout(1000);
-await pr.click('[data-a=podOpen]');await pr.waitForTimeout(500);
-ok((await pr.textContent('#screen')).includes('Подкастов пока нет'),'podcasts: the section opens from the catalog and is empty at first');
-const pa=await page('admin');await pa.goto(B+'/?as=admin&open=profile');await pa.waitForTimeout(900);
-await pa.click('[data-a=openAdmin]');await pa.waitForTimeout(400);await pa.click('[data-a=admGroup][data-v=books]');await pa.click('[data-a=admTab][data-v=podcasts]');await pa.waitForTimeout(700);
-ok((await pa.textContent('.adm')).includes('Подкастов пока нет'),'podcasts: the administrator tab lives under Books');
-await pa.click('[data-a=pdNew]');await pa.waitForTimeout(300);await pa.fill('#pdT','Разговоры о книгах');await pa.fill('#pdH','Muloqot');await pa.click('[data-a=pdSave]');await pa.waitForTimeout(1000);
-await pa.fill('#pdE','Выпуск 1. Знакомство | https://example.com/1.mp3 | 32:10\nВыпуск 2 | https://example.com/2.mp3 | 900');await pa.click('[data-a=pdEpsGo]');await pa.waitForTimeout(900);
-ok((await pa.textContent('.adm')).includes('Разговоры о книгах')&&(await pa.textContent('.adm')).includes('выпусков: 2'),'podcasts: a show with two episodes is created in the admin panel');
-await pr.click('[data-a=back]');await pr.waitForTimeout(200);await pr.click('[data-a=podOpen]');await pr.waitForTimeout(900);
-ok((await pr.textContent('#screen')).includes('Разговоры о книгах')&&(await pr.textContent('#screen')).includes('2 вып.'),'podcasts: the reader sees the show');
-await pr.click('[data-a=podShow]');await pr.waitForTimeout(900);
-ok((await pr.locator('[data-a=pEp]').count())===2&&(await pr.textContent('#screen')).includes('32:10')&&await pr.locator('#pPlay').count()===1,'podcasts: the page lists the episodes with lengths and a player');
-await pr.screenshot({path:'/tmp/ui_podcast.png'});await pr.close();await pa.close()}
-
 /* G. no JS errors anywhere */
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,4)));
 await br.close();console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0)})();
