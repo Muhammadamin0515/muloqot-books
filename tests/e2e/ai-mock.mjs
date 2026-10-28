@@ -36,7 +36,7 @@ const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on(
     return reply(res,provider,'```json\n'+JSON.stringify({issues:bad?[{type:'continuity',severity:'major',where:'середина',note:'Герой знает то, чего ещё не видел',fix:'Убрать знание'}]:[{type:'style',severity:'minor',note:'Немного повторов'}]})+'\n```');
   }
   if(task==='analyze')return reply(res,provider,JSON.stringify({summary:`Краткое содержание главы ${ch}: Алишер идёт дальше.`,facts:[`Факт главы ${ch}`],characters:[{name:'Алишер',state:`после главы ${ch} стал решительнее`}]}));
-  if(task==='final_review')return reply(res,provider,JSON.stringify({issues:ctl.finalFail?[{type:'plot',severity:'major',where:'финал',note:'Развязка не вытекает из сюжета',fix:'Переписать финал'}]:[]}));
+  if(task==='final_review')return reply(res,provider,JSON.stringify({issues:ctl.finalFail?[{type:'plot',severity:'major',where:ctl.finalWhere||'финал',note:'Развязка не вытекает из сюжета',fix:'Переписать финал'}]:[]}));
   if(task==='final_second')return reply(res,provider,JSON.stringify({issues:[]}));
   if(task==='annotation')return reply(res,provider,'Торговец из Бухары находит письмо и отправляется по следу.');
   return reply(res,provider,'?');

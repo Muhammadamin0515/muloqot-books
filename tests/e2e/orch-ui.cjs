@@ -4,7 +4,7 @@ const B=process.env.BASE||'http://localhost:8806',MOCK=+(process.env.AI_MOCK_POR
 let fails=0;const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m);if(!c)fails++};
 const api=async(who,path,method='GET',body)=>{const r=await fetch(B+path,{method,headers:{'content-type':'application/json','x-dev-user':who},body:body&&JSON.stringify(body)});return{s:r.status,j:await r.json().catch(()=>null)}};
 (async()=>{
-const {startMock}=await import('./ai-mock.mjs');const {mock}=startMock(MOCK);
+const {startMock}=await import('./ai-mock.mjs');const {mock,mctl}=startMock(MOCK);
 for(const p of ['groq','gemini','openrouter'])await api('admin','/api/admin/ai/key','POST',{provider:p,key:'k_TESTKEY1234567890abcdef'+p});
 const br=await chromium.launch(),errs=[];
 const ctx=await br.newContext({viewport:{width:410,height:880}}),a=await ctx.newPage();
@@ -44,6 +44,21 @@ await a.fill('.card textarea','План: 1. Письмо. 2. Погоня. 3. Р
 await a.click('[data-a=asCreate]');await a.waitForSelector('[data-a=asApprove]',{timeout:20000});
 ok((await a.textContent('.adm')).includes('ИИ-автор выбрал')&&(await a.textContent('.adm')).includes('Писатель')&&(await a.textContent('.adm')).includes('draft-model'),'a plan alone is enough: the rest is chosen automatically and shown');
 await a.screenshot({path:'/tmp/ui_studio_auto.png'});
+
+/* the "fix with AI" button under the final review */
+await mctl({finalFail:true,finalWhere:'главы 1, 2'});
+await a.click('[data-a=asBack]');await a.waitForTimeout(600);await a.click('[data-a=asNew]');await a.waitForTimeout(300);
+await a.fill('.card textarea','План для проверки кнопки исправления: письмо, погоня, развязка.');await a.click('[data-a=asCreate]');
+await a.waitForSelector('[data-a=asApprove]',{timeout:20000});await a.click('[data-a=asApprove]');
+await a.waitForSelector('[data-a=asPublish]',{timeout:90000});
+ok((await a.textContent('.fixbox')).includes('Исправить с помощью ИИ')&&(await a.textContent('.fixbox')).includes('1, 2'),'under serious notes of the final review there is a "fix with AI" box naming the chapters');
+await a.screenshot({path:'/tmp/ui_studio_fix.png'});
+await mctl({finalFail:false});
+await a.click('[data-a=asFixFinal][data-only=all]');
+await a.waitForSelector('.jrun',{timeout:15000});
+ok((await a.textContent('.jrun')).includes('Исправление замечаний'),'while repairing, the screen says so');
+await a.waitForSelector('[data-a=asPublish]',{timeout:90000});
+ok(!(await a.locator('.fixbox').count())&&(await a.textContent('.adm')).includes('серьёзных замечаний нет'),'after the repair the book passes the final review again');
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,3)));
 await br.close();mock.close();
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

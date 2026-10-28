@@ -85,3 +85,27 @@ export function detectLang(text){
   const L=letters(text),cyr=L.filter(ch=>/\p{Script=Cyrillic}/u.test(ch)).length;
   return L.length&&cyr/L.length>=.3?'ru':'uz';
 }
+
+/** The chapters (0-based) an issue is about, from its "where" and note: "главы 9, 10, 11, 13", "Глава 4", "глава 14", "главы 2-4". */
+export function issueChapters(issue,n){
+  const text=`${issue.where||''} ${issue.note||''}`.slice(0,700),out=new Set();
+  for(const m of text.matchAll(/глав[аыуеой]*\s*(?:№\s*)?((?:\d+\s*(?:[-–—]\s*\d+)?\s*(?:,|и|и\s|\s)\s*)*\d+(?:\s*[-–—]\s*\d+)?)/gi)){
+    for(const part of m[1].split(/[,\sи]+/).filter(Boolean)){
+      const r=/^(\d+)\s*[-–—]\s*(\d+)$/.exec(part.replace(/\s/g,''));
+      if(r){for(let k=+r[1];k<=Math.min(+r[2],+r[1]+14);k++)if(k>=1&&k<=n)out.add(k-1)}
+      else{const k=parseInt(part,10);if(k>=1&&k<=n)out.add(k-1)}
+    }
+  }
+  return[...out].sort((a,b)=>a-b);
+}
+/** What a "fix" run would change: {chapters:[idx], byChapter:{idx:[issues]}, global:[issues without a chapter]}. only='major' keeps serious issues only. */
+export function fixPlan(issues,n,only='all'){
+  const byChapter={},global=[];
+  for(const it of issues||[]){
+    if(only==='major'&&it.severity!=='major')continue;
+    const ch=issueChapters(it,n);
+    if(!ch.length){global.push(it);continue}
+    for(const k of ch)(byChapter[k]=byChapter[k]||[]).push(it);
+  }
+  return{chapters:Object.keys(byChapter).map(Number).sort((a,b)=>a-b),byChapter,global};
+}

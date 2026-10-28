@@ -3,7 +3,7 @@
    so a job can be stopped and resumed at any time without losing chapters or repeating successful calls. */
 import {PROVIDERS,AiError,callModel,listModels} from './ai.js';
 import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,pickModels,freeOnly,ROLE_PROVIDER} from './orch-route.js';
-import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang} from './orch-checks.js';
+import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang,fixPlan} from './orch-checks.js';
 import * as PR from './orch-prompts.js';
 
 const LOCK_MS=100000,MAX_ACTIVE=10,RETRIES=1,MAX_VERSIONS=240;
@@ -107,7 +107,7 @@ export function registerOrch(d){
       case 'review':{
         const r=await callRole(c,job,'chapter_review',{chapter:i,system:PR.SYS_EDITOR(job.config.lang),prompt:PR.reviewPrompt(job,i,chapters,text),max:2000,temperature:.2,json:true,parse:parseReview});
         const rev=r.value;st.issues=rev.issues;
-        if(rev.ok)st.phase='analyze';else if(st.fix<lim.fixRounds)st.phase='fix';else nextAfterFailure();
+        if(rev.ok){st.phase='analyze';st.flagged=(st.flagged||[]).filter(x=>x.chapter!==i)}else if(st.fix<lim.fixRounds)st.phase='fix';else nextAfterFailure();
         await batch(c,[addCheck(c,job,i,'editor',rev.ok,rev.issues,r),saveJob(c,job)]);return;
       }
       case 'fix':{
@@ -128,7 +128,11 @@ export function registerOrch(d){
         p.facts=[...(p.facts||[]),...a.facts].filter((x,k,arr)=>arr.indexOf(x)===k).slice(-40);
         p.characterState={...(p.characterState||{})};for(const x of a.characters)p.characterState[x.name]=x.state;
         const lastCh=i>=lastIdx(job);
-        if(lastCh){st.phase='final';st.issues=[]}else{st.chapter=i+1;st.phase='draft';st.fix=0;st.expert=0;st.issues=[]}
+        if(st.refix){ /* repairing chapters after the final review: the next one in the queue, then the final review again */
+          const nx=st.refix.shift();
+          if(nx!==undefined){st.chapter=nx;st.phase='fix';st.fix=0;st.expert=0;st.issues=(st.refixIssues||{})[nx]||[]}
+          else{delete st.refix;delete st.refixIssues;st.phase='final';st.issues=[];st.chapter=lastIdx(job)}
+        }else if(lastCh){st.phase='final';st.issues=[]}else{st.chapter=i+1;st.phase='draft';st.fix=0;st.expert=0;st.issues=[]}
         await batch(c,[stmt(c,"UPDATE ai_chapters SET status='approved',summary=?,facts=?,updated=? WHERE job_id=? AND idx=?",a.summary,J(a.facts),Date.now(),job.id,i),saveJob(c,job)]);return;
       }
       default:throw new Halt('bad_state:'+st.phase);
@@ -240,7 +244,8 @@ export function registerOrch(d){
   A('GET','/api/admin/ai/jobs/:id',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);
     const chs=await chaptersOf(c,id),checks=await all(c,'SELECT id,chapter,kind,ok,issues,provider,model,created FROM ai_checks WHERE job_id=? ORDER BY id DESC LIMIT 40',id),calls=await all(c,'SELECT id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created FROM ai_calls WHERE job_id=? ORDER BY id DESC LIMIT 60',id);
-    return json({job:view(job),caps:limitsFrom(c.env,{}),plan:job.plan,chapters:chs.map(x=>({idx:x.idx,status:x.status,words:words(x.text),summary:x.summary})),checks:checks.map(x=>({...x,ok:!!x.ok,issues:P(x.issues||'[]')})),calls:calls.map(x=>({...x,estimated:!!x.estimated}))});
+    const fp=job.state.final?fixPlan(job.state.final.issues||[],job.config.chapters,'all'):null;
+    return json({job:view(job),caps:limitsFrom(c.env,{}),fixPlan:fp?{chapters:fp.chapters.map(x=>x+1),global:fp.global.length}:null,plan:job.plan,chapters:chs.map(x=>({idx:x.idx,status:x.status,words:words(x.text),summary:x.summary})),checks:checks.map(x=>({...x,ok:!!x.ok,issues:P(x.issues||'[]')})),calls:calls.map(x=>({...x,estimated:!!x.estimated}))});
   });
   A('GET','/api/admin/ai/jobs/:id/chapters/:i',async(c,id,i)=>{
     const ch=await get(c,'SELECT idx,status,text,summary FROM ai_chapters WHERE job_id=? AND idx=?',id,+i);if(!ch)return bad(404);
@@ -298,6 +303,18 @@ export function registerOrch(d){
     if((await get(c,'SELECT COUNT(*) n FROM ai_versions WHERE job_id=?',id)).n>=MAX_VERSIONS)return bad(429,'too_many_versions');
     job.state.final={...(job.state.final||{}),stale:true};
     await batch(c,[addVersion(c,job,idx,'admin',t,null,'правка перед публикацией'),stmt(c,'UPDATE ai_chapters SET text=?,updated=? WHERE job_id=? AND idx=?',t,Date.now(),id,idx),saveJob(c,job)]);return json({ok:true});
+  });
+
+  /* "Fix with AI": the chapters named in the final review are rewritten against its notes, checked again, and the book is reviewed once more */
+  A('POST','/api/admin/ai/jobs/:id/fix-final',async(c,id)=>{
+    const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='awaiting_publish')return bad(409,'not_awaiting_publish');
+    const only=c.body.only==='major'?'major':'all',fp=fixPlan(job.state.final?.issues||[],job.config.chapters,only);
+    if(!fp.chapters.length)return json({error:'nothing_to_fix',global:fp.global.length},409);
+    const [first,...rest]=fp.chapters;
+    job.state={...job.state,refix:rest,refixTotal:fp.chapters.length,refixIssues:fp.byChapter,chapter:first,phase:'fix',fix:0,expert:0,issues:fp.byChapter[first],fixRound:(job.state.fixRound||0)+1};
+    job.status='running';job.pause_reason='';
+    await batch(c,[saveJob(c,job)]);await audit(c,'ai_job_fix_final',id,{chapters:fp.chapters.map(x=>x+1),only});
+    return json({job:view(job),fix:{chapters:fp.chapters.map(x=>x+1),skipped:fp.global.length}});
   });
 
   /* publication: only an explicit administrator confirmation, only after every step has finished */

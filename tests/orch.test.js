@@ -145,3 +145,21 @@ test('free-only drops paid OpenRouter models and keeps the rest',()=>{
   const r2=mergeRoles(rolesFromEnv({AI_DRAFT_MODEL:'dd',AI_EDITOR_MODEL:'ee',AI_EXPERT_MODEL:'unlisted/model'}),{}).roles;
   freeOnly(r2,{});assert.equal(r2.expert,null,'a model without a known price is not treated as free');
 });
+
+import {issueChapters,fixPlan} from '../worker/orch-checks.js';
+test('chapters are read out of the final review notes',()=>{
+  const n=14;
+  assert.deepEqual(issueChapters({where:'главы 9, 10, 11, 13'},n),[8,9,10,12]);
+  assert.deepEqual(issueChapters({where:'Глава 4'},n),[3]);
+  assert.deepEqual(issueChapters({where:'глава 14'},n),[13]);
+  assert.deepEqual(issueChapters({where:'главы 2-4'},n),[1,2,3]);
+  assert.deepEqual(issueChapters({where:'главы 11, 12 и 13'},n),[10,11,12]);
+  assert.deepEqual(issueChapters({where:'Глава 3',note:'см. также главу 5'},n),[2,4]);
+  assert.deepEqual(issueChapters({where:'финал',note:'Развязка слабая'},n),[]);
+  assert.deepEqual(issueChapters({where:'глава 99'},n),[],'a chapter that does not exist is ignored');
+});
+test('the fix plan groups the notes by chapter and leaves whole-book notes out',()=>{
+  const issues=[{severity:'major',where:'главы 9, 10',note:'a'},{severity:'minor',where:'Глава 10',note:'b'},{severity:'minor',where:'весь текст',note:'c'}];
+  const fp=fixPlan(issues,14);assert.deepEqual(fp.chapters,[8,9]);assert.equal(fp.byChapter[9].length,2);assert.equal(fp.global.length,1);
+  assert.deepEqual(fixPlan(issues,14,'major').chapters,[8,9]);assert.equal(fixPlan(issues,14,'major').byChapter[9].length,1);
+});

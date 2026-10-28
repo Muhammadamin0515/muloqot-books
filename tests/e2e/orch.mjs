@@ -155,6 +155,26 @@ r=await drive(JO);d=await detail(JO);
 ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.flagged.length===1,'(old job) it goes on past the unavailable expert and finishes');
 await mctl({openrouterMode:'',reviewAlways:[]});
 
+
+/* "Fix with AI": the chapters named by the final review are rewritten, checked, and the book is reviewed again */
+await reset();await mctl({finalFail:true,finalWhere:'главы 1, 2'});
+r=await create({title:'Исправление'});const JR=r.j.job.id;await drive(JR);await A(`/jobs/${JR}/approve-plan`,'POST',{confirm:true});
+r=await drive(JR);d=await detail(JR);
+ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.final.ok===false&&d.fixPlan&&d.fixPlan.chapters.join()==='1,2','the final review blames chapters 1 and 2: the fix plan names them');
+const fixesBefore=d.calls.filter(x=>x.task==='chapter_fix').length;
+await mctl({finalFail:false});
+r=await A(`/jobs/${JR}/fix-final`,'POST',{});ok(r.s===200&&r.j.fix.chapters.join()==='1,2'&&r.j.job.status==='running','"fix" starts a run over exactly those chapters');
+r=await drive(JR);d=await detail(JR);
+ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.final.ok===true,'after the repair the book is reviewed again and passes');
+ok(d.calls.filter(x=>x.task==='chapter_fix').length===fixesBefore+2&&d.calls.filter(x=>x.task==='final_review').length===2,'two chapters were rewritten, nothing else; the final review ran once more');
+const cv=(await A(`/jobs/${JR}/chapters/0`)).j.versions.map(v=>v.kind).join();ok(cv==='draft,revision'&&(await A(`/jobs/${JR}/chapters/2`)).j.versions.map(v=>v.kind).join()==='draft','the old text stays as a version, the untouched chapter is not rewritten');
+ok((await A(`/jobs/${JR}/fix-final`,'POST',{})).j.error==='nothing_to_fix','with nothing left to fix the button has no effect');
+await A(`/jobs/${JR}/cancel`,'POST',{});
+await reset();await mctl({finalFail:true});
+r=await create({title:'Без глав'});const JN=r.j.job.id;await drive(JN);await A(`/jobs/${JN}/approve-plan`,'POST',{confirm:true});r=await drive(JN);
+ok((await A(`/jobs/${JN}/fix-final`,'POST',{})).j.error==='nothing_to_fix','notes about the whole book (no chapter named) cannot be fixed chapter by chapter');
+await mctl({finalFail:false});await A(`/jobs/${JN}/cancel`,'POST',{});
+
 /* ---------- 5. budget ---------- */
 await reset();
 r=await create({title:'Бюджет',limits:{maxCalls:5}});const J7=r.j.job.id;await drive(J7);await A(`/jobs/${J7}/approve-plan`,'POST',{confirm:true});

@@ -649,3 +649,5 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .jrun-h{display:flex;align-items:center;gap:10px}.jrun-h b{font-size:15.5px}
 .spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc);animation:sp .9s linear infinite;flex:none}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+.fixbox{margin:14px 0;padding:14px;border:1px solid var(--acc);border-radius:16px;background:color-mix(in srgb,var(--acc) 8%,transparent)}

@@ -9,7 +9,7 @@ const STATUS={draft:'Составляется план',plan_ready:'План ж�
 const PHASE={plan:'Gemini составляет план',draft:'Groq пишет черновик главы',check:'Программная проверка текста',review:'Gemini проверяет главу',fix:'Groq исправляет по замечаниям',expert:'Эксперт (OpenRouter) правит главу',analyze:'Gemini фиксирует факты и краткое содержание',final:'Gemini проверяет книгу целиком',final2:'Эксперт (OpenRouter) даёт вторую оценку',annotation:'Groq пишет аннотацию'};
 const PAUSE={manual:'Остановлено вручную','budget:calls':'Достигнут лимит вызовов','budget:tokens':'Достигнут лимит токенов','budget:cost':'Достигнут лимит стоимости'};
 const pauseText=r=>PAUSE[r]||(/^no_provider:/.test(r)?'Нет ключа или модели для задачи «'+r.split(':')[1]+'»':/^all_failed:/.test(r)?`Все провайдеры не ответили (${r.split(':')[1]}: ${r.split(':')[2]}). Подождите и продолжите`:r);
-const CREATE_ERR={no_models:'Не удалось подобрать модели автоматически: добавьте ключи Groq и Gemini (нужны оба). Не хватает: ',no_key:'Не добавлен ключ сервиса: ',roles_required:'Укажите модели для черновика (Groq) и редактора (Gemini)',unknown_model:'Этих моделей нет в списке сервиса: ',price_unknown:'Для лимита стоимости нужны цены всех моделей (список OpenRouter даёт цены, для Groq и Gemini добавьте AI_PRICES)',models_unverified:'Не удалось получить список моделей сервиса: ',too_many_active:'Слишком много незавершённых заданий: завершите или отмените старые',idea:'Опишите идею книги хотя бы одним предложением',model:'Название модели указано неверно'};
+const CREATE_ERR={nothing_to_fix:'В замечаниях не названы главы, поэтому их нельзя исправить по главам. Прочитайте книгу и поправьте нужное вручную. ',no_models:'Не удалось подобрать модели автоматически: добавьте ключи Groq и Gemini (нужны оба). Не хватает: ',no_key:'Не добавлен ключ сервиса: ',roles_required:'Укажите модели для черновика (Groq) и редактора (Gemini)',unknown_model:'Этих моделей нет в списке сервиса: ',price_unknown:'Для лимита стоимости нужны цены всех моделей (список OpenRouter даёт цены, для Groq и Gemini добавьте AI_PRICES)',models_unverified:'Не удалось получить список моделей сервиса: ',too_many_active:'Слишком много незавершённых заданий: завершите или отмените старые',idea:'Опишите идею книги хотя бы одним предложением',model:'Название модели указано неверно'};
 const words=t=>(String(t).match(/\S+/g)||[]).length;
 
 export function initAiStudio(x,adm){
@@ -74,6 +74,7 @@ export function initAiStudio(x,adm){
   ACT.asSaveEdit=async el=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${el.dataset.i}/text`,'PUT',{text:M.as_edit});if(r){toast('Правка сохранена. Итоговая проверка книги устарела');await reloadJob()}};
 
   /* ---------- publishing ---------- */
+  ACT.asFixFinal=async el=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/fix-final`,'POST',{only:el.dataset.only||'all'});if(r){toast('ИИ исправляет главы: '+r.fix.chapters.join(', '));await reloadJob();runLoop()}};
   ACT.asPublish=()=>{const fin=S.d.job.state.final;openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей, автором будет указан тот, кого вы впишете. ${fin&&!fin.ok?'<b>Итоговая проверка нашла серьёзные замечания. Вы публикуете вопреки им.</b>':''}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="asPublishGo">Опубликовать</button></div>`)};
   ACT.asPublishGo=async()=>{
     closeSheet();const d=S.d,fin=d.job.state.final,title=(M.as_pub_title||d.plan.title).trim(),author=(M.as_pub_author||'').trim()||'Muloqot Books';
@@ -204,10 +205,10 @@ export function initAiStudio(x,adm){
     let body='';
     if(running){
       const approved=d.chapters.filter(c=>c.status==='approved').length,n=Math.max(1,j.config.chapters),fin=/^final|annotation/.test(st.phase||'');
-      const frac={draft:.1,check:.3,review:.45,fix:.55,expert:.6,analyze:.8}[st.phase]||0,pct=Math.min(100,Math.round(((fin?n:approved+frac)/n)*100));
+      const frac={draft:.1,check:.3,review:.45,fix:.55,expert:.6,analyze:.8}[st.phase]||0,rf=Array.isArray(st.refix),pct=rf?Math.min(99,Math.round(((st.refixTotal-st.refix.length-1+frac)/st.refixTotal)*100)):Math.min(100,Math.round(((fin?n:approved+frac)/n)*100));
       body=`<div class="card jrun"><div class="jrun-h"><span class="spin"></span><b>${S.loop?esc(PHASE[st.phase]||PHASE[j.status==='draft'?'plan':'draft']):'Остановлено'}</b></div>
       <div class="bar" style="margin:12px 0 8px"><i style="width:${pct}%"></i></div>
-      <div class="mute" style="font-size:13px">${fin?'Все главы написаны, идёт итоговая проверка':`Глава ${(st.chapter||0)+1} из ${j.config.chapters}`}${st.fix?` · круг исправлений ${st.fix}`:''} · готово ${pct}%</div>
+      <div class="mute" style="font-size:13px">${fin?'Все главы написаны, идёт итоговая проверка':rf?`Исправление замечаний: глава ${(st.chapter||0)+1} (осталось глав: ${st.refix.length+1})`:`Глава ${(st.chapter||0)+1} из ${j.config.chapters}`}${st.fix?` · круг исправлений ${st.fix}`:''} · готово ${pct}%</div>
       <p class="hint" style="margin:10px 0 12px">Не закрывайте приложение. Если связь пропадёт, всё сохранено: вернитесь сюда и нажмите «Продолжить».</p>
       <div class="row" style="gap:10px"><button class="btn ghost grow" data-a="asPause">Пауза</button>${S.loop?'':'<button class="btn grow" data-a="asResume2">Продолжить</button>'}</div></div>`;
     }
@@ -216,6 +217,8 @@ export function initAiStudio(x,adm){
     else if(j.status==='awaiting_publish'){
       const fin=st.final||{ok:true,issues:[]};
       body=`<div class="card"><b>Книга готова</b><p class="mute" style="font-size:13.5px;margin:6px 0">Итоговая проверка: ${fin.stale?'устарела после ваших правок':fin.ok?'серьёзных замечаний нет':'<b class="bad">найдены серьёзные замечания</b>'}</p>${issueList(fin.issues)}
+        ${d.fixPlan&&d.fixPlan.chapters.length?`<div class="fixbox"><b>Исправить с помощью ИИ</b><p class="hint" style="margin:6px 0 10px">ИИ перепишет главы, названные в замечаниях (${d.fixPlan.chapters.join(', ')}), проверит их заново и ещё раз проверит всю книгу. Старый текст сохранится в версиях. Это ${d.fixPlan.chapters.length*3}–${d.fixPlan.chapters.length*5} запросов к ИИ.${d.fixPlan.global?` Замечания ко всей книге без номера главы ИИ исправить не сможет (${d.fixPlan.global}).`:''}</p>
+          <button class="btn block" data-a="asFixFinal" data-only="all">Исправить замечания</button>${(fin.issues||[]).some(i=>i.severity==='major')?'<button class="btn block ghost" style="margin-top:8px" data-a="asFixFinal" data-only="major">Исправить только серьёзные</button>':''}</div>`:''}
         <div class="field" style="margin-top:12px"><label for="asUT">Название</label><input id="asUT" class="in" data-m="adm:as_pub_title" value="${esc(M.as_pub_title||d.plan.title)}" maxlength="150"></div>
         <div class="field"><label for="asUA">Автор (имя или псевдоним)</label><input id="asUA" class="in" data-m="adm:as_pub_author" value="${esc(M.as_pub_author)}" maxlength="100"></div>
         <div class="field"><label for="asUD">Описание для каталога</label><textarea id="asUD" class="in" data-m="adm:as_pub_desc" style="min-height:90px">${esc(M.as_pub_desc||d.plan.annotation||d.plan.synopsis)}</textarea></div>
