@@ -380,9 +380,10 @@ route('GET','/api/admin/stats',async c=>{
 const bcOut=(b,votes)=>({id:b.id,text:b.text,audience:b.audience,status:b.status,total:b.total,sent:b.sent,failed:b.failed,created:b.created,kind:b.kind||'message',photo:b.photo&&b.photo.startsWith('bcm:')?'uploaded':b.photo||'',button:b.button?P(b.button):{type:'app'},options:b.options?P(b.options):[],lang:b.lang||'all',...(votes?{votes}:{})});
 const recipientsSql="id GLOB '[0-9]*' AND banned=0 AND blocked=0";
 /** Audience filter: everybody, or only readers whose app language is Russian or Uzbek. */
-const audSql=lang=>lang==='ru'||lang==='uz'?` AND json_extract(state,'$.lang')='${lang}'`:'';
+/* the app language is stored in the reader's state; readers who never chose one see Russian */
+const audSql=lang=>lang==='uz'?" AND json_extract(state,'$.lang')='uz'":lang==='ru'?" AND COALESCE(json_extract(state,'$.lang'),'ru')<>'uz'":'';
 const voteCounts=async(c,id,n)=>{const rows=await all(c,'SELECT opt,COUNT(*) n FROM survey_votes WHERE broadcast_id=? GROUP BY opt',id);return Array.from({length:n},(_,i)=>rows.find(r=>r.opt===i)?.n||0)};
-route('GET','/api/admin/broadcasts',async c=>json({list:await Promise.all((await all(c,'SELECT * FROM broadcasts ORDER BY created DESC LIMIT 20')).map(async b=>bcOut(b,b.kind==='poll'?await voteCounts(c,b.id,(b.options?P(b.options):[]).length):null))),bot:!!c.env.BOT_TOKEN}),true);
+route('GET','/api/admin/broadcasts',async c=>json({list:await Promise.all((await all(c,'SELECT * FROM broadcasts ORDER BY created DESC LIMIT 20')).map(async b=>bcOut(b,b.kind==='poll'?await voteCounts(c,b.id,(b.options?P(b.options):[]).length):null))),bot:!!c.env.BOT_TOKEN,reach:{all:(await get(c,`SELECT COUNT(*) n FROM users WHERE ${recipientsSql}`)).n,ru:(await get(c,`SELECT COUNT(*) n FROM users WHERE ${recipientsSql}${audSql('ru')}`)).n,uz:(await get(c,`SELECT COUNT(*) n FROM users WHERE ${recipientsSql}${audSql('uz')}`)).n}}),true);
 route('POST','/api/admin/broadcasts',async c=>{
   if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
   const kind=c.body.kind==='poll'?'poll':'message';

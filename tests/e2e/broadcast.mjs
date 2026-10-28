@@ -14,6 +14,7 @@ const send=async(body,who=1)=>{const n=since();const c=await api(who,'/api/admin
 /* readers: 11 ru, 12 uz, 13 ru; admin 1 */
 for(const [id,lang] of [[11,'ru'],[12,'uz'],[13,'ru'],[1,'ru']]){await api(id,'/api/bootstrap');await api(id,'/api/state','PUT',{lang})}
 ok((await api(1,'/api/admin/stats')).s===200,'admin (ADMIN_IDS) is recognised');
+{const bl=(await api(1,'/api/admin/broadcasts')).j;ok(bl.reach&&bl.reach.all>=bl.reach.ru&&bl.reach.ru+bl.reach.uz===bl.reach.all,'audience counts: ru + uz = all');}
 ok((await api(11,'/api/admin/broadcasts','POST',{text:'hello there',audience:'test'})).s===403,'a reader cannot broadcast');
 
 let r=await send({text:'Новая подборка в каталоге',audience:'all'});

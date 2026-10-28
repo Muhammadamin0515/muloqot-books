@@ -99,8 +99,10 @@ export function initAdmin(x){
   }
   function tabBroadcast(){
     if(!A.bc)return loading();
-    const r=A.run,reach=A.stats?A.stats.reachable:'…',poll=M.bc_kind==='poll';
+    const r=A.run,poll=M.bc_kind==='poll';
     const prog=r?`<div class="card" style="margin-bottom:14px"><b>Идёт рассылка…</b><div class="bar" style="margin:12px 0 8px"><i id="bcBar" style="width:${r.total?Math.round((r.sent+r.failed)/r.total*100):0}%"></i></div><span id="bcTxt" class="mute" style="font-size:13px">Отправлено ${r.sent} из ${r.total}, ошибок ${r.failed}</span></div>`:'';
+    const tiles=(key,list)=>`<div class="opts">${list.map(([v,n,d])=>`<button class="opt ${M[key]===v?'on':''}" data-a="bcSet" data-k="${key}" data-v="${v}"><b>${n}</b><span>${d}</span></button>`).join('')}</div>`;
+    const rc=A.bc.reach||{all:0,ru:0,uz:0},aud=M.bc_lang==='ru'?rc.ru:M.bc_lang==='uz'?rc.uz:rc.all;
     const seg=(key,list)=>`<div class="seg">${list.map(([v,n])=>`<button class="${M[key]===v?'on':''}" data-a="bcSet" data-k="${key}" data-v="${v}">${n}</button>`).join('')}</div>`;
     const btnFields=poll?'':`<div class="step" style="margin-top:18px"><i>4</i><b>Кнопка под сообщением</b></div>
       <select class="in" data-chg="bcSel" data-k="bc_btn" aria-label="Кнопка">${[['app','Открыть приложение'],['link','Своя ссылка (реклама, сайт, канал)'],['book','Открыть конкретную книгу'],['none','Без кнопки']].map(([v,n])=>`<option value="${v}" ${M.bc_btn===v?'selected':''}>${n}</option>`).join('')}</select>
@@ -109,7 +111,7 @@ export function initAdmin(x){
     return `${A.bc.bot?'':'<div class="demo-banner">Бот не подключён: добавьте секрет BOT_TOKEN в настройках Worker, и рассылка заработает.</div>'}${prog}
     <div class="card">
       <div class="step"><i>1</i><b>Что отправляем</b></div>
-      ${seg('bc_kind',[['message','Сообщение'],['poll','Опрос (кнопки-ответы)']])}
+      ${tiles('bc_kind',[['message','Сообщение','Новость, акция или реклама. Можно добавить картинку и кнопку.'],['poll','Опрос','Вопрос и кнопки с ответами. Результаты видны ниже, в истории.']])}
       <div class="step" style="margin-top:18px"><i>2</i><b>${poll?'Вопрос':'Текст сообщения'}</b></div>
       <textarea id="bcText" class="in" data-m="adm:bcText" maxlength="${M.bc_photo||M.bc_photoData?1000:3500}" placeholder="${poll?'Например: Какие книги вам добавить?':'Что хотите сообщить читателям?'}" style="min-height:120px">${esc(M.bcText)}</textarea>
       <div class="counter"><span id="bcCount">${M.bcText.length} / ${M.bc_photo||M.bc_photoData?1000:3500}</span></div>
@@ -119,16 +121,16 @@ export function initAdmin(x){
         :`<label class="drop" for="bcFile">${ico('upload',24)}<div class="grow"><b>Загрузить с телефона</b><div class="mute" style="font-size:12.5px;font-weight:500">Любое фото: размер подгоним сами</div></div></label><input id="bcFile" type="file" accept="image/*" data-chg="bcPhotoFile" style="position:absolute;opacity:0;width:1px;height:1px">
         <input id="bcPhoto" class="in" data-m="adm:bc_photo" value="${esc(M.bc_photo)}" placeholder="или ссылка https://…/banner.jpg" autocomplete="off" style="margin-top:10px">`}
         <p class="hint">С картинкой текст до 1000 знаков.</p></div>
-      <div class="step" style="margin-top:18px"><i>3</i><b>Кому</b></div>
-      ${seg('bc_lang',[['all','Всем'],['ru','Русский язык'],['uz','Узбекский язык']])}
+      <div class="step" style="margin-top:18px"><i>3</i><b>Кому отправить</b></div>
+      ${tiles('bc_lang',[['all','Всем читателям',`${rc.all} чел.`],['ru','Тем, у кого приложение на русском',`${rc.ru} чел.`],['uz','Тем, у кого приложение на узбекском',`${rc.uz} чел.`]])}
+      <p class="hint">Язык берётся из настроек приложения читателя. Получат только те, кто запускал бота и не заблокировал его.</p>
       ${btnFields}
-      <div class="lbl" style="margin:18px 0 8px">Так увидит читатель</div>
+      <div class="step" style="margin-top:18px"><i>${poll?4:5}</i><b>Так увидит читатель</b></div>
       <div class="bubble them" id="bcPrev" style="max-width:100%">${bcPreview()}</div>
-      <div class="step" style="margin-top:18px"><i>${poll?4:5}</i><b>Проверьте на себе</b></div>
-      <button class="btn block ghost" data-a="bcTest" ${r?'disabled':''}>Отправить тест мне</button>
-      <div class="step" style="margin-top:18px"><i>${poll?5:6}</i><b>Отправьте</b></div>
-      <button class="btn block" data-a="bcAll" ${r?'disabled':''}>Отправить (${M.bc_lang==='all'?reach:'выбранной аудитории'})</button>
-      <p class="hint">Получат те, кто запускал бота и не блокировал его.${poll?' Ответы подсчитываются: результат виден в истории рассылок.':''}</p>
+      <div class="step" style="margin-top:18px"><i>${poll?5:6}</i><b>Отправка</b></div>
+      <p class="hint" style="margin:0 0 10px">Сначала отправьте тест себе: сообщение придёт только вам. Если всё хорошо, отправляйте читателям.</p>
+      <button class="btn block ghost" data-a="bcTest" ${r?'disabled':''}>Тест: отправить только мне</button>
+      <button class="btn block" style="margin-top:10px" data-a="bcAll" ${r?'disabled':''}>Отправить ${aud} ${aud%10===1&&aud%100!==11?'читателю':'читателям'}</button>${poll?'<p class="hint">Ответы подсчитываются: результат виден в истории рассылок.</p>':''}
     </div>
     <div class="sec"><div class="sec-h"><h2>История рассылок</h2></div>${A.bc.list.length?`<div class="list">${A.bc.list.map(b=>`<div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><div class="row" style="width:100%;justify-content:space-between"><b style="font-size:13px">${hm(b.created)}</b><span class="status ${b.status==='done'?'m':''}">${{done:'Отправлена',running:'Идёт',cancelled:'Отменена'}[b.status]||b.status}${b.audience==='test'?' · тест':''}${b.kind==='poll'?' · опрос':''}</span></div><span style="font-size:13.5px">${esc(b.text.slice(0,140))}</span><span class="mute" style="font-size:12px">${b.sent} доставлено · ${b.failed} ошибок${b.lang&&b.lang!=='all'?' · '+b.lang.toUpperCase():''}</span>
         ${b.kind==='poll'&&b.votes?`<div style="width:100%;margin-top:6px">${b.options.map((o,i)=>{const tot=b.votes.reduce((n,y)=>n+y,0)||1;return `<div class="vrow"><span>${esc(o)}</span><div class="bar"><i style="width:${Math.round(b.votes[i]/tot*100)}%"></i></div><b>${b.votes[i]}</b></div>`}).join('')}<span class="mute" style="font-size:12px">Всего ответов: ${b.votes.reduce((n,y)=>n+y,0)}</span></div>`:''}</div>`).join('')}</div>`:'<p class="mute">Рассылок пока не было</p>'}</div>`;
@@ -155,7 +157,7 @@ export function initAdmin(x){
     if(M.bc_kind==='message'&&M.bc_btn==='book'&&!M.bc_book){toast(BCERR.book);return false}return true};
   const bcStart=audience=>{if(!bcValid())return;closeSheet();api('/api/admin/broadcasts','POST',bcBody(audience)).then(r=>runBc(r.broadcast)).catch(e=>toast(BCERR[e.detail]||'Не удалось отправить'))};
   ACT.bcTest=()=>bcStart('test');
-  ACT.bcAll=()=>{if(!bcValid())return;confirmSheet(`Отправить ${M.bc_lang==='all'&&A.stats?A.stats.reachable+' пользователям':'выбранной аудитории'}?`,'bcAllGo','','Отправить')};
+  ACT.bcAll=()=>{if(!bcValid())return;confirmSheet(`Отправить ${(A.bc.reach||{})[M.bc_lang]} читателям (${M.bc_lang==='all'?'все':M.bc_lang==='ru'?'русский язык':'узбекский язык'})? Отменить будет нельзя.`,'bcAllGo','','Отправить')};
   ACT.bcAllGo=()=>bcStart('all');
 
   /* ---------- moderation ---------- */
