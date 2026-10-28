@@ -252,18 +252,19 @@ const topicForm=bid=>`<form class="replybox" data-f="topicNew" data-book="${bid|
 const RIGHTS_LABEL={public_domain:['Общественное достояние','Ommaviy mulk'],author:['Публикует автор','Muallif nashr etgan'],licensed:['По лицензии','Litsenziya asosida'],permission:['С разрешения правообладателя','Huquq egasi ruxsati bilan'],demo:['Тестовые данные','Test ma’lumotlari'],unverified:['Права не подтверждены','Huquqlar tasdiqlanmagan']};
 const rightsText=b=>{const r=b.rights;if(!r)return '';const l=RIGHTS_LABEL[r.status];return l?tr(l[0],l[1]):''};
 /** Facts about the work, only the ones that are known. */
+/* ~1800 characters per "page" is about 1.5 minutes of reading. */
+const readTime=p=>{const m=Math.round(p*1.5);return m<60?m+' '+tr('мин','daq'):Math.floor(m/60)+' '+tr('ч','soat')+(m%60?' '+m%60+' '+tr('мин','daq'):'')};
 function detailRows(b){
   const r=[[t('d_lang'),t(b.lang)],[t('d_genre'),gl(b.genre)]];
   if(b.series)r.push([tr('Серия','Seriya'),esc(b.series)+(b.seriesNo?` · №${b.seriesNo}`:'')]);
   if(b.originalTitle)r.push([tr('Оригинал','Asl nomi'),esc(b.originalTitle)]);
   if(b.translator)r.push([tr('Перевод','Tarjimon'),esc(b.translator)]);
-  if(b.pages>0)r.push([t('d_pages'),'≈'+b.pages]);
+  if(b.pages>=3)r.push([tr('Время чтения','O‘qish vaqti'),'≈'+readTime(b.pages)]);
   if(b.year)r.push([t('d_year'),b.year]);
   if(b.nch>1)r.push([t('d_chapters'),b.nch]);
   if(b.publisher)r.push([tr('Издатель','Nashriyot'),esc(b.publisher)]);
   if(b.isbn)r.push(['ISBN',esc(b.isbn)]);
   r.push([tr('Формат','Format'),[b.fullText?tr('Текст','Matn'):tr('Только описание','Faqat tavsif'),b.audio?tr('Аудио','Audio'):''].filter(Boolean).join(' + ')]);
-  if(b.rights&&b.rights.status!=='demo'){r.push([tr('Права','Huquqlar'),esc(rightsText(b))+(b.rights.license?` (${esc(b.rights.license)})`:'')]);if(b.rights.source)r.push([tr('Источник','Manba'),esc(b.rights.source)])}
   return r;
 }
 const availability=b=>b.fullText!==false?'':`<section class="px sec" style="margin-top:18px"><div class="card avail">${ico('info',20)}<div><b>${tr('Полный текст недоступен','To‘liq matn mavjud emas')}</b><p>${tr('Мы публикуем книги целиком только при подтверждённых правах на распространение. Здесь пока только описание. Книгу можно добавить в библиотеку, чтобы не потерять.','Kitoblarni faqat tarqatish huquqi tasdiqlangan bo‘lsagina to‘liq e’lon qilamiz. Hozircha faqat tavsif. Kitobni kutubxonaga qo‘shib qo‘yishingiz mumkin.')}</p></div></div></section>`;

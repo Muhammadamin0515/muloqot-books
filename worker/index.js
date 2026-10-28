@@ -807,7 +807,7 @@ const clipWords=(t,n)=>{t=String(t||'').replace(/\s+/g,' ').trim();if(t.length<=
     With a JPEG cover it is a photo with a caption; otherwise a formatted text card. */
 function bookCard(b,{base,link,lang}){
   const uz=lang==='uz',gi=uz?1:0,rt=cardRating(b),genre=(GENRE_NAME[b.g]||[])[gi]||'';
-  const meta=[genre,String(b.lg||'').toUpperCase(),b.pg>0?`≈${b.pg} ${uz?'bet':'стр.'}`:''].filter(Boolean).join(' · ');
+  const meta=[genre,String(b.lg||'').toUpperCase(),b.pg>=3?`≈${Math.round(b.pg*1.5)} ${uz?'daq':'мин'}`:''].filter(Boolean).join(' · ');
   const byline=`${b.an?`<i>${hesc(b.an)}</i>`:''}${b.y?`${b.an?'  ·  ':''}${b.y}`:''}`;
   const lines=[`📖 <b>${hesc(b.t)}</b>`,byline,b.se?`${uz?'Seriya':'Серия'}: ${hesc(b.se)}${b.sn?` · №${b.sn}`:''}`:''].filter(Boolean);
   let text=lines.join('\n');
