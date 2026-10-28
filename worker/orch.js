@@ -27,7 +27,7 @@ export function registerOrch(d){
   const loadSettings=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='aiSettings'");let v={};try{v=r?P(r.value):{}}catch{}return v&&typeof v==='object'?v:{}};
   const globalConfig=async c=>{
     const saved=await loadSettings(c),base=rolesFromEnv(c.env),merged=saved.roles?mergeRoles(base,saved.roles):{roles:base};
-    return{auto:saved.auto===true,chapters:Math.max(MIN_CH,Math.min(MAX_CH,Math.round(+saved.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+saved.words)||900)),freeOnly:saved.freeOnly!==false,onFail:saved.onFail==='ask'?'ask':'accept',roles:merged.roles||base,limits:limitsFrom(c.env,saved.limits||{})};
+    return{auto:saved.auto!==false,chapters:Math.max(MIN_CH,Math.min(MAX_CH,Math.round(+saved.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+saved.words)||900)),freeOnly:saved.freeOnly!==false,onFail:saved.onFail==='ask'?'ask':'accept',roles:merged.roles||base,limits:limitsFrom(c.env,saved.limits||{})};
   };
   const ensureWorkflow=async(c,id)=>{
     if(!c.env.AI_BOOK_WORKFLOW)return false;const row=await get(c,'SELECT workflow_id,workflow_status,status FROM ai_jobs WHERE id=?',id);
