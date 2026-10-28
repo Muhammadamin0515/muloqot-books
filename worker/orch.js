@@ -30,7 +30,7 @@ export function registerOrch(d){
     return{auto:saved.auto!==false,chapters:Math.max(MIN_CH,Math.min(MAX_CH,Math.round(+saved.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+saved.words)||900)),freeOnly:saved.freeOnly!==false,onFail:saved.onFail==='ask'?'ask':'accept',roles:merged.roles||base,limits:limitsFrom(c.env,saved.limits||{})};
   };
   const ensureWorkflow=async(c,id)=>{
-    if(!c.env.AI_BOOK_WORKFLOW)return false;const row=await get(c,'SELECT workflow_id,workflow_status,status FROM ai_jobs WHERE id=?',id);
+    if(!c.env.AI_BOOK_WORKFLOW||c.env.AI_WORKFLOW_OFF)return false;const row=await get(c,'SELECT workflow_id,workflow_status,status FROM ai_jobs WHERE id=?',id);
     if(!row||['published','cancelled','awaiting_publish'].includes(row.status))return false;if(row.workflow_id&&['queued','running','waiting'].includes(row.workflow_status))return true;
     try{const instance=await c.env.AI_BOOK_WORKFLOW.create({id:id+'-'+id8(),params:{jobId:id}});await run(c,"UPDATE ai_jobs SET workflow_id=?,workflow_status='queued' WHERE id=?",instance.id,id);return true}
     catch(error){await run(c,"UPDATE ai_jobs SET workflow_status='error' WHERE id=?",id);console.error(JSON.stringify({event:'ai_workflow_start_error',jobId:id,message:String(error?.message||error).slice(0,160)}));return false}
