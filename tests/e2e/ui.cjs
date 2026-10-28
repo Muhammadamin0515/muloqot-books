@@ -167,6 +167,12 @@ const txt2=await ca.textContent('.wz');
 ok(txt2.includes('Кабинет Новый')&&txt2.includes('Хива')&&txt2.includes('Пишу рассказы'),'the changed name, city and bio are shown in the cabinet at once');
 await ca.close()}
 
+/* F3. the admin navigation has no duplicate tabs in any group */
+{const pa=await page('admin');await pa.goto(B+'/?as=admin&open=profile');await pa.waitForTimeout(900);await pa.click('[data-a=openAdmin]');await pa.waitForTimeout(500);
+const groups=await pa.locator('[data-a=admGroup]').evaluateAll(l=>l.map(n=>n.dataset.v));let dup=[];
+for(const g of groups){await pa.click(`[data-a=admGroup][data-v=${g}]`);await pa.waitForTimeout(250);const names=(await pa.locator('[data-a=admTab]').allTextContents()).map(s=>s.replace(/\s+/g,' ').trim());if(new Set(names).size!==names.length)dup.push(g+': '+names.join(' | '))}
+ok(groups.length===5&&dup.length===0,'admin navigation: no tab appears twice in any group '+JSON.stringify(dup));await pa.close()}
+
 /* G. no JS errors anywhere */
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,4)));
 await br.close();console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0)})();
