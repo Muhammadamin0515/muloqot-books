@@ -15,14 +15,14 @@ trap stop EXIT
 fresh(){
   stop; rm -rf .wrangler/state; EXTRA="${1:-}"
   npx wrangler d1 migrations apply muloqot-books --local >/dev/null
-  setsid npx wrangler dev --port "$PORT" --var IMPORT_TOKEN:"$IMPORT_TOKEN" $EXTRA >/tmp/wrangler-e2e.log 2>&1 &
+  setsid npx wrangler dev --port "$PORT" --var IMPORT_TOKEN:"$IMPORT_TOKEN" --var AI_KEYS_ENCRYPTION_KEY:e2e-master-key-0123456789abcdef $EXTRA >/tmp/wrangler-e2e.log 2>&1 &
   WR=$!
   for i in $(seq 1 40); do curl -sf "localhost:$PORT/api/health" >/dev/null && return; sleep 1; done
   echo "wrangler did not start"; exit 1
 }
 fresh; BASE="http://localhost:$PORT" node tests/e2e/api.mjs
 fresh "--var BOT_TOKEN:123456:FAKETOKEN --var TG_API:http://localhost:9999 --var ADMIN_IDS:1 --var WEBAPP_URL:http://localhost:$PORT --var AI_BASE:http://localhost:9999/ai"; BASE="http://localhost:$PORT" node tests/e2e/broadcast.mjs
-fresh "--var BOT_TOKEN:123456:FAKETOKEN --var ADMIN_IDS:1 --var AI_BASE:http://localhost:9997 --var AI_DRAFT_MODEL:draft-model --var AI_EDITOR_MODEL:editor-model --var AI_EXPERT_MODEL:expert-model --var AI_DRAFT_FALLBACK:gemini:editor-model --var AI_MAX_CALLS:60"; BASE="http://localhost:$PORT" node tests/e2e/orch.mjs
+fresh "--var BOT_TOKEN:123456:FAKETOKEN --var ADMIN_IDS:1 --var AI_BASE:http://localhost:9997 --var AI_DRAFT_MODEL:draft-model --var AI_EDITOR_MODEL:editor-model --var AI_EXPERT_MODEL:expert-model --var AI_DRAFT_FALLBACK:gemini:editor-model --var AI_MAX_CALLS:60 --var AI_WORKFLOW_OFF:1"; BASE="http://localhost:$PORT" node tests/e2e/orch.mjs
 fresh "--var AI_BASE:http://localhost:9997 --var AI_DRAFT_MODEL:draft-model --var AI_EDITOR_MODEL:editor-model --var AI_EXPERT_MODEL:expert-model --var AI_DRAFT_FALLBACK:gemini:editor-model --var AI_MAX_CALLS:60"; BASE="http://localhost:$PORT" node tests/e2e/orch-ui.cjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit.mjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit-ui.cjs

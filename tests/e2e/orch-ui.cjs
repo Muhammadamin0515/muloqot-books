@@ -10,7 +10,7 @@ const br=await chromium.launch(),errs=[];
 const ctx=await br.newContext({viewport:{width:410,height:880}}),a=await ctx.newPage();
 a.on('pageerror',e=>errs.push(e.message));a.on('console',m=>{if(m.type()==='error'&&!/Failed to load resource/.test(m.text()))errs.push(m.text())});
 await a.goto(B+'/?as=admin&open=profile');await a.waitForTimeout(900);
-await a.click('[data-a=openAdmin]');await a.waitForTimeout(400);await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(900);
+await a.click('[data-a=openAdmin]');await a.waitForTimeout(400);await a.click('[data-a=admGroup][data-v=books]');await a.click('[data-a=admTab][data-v=aistudio]');await a.waitForTimeout(900);
 ok((await a.textContent('.adm')).includes('Новая книга'),'AI studio opens with the job list');
 await a.click('[data-a=asNew]');await a.waitForTimeout(300);await a.screenshot({path:'/tmp/ui_studio_form.png'});await a.click('summary:has-text("Дополнительно")');await a.waitForTimeout(200);
 ok((await a.inputValue('#asMd'))==='draft-model'&&(await a.inputValue('#asMe'))==='editor-model'&&(await a.inputValue('#asMx'))==='expert-model','model fields are prefilled from the server variables');

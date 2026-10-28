@@ -73,7 +73,7 @@ ok((await api(11,'/api/admin/ai/config')).s===403,'AI config is for admins only'
 ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:'short'})).j.error==='key','malformed key is refused');
 const KEY='gsk_TESTKEY1234567890abcdef';
 ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:KEY})).s===200,'key is saved');
-const cfg1=await api(1,'/api/admin/ai/config');ok(cfg1.j.providers.groq.set&&cfg1.j.providers.groq.source==='db'&&!JSON.stringify(cfg1.j).includes(KEY),'config reports the key as set but never returns it');
+const cfg1=await api(1,'/api/admin/ai/config');ok(cfg1.j.providers.groq.set&&cfg1.j.providers.groq.source==='encrypted_db'&&!JSON.stringify(cfg1.j).includes(KEY),'config reports the key as set but never returns it');
 const g=await api(1,'/api/admin/ai/generate','POST',{provider:'groq',model:'llama-3.3-70b-versatile',system:'S',prompt:'PP',max:500});
 const gc=aiCalls.at(-1);ok(g.s===200&&g.j.text.includes('Он вышел')&&gc.url==='/ai/groq/chat/completions'&&gc.auth==='Bearer '+KEY&&gc.body.model==='llama-3.3-70b-versatile'&&gc.body.messages[0].content==='S','groq request is relayed with the saved key');
 await api(1,'/api/admin/ai/key','POST',{provider:'gemini',key:KEY+'g'});

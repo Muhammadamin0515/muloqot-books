@@ -23,6 +23,7 @@ export const IC={
  pen:'<path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/>',
  file:'<path d="M7 3h7l4 4v14H7zM14 3v4h4"/>',
  trash:'<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>',
+ settings:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
  quote:'<path d="M7 17c-1.7 0-3-1.2-3-3 0-3.5 2-6 5-7M16 17c-1.7 0-3-1.2-3-3 0-3.5 2-6 5-7"/>',
  spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>',

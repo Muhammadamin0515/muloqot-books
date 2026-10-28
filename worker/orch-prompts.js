@@ -23,17 +23,28 @@ export function context(job,i,chapters){
     `Текущая глава ${i+1} «${p.chapters[i].title}»: ${p.chapters[i].summary}`
   ].filter(Boolean).join('\n\n');
 }
+const GENRE_LIST='novel — роман, detective — детектив, historical — исторический, adventure — приключения, drama — драма, stories — рассказы, modern — современная проза, prose — проза';
 export const planPrompt=job=>{
   const c=job.config,auto=!!c.auto;
   return `[task:plan]
 Спроектируй книгу.
-${auto?`Ниже план или идея заказчика. Сам выбери жанр (из списка: novel — роман, detective — детектив, historical — исторический, adventure — приключения, drama — драма, stories — рассказы, modern — современная проза, prose — проза), число глав (от 3 до 12, по смыслу и объёму материала), если заказчик явно не указал число. Если заказчик назвал число глав, создай ровно столько глав (от 2 до 60). Объём одной главы — от 600 до 1500 слов. Объём одной главы в словах (от 600 до 1500), чтобы книга получилась цельной. Сохрани названия и разбивку, если заказчик уже указал их в плане.`:`Жанр: ${genreName(c.genre)}. Глав ровно ${c.chapters}.`}
+${auto?`Ниже план или идея заказчика. Сам выбери жанр (из списка: novel — роман, detective — детектив, historical — исторический, adventure — приключения, drama — драма, stories — рассказы, modern — современная проза, prose — проза), число глав (от 3 до 12, по смыслу и объёму материала), если заказчик явно не указал число. Если заказчик назвал число глав, создай ровно столько глав (от 2 до 60). Объём одной главы — от 600 до 1500 слов. Объём одной главы в словах (от 600 до 1500), чтобы книга получилась цельной. Сохрани названия и разбивку, если заказчик уже указал их в плане.`:`${c.genreAuto?`Жанр выбери сам по смыслу идеи (из списка: ${GENRE_LIST}).`:`Жанр: ${genreName(c.genre)}.`} Глав ровно ${c.chapters}.`}
 Идея или план заказчика:
 ${c.idea}
 ${c.title?`Название: ${c.title}\n`:''}Язык названий и описаний: ${LANGN(c.lang)}.
 Верни ТОЛЬКО JSON такого вида:
-{"title":"название","genre":"${auto?'novel|detective|historical|adventure|drama|stories|modern|prose':c.genre}","wordsPerChapter":${auto?'900':c.words},"synopsis":"описание книги, 2-3 предложения","style":{"voice":"...","pov":"от какого лица","tense":"время","tone":"тон","rules":["правило стиля"]},"characters":[{"name":"имя","role":"роль","traits":"черты и речь"}],"facts":["исходный факт мира или сюжета"],"chapters":[{"title":"название главы","summary":"что происходит, 2-3 предложения"}]}`;
+{"title":"название","genre":"${auto||c.genreAuto?'novel|detective|historical|adventure|drama|stories|modern|prose':c.genre}","wordsPerChapter":${auto?'900':c.words},"synopsis":"описание книги, 2-3 предложения","style":{"voice":"...","pov":"от какого лица","tense":"время","tone":"тон","rules":["правило стиля"]},"characters":[{"name":"имя","role":"роль","traits":"черты и речь"}],"facts":["исходный факт мира или сюжета"],"chapters":[{"title":"название главы","summary":"что происходит, 2-3 предложения"}]}`;
 };
+/** Added to the plan prompt when the administrator asks the editor to change an existing plan. */
+export const revisePlanSuffix=rev=>`
+
+ЭТО ПРАВКА УЖЕ СОСТАВЛЕННОГО ПЛАНА. Вот текущий план:
+${JSON.stringify(rev.previous)}
+
+Просьба заказчика:
+${rev.instruction}
+
+Внеси в план именно эти изменения. Всё, о чём заказчик не просил, сохрани как есть (названия глав, персонажей, факты, стиль). Число глав можно менять, только если об этом попросили. Верни полный обновлённый план в том же JSON-формате.`;
 export const draftPrompt=(job,i,chapters)=>`[task:chapter_draft]
 ${context(job,i,chapters)}
 

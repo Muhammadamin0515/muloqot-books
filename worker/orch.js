@@ -6,7 +6,7 @@ import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFr
 import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang,fixPlan,tameFinal,requestedChapterCount} from './orch-checks.js';
 import * as PR from './orch-prompts.js';
 
-const LOCK_MS=100000,MAX_ACTIVE=10,RETRIES=1,MAX_VERSIONS=240;
+const MIN_CH=2,MAX_CH=60,LOCK_MS=100000,MAX_ACTIVE=10,RETRIES=1,MAX_VERSIONS=240;
 const ACTIVE=['draft','plan_ready','running','paused','needs_admin','awaiting_publish'];
 /** Stops the job for a reason that an administrator or a later step can resolve. The state is kept untouched. */
 class Halt extends Error{constructor(reason){super(reason);this.reason=reason}}
@@ -27,10 +27,10 @@ export function registerOrch(d){
   const loadSettings=async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='aiSettings'");let v={};try{v=r?P(r.value):{}}catch{}return v&&typeof v==='object'?v:{}};
   const globalConfig=async c=>{
     const saved=await loadSettings(c),base=rolesFromEnv(c.env),merged=saved.roles?mergeRoles(base,saved.roles):{roles:base};
-    return{auto:saved.auto===true,chapters:Math.max(2,Math.min(60,Math.round(+saved.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+saved.words)||900)),freeOnly:saved.freeOnly!==false,onFail:saved.onFail==='ask'?'ask':'accept',roles:merged.roles||base,limits:limitsFrom(c.env,saved.limits||{})};
+    return{auto:saved.auto!==false,chapters:Math.max(MIN_CH,Math.min(MAX_CH,Math.round(+saved.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+saved.words)||900)),freeOnly:saved.freeOnly!==false,onFail:saved.onFail==='ask'?'ask':'accept',roles:merged.roles||base,limits:limitsFrom(c.env,saved.limits||{})};
   };
   const ensureWorkflow=async(c,id)=>{
-    if(!c.env.AI_BOOK_WORKFLOW)return false;const row=await get(c,'SELECT workflow_id,workflow_status,status FROM ai_jobs WHERE id=?',id);
+    if(!c.env.AI_BOOK_WORKFLOW||c.env.AI_WORKFLOW_OFF)return false;const row=await get(c,'SELECT workflow_id,workflow_status,status FROM ai_jobs WHERE id=?',id);
     if(!row||['published','cancelled','awaiting_publish'].includes(row.status))return false;if(row.workflow_id&&['queued','running','waiting'].includes(row.workflow_status))return true;
     try{const instance=await c.env.AI_BOOK_WORKFLOW.create({id:id+'-'+id8(),params:{jobId:id}});await run(c,"UPDATE ai_jobs SET workflow_id=?,workflow_status='queued' WHERE id=?",instance.id,id);return true}
     catch(error){await run(c,"UPDATE ai_jobs SET workflow_status='error' WHERE id=?",id);console.error(JSON.stringify({event:'ai_workflow_start_error',jobId:id,message:String(error?.message||error).slice(0,160)}));return false}
@@ -83,12 +83,14 @@ export function registerOrch(d){
   async function doStep(c,job){
     const lim=job.config.limits;
     if(job.status==='draft'){
-      const r=await callRole(c,job,'plan',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.planPrompt(job),max:3500,temperature:.8,json:true,parse:t=>parsePlan(t,{chapters:job.config.auto?0:job.config.chapters})});
+      const r=await callRole(c,job,'plan',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.planPrompt(job)+(job.config.revision?PR.revisePlanSuffix(job.config.revision):''),max:3500,temperature:.8,json:true,parse:t=>{const p=parsePlan(t,{chapters:job.config.auto||job.config.revision?0:job.config.chapters});if(p.chapters.length<MIN_CH)throw new Error('bad_format');return p}});
       const plan=r.value;
       if(job.config.auto){ /* the author model chose the genre, the number of chapters and their size */
         job.config.chapters=plan.chapters.length;job.config.genre=plan.genre||'novel';job.config.words=plan.wordsPerChapter||900;
         await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id);
-      }if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
+      }else if(job.config.genreAuto||job.config.revision){if(job.config.genreAuto)job.config.genre=plan.genre||'novel';if(job.config.revision)job.config.chapters=plan.chapters.length;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
+      if(job.config.revision){delete job.config.revision;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
+      if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
       job.plan=plan;job.title=plan.title;job.status='plan_ready';job.pause_reason='';
       await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=? WHERE id=?',job.title,job.id)]);return;
     }
@@ -206,9 +208,9 @@ export function registerOrch(d){
   /* ---------- routes ---------- */
   const A=(method,path,fn)=>route(method,path,fn,true);
   /* defaults the server is configured with (model ids only; nothing is assumed when a variable is missing) */
-  A('GET','/api/admin/ai/jobs-config',async c=>{const cfg=await globalConfig(c);return json({defaults:{auto:cfg.auto,chapters:cfg.chapters,words:cfg.words,freeOnly:cfg.freeOnly,onFail:cfg.onFail},roles:Object.fromEntries(Object.entries(cfg.roles).map(([k,v])=>[k,v?{model:v.primary.model,fallbacks:v.fallbacks.map(x=>x.provider+':'+x.model)}:null])),limits:cfg.limits,workflowReady:!!c.env.AI_BOOK_WORKFLOW})});
+  A('GET','/api/admin/ai/jobs-config',async c=>{const cfg=await globalConfig(c);return json({defaults:{auto:cfg.auto,chapters:cfg.chapters,words:cfg.words,freeOnly:cfg.freeOnly,onFail:cfg.onFail},roles:Object.fromEntries(Object.entries(cfg.roles).map(([k,v])=>[k,v?{model:v.primary.model,fallbacks:v.fallbacks.map(x=>x.provider+':'+x.model)}:null])),limits:cfg.limits,chapterLimits:{min:MIN_CH,max:MAX_CH},caps:limitsFrom(c.env,{}),workflowReady:!!c.env.AI_BOOK_WORKFLOW})});
   A('POST','/api/admin/ai/settings',async c=>{
-    if(!c.user.superadmin)return bad(403,'superadmin');const b=c.body||{},old=await loadSettings(c),next={auto:b.auto===true,chapters:Math.max(2,Math.min(60,Math.round(+b.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+b.words)||900)),freeOnly:b.freeOnly!==false,onFail:b.onFail==='ask'||(b.onFail==null&&defaults.onFail==='ask')?'ask':'accept',limits:limitsFrom(c.env,b.limits||old.limits||{})};
+    if(!c.user.superadmin)return bad(403,'superadmin');const b=c.body||{},old=await loadSettings(c),next={auto:b.auto===true,chapters:Math.max(MIN_CH,Math.min(MAX_CH,Math.round(+b.chapters)||6)),words:Math.max(300,Math.min(2000,Math.round(+b.words)||900)),freeOnly:b.freeOnly!==false,onFail:b.onFail==='ask'||(b.onFail==null&&defaults.onFail==='ask')?'ask':'accept',limits:limitsFrom(c.env,b.limits||old.limits||{})};
     const roles=mergeRoles(rolesFromEnv(c.env),b.roles||old.roles||{});if(roles.error)return json({error:roles.error},422);next.roles=Object.fromEntries(Object.entries(roles.roles).map(([k,v])=>[k,v?{model:v.primary.model,fallbacks:v.fallbacks.map(x=>x.provider+':'+x.model)}:null]));
     await run(c,"INSERT INTO meta(key,value) VALUES('aiSettings',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(next));await audit(c,'ai_settings','global',{auto:next.auto,chapters:next.chapters,freeOnly:next.freeOnly});return json(await globalConfig(c));
   });
@@ -218,9 +220,9 @@ export function registerOrch(d){
   A('POST','/api/admin/ai/jobs',async c=>{
     const b=c.body,idea=String(b.idea||'').trim().slice(0,8000);if(idea.length<10)return bad(400,'idea');
     const defaults=await globalConfig(c),requested=Number.isFinite(+b.chapters)&&+b.chapters>0?Math.round(+b.chapters):requestedChapterCount(idea);
-    if(requested!=null&&(requested<2||requested>60))return bad(400,'chapter_limit');
+    if(requested!=null&&(requested<MIN_CH||requested>MAX_CH))return json({error:'chapter_limit',min:MIN_CH,max:MAX_CH,got:requested},400);
     const auto=requested==null&&(typeof b.auto==='boolean'?b.auto:defaults.auto);
-    const lang=b.lang==='uz'||b.lang==='ru'?b.lang:detectLang(idea),genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel';
+    const lang=b.lang==='uz'||b.lang==='ru'?b.lang:detectLang(idea),genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel',genreAuto=!['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre);
     const chapters=requested||defaults.chapters,wordsN=Math.max(300,Math.min(2000,Math.round(+b.words)||defaults.words));
     if((await get(c,`SELECT COUNT(*) n FROM ai_jobs WHERE status IN (${ACTIVE.map(()=>'?').join(',')})`,...ACTIVE)).n>=MAX_ACTIVE)return bad(429,'too_many_active');
     let m=mergeRoles(b.autoModels===true?{}:defaults.roles,b.roles||{}),picked=null;
@@ -254,7 +256,7 @@ export function registerOrch(d){
     if(!roles.draft||!roles.editor)return json({error:'no_models',detail:'нет бесплатных моделей'},422);
     if(limits.maxCostUsd!=null&&!free){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
     const used2=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]);
-    const cfg={auto,autoModels:!!picked,freeOnly:free,onFail:b.onFail==='ask'?'ask':'accept',dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
+    const cfg={auto,genreAuto:!auto&&genreAuto,autoModels:!!picked,freeOnly:free,onFail:b.onFail==='ask'?'ask':'accept',dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
     await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});await ensureWorkflow(c,id);
@@ -279,8 +281,17 @@ export function registerOrch(d){
     let np;try{np=parsePlan(J(c.body),{chapters:job.config.auto?0:job.config.chapters})}catch{return bad(422,'plan')}
     if(!np.title)np.title=job.plan.title;if(!np.genre)np.genre=job.config.genre;if(!np.wordsPerChapter)np.wordsPerChapter=job.config.words;
     job.plan={...job.plan,...np};job.title=job.plan.title;
-    if(job.config.auto){job.config.chapters=job.plan.chapters.length;job.config.genre=np.genre;job.config.words=np.wordsPerChapter}
+    if(job.config.auto){job.config.chapters=job.plan.chapters.length;job.config.genre=np.genre;job.config.words=np.wordsPerChapter}else if(job.config.genreAuto&&np.genre)job.config.genre=np.genre;
     await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=?,config=? WHERE id=?',job.title,J(job.config),id)]);return json({job:view(job),plan:job.plan});
+  });
+  /* "change the plan": the editor model rewrites the current plan following the administrator's request */
+  A('POST','/api/admin/ai/jobs/:id/revise-plan',async(c,id)=>{
+    const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');
+    const instruction=String(c.body.instruction||'').trim().slice(0,2000);if(instruction.length<5)return bad(400,'instruction');
+    const p=job.plan;job.config.revision={instruction,previous:{title:p.title,synopsis:p.synopsis,genre:p.genre,style:p.style,characters:p.characters,facts:p.facts,chapters:p.chapters}};
+    job.status='draft';job.pause_reason='';job.state={phase:'plan'};
+    await batch(c,[stmt(c,'UPDATE ai_jobs SET status=?,pause_reason=?,config=?,state=?,updated=? WHERE id=?','draft','',J(job.config),J(job.state),Date.now(),id)]);await ensureWorkflow(c,id);
+    await audit(c,'ai_job_plan_revise',id,{});return json({job:view(job)});
   });
   A('POST','/api/admin/ai/jobs/:id/approve-plan',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');

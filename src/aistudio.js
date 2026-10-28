@@ -15,10 +15,10 @@ const words=t=>(String(t).match(/\S+/g)||[]).length;
 export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
-  Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
-  const S={jobs:null,cfg:null,keys:null,models:{},form:{onFail:'accept',paid:false,lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:'',as_revise:''});
+  const S={jobs:null,cfg:null,keys:null,models:{},form:{onFail:'accept',paid:false,lang:'auto',genre:'auto',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
-  const errOf=e=>{const b=e&&e.body||{};if(b.error==='limit_too_low')return `Лимит уже исчерпан (использовано ${b.used.calls} запросов, серверный максимум ${b.cap.maxCalls}). Чтобы продолжить, увеличьте переменную AI_MAX_CALLS в Cloudflare (до 1000), нажмите Deploy и снова «Продолжить».`;const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
+  const errOf=e=>{const b=e&&e.body||{};if(b.error==='limit_too_low')return `Лимит уже исчерпан (использовано ${b.used.calls} запросов, серверный максимум ${b.cap.maxCalls}). Чтобы продолжить, увеличьте переменную AI_MAX_CALLS в Cloudflare (до 1000), нажмите Deploy и снова «Продолжить».`;if(b.error==='chapter_limit')return `Число глав должно быть от ${b.min} до ${b.max}${b.got?` (в плане указано ${b.got})`:''}. Измените число в плане или в настройках.`;const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
   async function loadKeys(){try{S.keys=await api('/api/admin/ai/config')}catch(e){S.keys={providers:{},canSetKeys:false}}}
   async function loadList(){loadKeys().then(refresh);try{const [j,c]=await Promise.all([api('/api/admin/ai/jobs'),S.cfg?S.cfg:api('/api/admin/ai/jobs-config')]);S.jobs=j.jobs;S.cfg=c;if(!M.as_draft&&c.roles.draft)M.as_draft=c.roles.draft.model;if(!M.as_editor&&c.roles.editor)M.as_editor=c.roles.editor.model;if(!M.as_expert&&c.roles.expert)M.as_expert=c.roles.expert.model}catch(e){S.jobs=[];S.err='Не удалось загрузить: '+errOf(e)}refresh()}
@@ -49,13 +49,20 @@ export function initAiStudio(x,adm){
   ACT.asCreate=async()=>{
     const f=S.form,roles=M.as_draft.trim()&&M.as_editor.trim()?{draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null}:undefined;
     const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(f.paid&&+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
-    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,freeOnly:!f.paid,onFail:f.onFail,noSecondOpinion:!f.second});
+    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,...(f.genre==='auto'?{}:{genre:f.genre}),chapters:f.chapters,words:f.words}),roles,limits,freeOnly:!f.paid,onFail:f.onFail,noSecondOpinion:!f.second});
     if(r){S.cur=r.job.id;S.d=null;S.chText=null;S.showLog=false;await reloadJob();runLoop()}
   };
 
   /* ---------- plan ---------- */
   const syncPlan=()=>{const p=S.d.plan;return{...p,title:M.as_ptitle.trim()||p.title,synopsis:M.as_psyn.trim()||p.synopsis,chapters:p.chapters.map((c,i)=>({title:(M['asp_t'+i]??c.title).trim()||c.title,summary:(M['asp_s'+i]??c.summary).trim()||c.summary}))}};
   ACT.asPlanSave=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(r){toast('План сохранён');await reloadJob()}};
+  ACT.asRevise=async()=>{
+    const text=(M.as_revise||'').trim();if(text.length<5){toast('Опишите, что изменить в плане');return}
+    const r0=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(!r0)return;
+    const r=await call(`/api/admin/ai/jobs/${S.cur}/revise-plan`,'POST',{instruction:text});if(!r)return;
+    M.as_revise='';M.as_ptitle='';M.as_psyn='';for(const k of Object.keys(M))if(/^asp_[ts]\d+$/.test(k))delete M[k];
+    S.d=null;S.err='';await reloadJob();runLoop()
+  };
   ACT.asApprove=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(!r)return;const a=await call(`/api/admin/ai/jobs/${S.cur}/approve-plan`,'POST',{confirm:true});if(a){await reloadJob();runLoop()}};
 
   /* ---------- running ---------- */
@@ -63,6 +70,11 @@ export function initAiStudio(x,adm){
   ACT.asSkipExpert=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/resume`,'POST',{skipExpert:true});if(r)await reloadJob()};
   ACT.asResume=async()=>{const lim=S.d&&/^budget:/.test(S.d.job.pauseReason)?0:+M.as_maxCalls;const r=await call(`/api/admin/ai/jobs/${S.cur}/resume`,'POST',lim?{limits:{maxCalls:lim}}:{});if(r){await reloadJob();runLoop()}};
   ACT.asCancel=()=>openSheet(`<h2>Отменить задание?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Написанные главы и журнал останутся, но задание нельзя будет продолжить.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asCancelGo">Отменить задание</button></div>`);
+  const DEAD=['cancelled','published'];
+  ACT.asDel=()=>openSheet(`<h2>Удалить задание?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">${S.d&&S.d.job.status==='published'?'Задание и журнал будут удалены, а опубликованная книга останется в каталоге.':'Задание, написанные главы и журнал будут удалены без возможности восстановления.'}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asDelGo">Удалить</button></div>`);
+  ACT.asDelGo=async()=>{closeSheet();const r=await call(`/api/admin/ai/jobs/${S.cur}`,'DELETE');if(r){toast('Задание удалено');ACT.asBack()}};
+  ACT.asDelAll=()=>{const n=S.jobs.filter(j=>j.status==='cancelled').length;openSheet(`<h2>Удалить все отменённые (${n})?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Их главы и журналы будут удалены без возможности восстановления.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asDelAllGo">Удалить</button></div>`)};
+  ACT.asDelAllGo=async()=>{closeSheet();for(const j of S.jobs.filter(j=>j.status==='cancelled'))if(!await call(`/api/admin/ai/jobs/${j.id}`,'DELETE'))break;toast('Отменённые задания удалены');loadList()};
   ACT.asCancelGo=async()=>{closeSheet();S.loop=false;await call(`/api/admin/ai/jobs/${S.cur}/cancel`);await reloadJob()};
   ACT.asLog=()=>{S.showLog=!S.showLog;refresh()};
   ACT.asChapter=async el=>{const i=el.dataset.i;if(S.chText&&S.chText.i===i){S.chText=null;refresh();return}const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${i}`,'GET');if(r){S.chText={i,...r};M.as_edit=r.chapter.text;refresh()}};
@@ -115,7 +127,7 @@ export function initAiStudio(x,adm){
     return `<button class="btn block" data-a="asNew">${ico('pen',18)} Новая книга</button>
       <p class="hint">Groq пишет черновики, Gemini строит план и проверяет текст, выбранная вами модель OpenRouter помогает со сложными главами. Публикация только после вашего подтверждения.</p>
       ${keyLine()}${err()}
-      <div class="sec"><div class="sec-h"><h2>Задания</h2></div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
+      <div class="sec"><div class="sec-h"><h2>Задания</h2>${S.jobs.some(j=>j.status==='cancelled')?`<button class="btn sm ghost" data-a="asDelAll">Удалить отменённые</button>`:''}</div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
   }
   const OPEN={};document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.dataset.asg)OPEN[d.dataset.asg]=d.open},true);
   const roleCard=(id,key,icon,title,who,what,provider,ph,optional)=>`<div class="rolecard"><div class="rolehead"><span class="roleico">${icon}</span><div class="grow"><b>${title}</b><small>${who}</small></div></div>
@@ -141,8 +153,8 @@ export function initAiStudio(x,adm){
       ${seg('lang',[['auto','По тексту плана'],['ru','Русский'],['uz','Oʻzbekcha']],f.lang)}
       <div class="lbl" style="margin:16px 0 6px">Жанр, число глав и размер</div>
       ${seg('auto',[['1','Подберёт ИИ'],['0','Задам сам']],f.auto?'1':'0')}
-      ${f.auto?'':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
-      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
+      ${f.auto?'':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр"><option value="auto" ${f.genre==='auto'?'selected':''}>Жанр: подберёт ИИ</option>${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
+      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}<p class="hint">От 2 до 60 глав. Если число глав названо в самом плане («10 глав»), берётся оно.</p>
       <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
       <div class="lbl" style="margin:16px 0 6px">Если глава не проходит проверку</div>
       ${seg('onFail',[['accept','Принять лучший вариант'],['ask','Остановиться и спросить']],f.onFail)}
@@ -181,6 +193,7 @@ export function initAiStudio(x,adm){
       ${p.style&&(p.style.voice||p.style.tone)?`<p class="hint">Стиль: ${esc([p.style.voice,p.style.pov,p.style.tense,p.style.tone].filter(Boolean).join(' · '))}</p>`:''}
       ${(p.characters||[]).length?`<details class="dgroup"><summary><b>Персонажи (${p.characters.length})</b></summary><div class="dbody">${p.characters.map(c=>`<p><b>${esc(c.name)}</b> ${esc(c.role)}<br><span class="mute">${esc(c.traits)}</span></p>`).join('')}</div></details>`:''}
       ${p.chapters.map((c,i)=>`<div class="card" style="margin:10px 0;padding:12px"><div class="mute" style="font-size:12px">Глава ${i+1}</div><input class="in" data-m="adm:asp_t${i}" value="${esc(M['asp_t'+i]??c.title)}" maxlength="100" aria-label="Название главы ${i+1}" style="margin:6px 0"><textarea class="in" data-m="adm:asp_s${i}" style="min-height:64px" aria-label="Содержание главы ${i+1}">${esc(M['asp_s'+i]??c.summary)}</textarea></div>`).join('')}
+      <div class="card" style="margin:14px 0 0;padding:12px"><b style="font-size:14px">Попросить ИИ изменить план</b><p class="hint" style="margin:4px 0 8px">Напишите, что поменять: например «добавь две главы про детство героя» или «сделай концовку печальной». ИИ перепишет план, остальное оставит. Ваши правки выше сохранятся.</p><textarea class="in" data-m="adm:as_revise" maxlength="2000" style="min-height:72px" aria-label="Что изменить в плане" placeholder="Что изменить в плане?">${esc(M.as_revise||'')}</textarea><button class="btn block" style="margin-top:8px" data-a="asRevise">Изменить план с помощью ИИ</button></div>
       ${err()}<div class="row" style="gap:10px;margin-top:12px"><button class="btn ghost" data-a="asPlanSave">Сохранить правки</button><button class="btn grow" data-a="asApprove">Утвердить и писать</button></div>
       <button class="btn block ghost" style="margin-top:10px" data-a="asCancel">Отменить задание</button></div>`;
   }
@@ -226,7 +239,7 @@ export function initAiStudio(x,adm){
         <button class="btn block" data-a="asPublish">Опубликовать в каталог…</button><button class="btn block ghost" style="margin-top:8px" data-a="asCancel">Отменить задание</button></div>`;
     }else if(j.status==='published')body=`<div class="card" style="text-align:center"><div style="font-size:36px">📚</div><b>Книга опубликована</b><button class="btn block" style="margin-top:12px" data-a="asOpenBook">Открыть книгу</button></div>`;
     else body=`<div class="card"><b>${esc(STATUS[j.status]||j.status)}</b></div>`;
-    return `${head(d)}${err()}${body}<div class="sec"><div class="sec-h"><h2>Главы</h2></div><div class="list">${chapterRows(d)}</div>${chapterPanel(d)}</div>${journal(d)}`;
+    return `${head(d)}${err()}${body}<div class="sec"><div class="sec-h"><h2>Главы</h2></div><div class="list">${chapterRows(d)}</div>${chapterPanel(d)}</div>${journal(d)}${DEAD.includes(j.status)?`<button class="btn block ghost" style="margin-top:20px" data-a="asDel">${ico('trash',17)} Удалить задание</button>`:''}`;
   }
   ACT.asResume2=()=>{runLoop()};
   function tabStudio(){
