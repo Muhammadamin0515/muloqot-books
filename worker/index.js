@@ -837,12 +837,11 @@ function bookCard(b,{base,link,lang}){
   text=text.trim();
   const reply={...(link?{reply_markup:{inline_keyboard:[[{text:uz?'📖 Muloqot Books’da o‘qish':'📖 Читать в Muloqot Books',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
   const listLine=[b.an,genre,b.y,rt?`⭐ ${rt.v}`:''].filter(Boolean).join(' · ');
-  /* The text alone is a complete card. When Telegram can fetch /b/<id> it also draws the cover preview above it (hidden link). */
-  const page=base?`${base}/b/${b.id}`:'';
-  const hidden=page?`<a href="${page}">&#8203;</a>`:'';
+  /* A book with a JPEG cover goes out as a photo card (cover on top, text under it); Telegram does not draw link previews for bot-prepared messages reliably. */
+  if(b.jpeg&&base)return{type:'photo',id:b.id,photo_url:`${base}/api/cover/${b.id}`,thumbnail_url:`${base}/api/cover/${b.id}`,photo_width:300,photo_height:450,title:b.t,description:listLine,caption:text.slice(0,1000),parse_mode:'HTML',...reply};
   return{type:'article',id:b.id,title:b.t,description:listLine,
     ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
-    input_message_content:{message_text:hidden+text,parse_mode:'HTML',link_preview_options:page?{url:page,prefer_small_media:true,show_above_text:true}:{is_disabled:true}},...reply};
+    input_message_content:{message_text:text,parse_mode:'HTML',link_preview_options:{is_disabled:true}},...reply};
 }
 const getAppLink=async c=>{const al=await get(c,"SELECT value FROM meta WHERE key='applink'");return al?P(al.value):''};
 async function onInline(c,q){
