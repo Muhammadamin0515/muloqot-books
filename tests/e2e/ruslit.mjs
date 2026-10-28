@@ -114,5 +114,12 @@ const un=cli(['unpublish',T,B,'--ids',bookId]);ok(un.status===0&&(await api('rea
 /* admin panel route: publish needs rights and confirmed metadata */
 ok((await api('admin',`/api/admin/books/${bookId}/publish`,'POST',{on:true})).j.error==='meta_review_required'||(await api('admin',`/api/admin/books/${bookId}/publish`,'POST',{on:true})).s===200,'admin publish route enforces the same rules');
 const raw=(await api('admin','/api/admin/books')).j.list.filter(b=>b.lazy);ok(raw.length===5&&raw.every(b=>b.lit&&b.lit.sourceUrl&&b.lit.commit==='unknown'||b.lit.commit==='x'||true),'admin list shows imported books with source information');
+/* generated covers: every imported book without a picture gets a JPEG, and /api/cover serves it for published ones */
+{const before=(await imp('/api/import/covers')).j.books.length;
+const r=spawnSync('node',[join(ROOT,'scripts/covers.mjs'),'--target',B],{encoding:'utf8',env:{...process.env,IMPORT_TOKEN:TOK},cwd:ROOT});
+const after=(await imp('/api/import/covers')).j.books.length;
+ok(before>0&&r.status===0&&after===0,'cover script draws and uploads covers for imported books ('+before+' → '+after+')');
+const pub=(await api('r1','/api/bootstrap')).j.books.find(b=>b.lit||b.collection);
+if(pub){const c=await fetch(B+'/api/cover/'+pub.id);ok(c.status===200&&c.headers.get('content-type')==='image/jpeg','published imported book serves a JPEG cover')}}
 rmSync(work,{recursive:true,force:true});
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

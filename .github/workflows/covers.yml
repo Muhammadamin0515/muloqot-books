@@ -1,0 +1,29 @@
+# Draws covers (JPEG) for imported books that have none and uploads them. Needs the repository secret IMPORT_TOKEN.
+name: Обложки
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Адрес приложения"
+        default: "https://muloqot-books.muhammadaminfayziev.workers.dev"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Нужные шрифты
+        run: sudo apt-get install -y fonts-dejavu-core >/dev/null
+      - name: Нарисовать и загрузить обложки
+        env: { IMPORT_TOKEN: "${{ secrets.IMPORT_TOKEN }}" }
+        run: node scripts/covers.mjs --target "${{ inputs.target }}" --allow-remote

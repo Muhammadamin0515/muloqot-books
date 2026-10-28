@@ -61,6 +61,19 @@ export function registerLibrary(d){
     return json({books:rows.map(r=>{const b=P(r.data);return{id:r.id,sourceId:b.lit.sourceId,ver:b.ver||null,pendingVer:b.lit.pendingVer||null,publish:b.publish||'published',hash:b.lit.hash}})});
   },'token');
 
+  /* Covers drawn by scripts/covers.mjs: the list of real books without a picture, and an upload of the rendered JPEG. */
+  route('GET','/api/import/covers',async c=>{
+    const rows=await all(c,"SELECT b.id,b.data,a.data ad FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE json_extract(b.data,'$.img') IS NULL AND json_extract(b.data,'$.demo') IS NOT 1 AND json_extract(b.data,'$.lit.sourceId') IS NOT NULL");
+    return json({books:rows.map(r=>{const b=P(r.data);return{id:r.id,title:b.title,authorName:r.ad?P(r.ad).name:'',motif:b.motif,pal:b.pal}})});
+  },'token');
+  route('POST','/api/import/cover',async c=>{
+    const id=String(c.body.id||''),img=String(c.body.img||'');
+    if(!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(img)||img.length>70000)return bad(422,'cover');
+    const row=await bookRow(c,id);if(!row)return bad(404);
+    const b=P(row.data);if(b.img)return json({status:'exists'});
+    b.img=img;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);return json({status:'ok'});
+  },'token');
+
   route('POST','/api/import/book',async c=>{
     const v=validateRecord(c.body.record);if(v.error)return bad(422,v.error);const r=v.rec;
     const ex=await bySource(c,r.sourceId);
