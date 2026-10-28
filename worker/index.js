@@ -798,14 +798,28 @@ route('GET','/api/achievements',async c=>{
 /* ---------- inline search (@bot query in any chat) ---------- */
 const fold=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,'').replace(/ё/g,'е');
 const hesc=t=>String(t||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
-const BOOK_ROW_SQL="SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,json_extract(b.data,'$.img') IS NOT NULL img,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE (b.hidden=0 OR b.hidden IS NULL) AND json_extract(b.data,'$.publish') IS NOT 'draft'";
-/** One book as a Telegram inline result: used by inline search and by the prepared "share" card. */
+const BOOK_ROW_SQL="SELECT b.id,json_extract(b.data,'$.title') t,json_extract(b.data,'$.desc') d,json_extract(b.data,'$.demo') demo,json_extract(b.data,'$.rating') r,json_extract(b.data,'$.count') n,(SELECT COUNT(*) FROM ratings WHERE book_id=b.id) rn,(SELECT AVG(value) FROM ratings WHERE book_id=b.id) ra,json_extract(b.data,'$.img') IS NOT NULL img,substr(json_extract(b.data,'$.img'),1,16)='data:image/jpeg;' jpeg,json_extract(b.data,'$.genre') g,json_extract(b.data,'$.year') y,json_extract(b.data,'$.lang') lg,json_extract(b.data,'$.pages') pg,json_extract(b.data,'$.series') se,json_extract(b.data,'$.seriesNo') sn,json_extract(a.data,'$.name') an FROM books b LEFT JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE (b.hidden=0 OR b.hidden IS NULL) AND json_extract(b.data,'$.publish') IS NOT 'draft'";
+const GENRE_NAME={novel:['Роман','Roman'],detective:['Детектив','Detektiv'],historical:['Историческая проза','Tarixiy nasr'],adventure:['Приключения','Sarguzasht'],drama:['Драма','Drama'],stories:['Рассказы','Hikoyalar'],modern:['Современная проза','Zamonaviy nasr'],prose:['Проза','Nasr'],poetry:['Поэзия','She’riyat'],publicism:['Публицистика','Publitsistika']};
+/** Real rating only (demo books keep their sample numbers); null when nobody has rated the book yet. */
+const cardRating=b=>b.demo?(b.n>0?{v:Math.round(b.r*10)/10,n:b.n}:null):(b.rn>0?{v:Math.round(b.ra*10)/10,n:b.rn}:null);
+const clipWords=(t,n)=>{t=String(t||'').replace(/\s+/g,' ').trim();if(t.length<=n)return t;const cut=t.slice(0,n),sp=cut.lastIndexOf(' ');return (sp>n*.6?cut.slice(0,sp):cut).replace(/[\s,;:.\-—]+$/,'')+'…'};
+/** One book as a Telegram inline result, used by inline search and by the prepared "share" card.
+    With a JPEG cover it is a photo with a caption; otherwise a formatted text card. */
 function bookCard(b,{base,link,lang}){
-  const rating=Math.round(b.r*10)/10,d=String(b.d||'');
-  return{type:'article',id:b.id,title:b.t,description:`${b.an||''} · ⭐ ${rating}`,
+  const uz=lang==='uz',gi=uz?1:0,rt=cardRating(b),genre=(GENRE_NAME[b.g]||[])[gi]||'';
+  const meta=[genre,String(b.lg||'').toUpperCase(),b.pg>0?`≈${b.pg} ${uz?'bet':'стр.'}`:''].filter(Boolean).join(' · ');
+  const byline=`${b.an?`<i>${hesc(b.an)}</i>`:''}${b.y?`${b.an?'  ·  ':''}${b.y}`:''}`;
+  const lines=[`📖 <b>${hesc(b.t)}</b>`,byline,b.se?`${uz?'Seriya':'Серия'}: ${hesc(b.se)}${b.sn?` · №${b.sn}`:''}`:''].filter(Boolean);
+  let text=lines.join('\n');
+  const desc=clipWords(b.d,b.jpeg?420:300);if(desc)text+=`\n\n<blockquote>${hesc(desc)}</blockquote>`;
+  text+=`\n\n${meta?`🏷 ${hesc(meta)}`:''}${rt?`${meta?'\n':''}⭐ ${rt.v} · ${rt.n} ${uz?'baho':'оценок'}`:''}`;
+  text=text.trim();
+  const reply={...(link?{reply_markup:{inline_keyboard:[[{text:uz?'📖 Ilovada o‘qish':'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
+  const listLine=[b.an,genre,b.y,rt?`⭐ ${rt.v}`:''].filter(Boolean).join(' · ');
+  if(b.jpeg&&base)return{type:'photo',id:b.id,photo_url:`${base}/api/cover/${b.id}`,thumbnail_url:`${base}/api/cover/${b.id}`,photo_width:600,photo_height:900,title:b.t,description:listLine,caption:text.slice(0,1000),parse_mode:'HTML',...reply};
+  return{type:'article',id:b.id,title:b.t,description:listLine,
     ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
-    input_message_content:{message_text:`📖 <b>${hesc(b.t)}</b>\n${hesc(b.an)} · ⭐ ${rating}\n\n${hesc(d.slice(0,200))}${d.length>200?'…':''}`,parse_mode:'HTML'},
-    ...(link?{reply_markup:{inline_keyboard:[[{text:lang==='uz'?'📖 Ilovada o‘qish':'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
+    input_message_content:{message_text:text,parse_mode:'HTML',link_preview_options:{is_disabled:true}},...reply};
 }
 const getAppLink=async c=>{const al=await get(c,"SELECT value FROM meta WHERE key='applink'");return al?P(al.value):''};
 async function onInline(c,q){
