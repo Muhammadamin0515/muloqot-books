@@ -1,7 +1,7 @@
 /* AI orchestrator against `wrangler dev` with AI_BASE pointing at the scripted provider mock below.
    The mock stands in for Groq, Gemini and OpenRouter: this suite proves the routing, versions, limits and resuming, NOT the behaviour of the real services
    (every call it makes is journaled with via='override'). */
-import {createHmac} from 'node:crypto';import {startMock} from './ai-mock.mjs';
+import {createHmac} from 'node:crypto';import {spawnSync} from 'node:child_process';import {startMock} from './ai-mock.mjs';
 const B=process.env.BASE||'http://localhost:8806',TOKEN='123456:FAKETOKEN',MOCK=+(process.env.AI_MOCK_PORT||9997);
 let fails=0;const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m);if(!c)fails++};
 
@@ -142,6 +142,17 @@ ok(d.chapters.every(c=>c.status==='approved')&&r.j.job.state.final.issues.some(x
 await mctl({openrouterMode:'',reviewAlways:[1]});
 await A(`/jobs/${JY}/cancel`,'POST',{});
 r=await A('/jobs','POST',{idea:'Мой план: письмо, погоня, развязка. Проверка режима по умолчанию.',lang:'ru'});ok(r.j.job.config.onFail==='accept','the default is the automatic mode');await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
+
+
+/* a job created before the automatic mode (no onFail in its config) paused on the expert: "Продолжить" must get it going */
+await reset();await mctl({reviewAlways:[1],openrouterMode:'429'});
+r=await create({title:'Старое задание',onFail:'ask'});const JO=r.j.job.id;await drive(JO);await A(`/jobs/${JO}/approve-plan`,'POST',{confirm:true});
+r=await drive(JO);ok(r.j.waiting==='paused'&&/^all_failed:chapter_expert/.test(r.j.job.pauseReason),'(old job) paused because the expert is rate-limited');
+{const sql=`UPDATE ai_jobs SET config=json_remove(config,'$.onFail') WHERE id='${JO}'`;const x=spawnSync('npx',['wrangler','d1','execute','muloqot-books','--local','--command',sql],{encoding:'utf8',cwd:process.cwd()});ok(x.status===0,'(old job) the automatic-mode setting removed from its config, as for jobs created before it existed')}
+r=await A(`/jobs/${JO}/resume`,'POST',{limits:{}});ok(r.j.job.status==='running'&&r.j.job.config.onFail==='accept','(old job) "continue" resumes it and it is treated as automatic');
+r=await drive(JO);d=await detail(JO);
+ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.flagged.length===1,'(old job) it goes on past the unavailable expert and finishes');
+await mctl({openrouterMode:'',reviewAlways:[]});
 
 /* ---------- 5. budget ---------- */
 await reset();
