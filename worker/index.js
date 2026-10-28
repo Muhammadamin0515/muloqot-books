@@ -811,18 +811,17 @@ function bookCard(b,{base,link,lang}){
   const byline=`${b.an?`<i>${hesc(b.an)}</i>`:''}${b.y?`${b.an?'  ·  ':''}${b.y}`:''}`;
   const lines=[`📖 <b>${hesc(b.t)}</b>`,byline,b.se?`${uz?'Seriya':'Серия'}: ${hesc(b.se)}${b.sn?` · №${b.sn}`:''}`:''].filter(Boolean);
   let text=lines.join('\n');
-  const desc=clipWords(b.d,b.jpeg?420:300);if(desc)text+=`\n\n<blockquote>${hesc(desc)}</blockquote>`;
+  const desc=clipWords(b.d,300);if(desc)text+=`\n\n<blockquote>${hesc(desc)}</blockquote>`;
   text+=`\n\n${meta?`🏷 ${hesc(meta)}`:''}${rt?`${meta?'\n':''}⭐ ${rt.v} · ${rt.n} ${uz?'baho':'оценок'}`:''}`;
   text=text.trim();
   const reply={...(link?{reply_markup:{inline_keyboard:[[{text:uz?'📖 Muloqot Books’da o‘qish':'📖 Читать в Muloqot Books',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
   const listLine=[b.an,genre,b.y,rt?`⭐ ${rt.v}`:''].filter(Boolean).join(' · ');
-  /* The card is Telegram's link preview of /b/<id> (site name, cover on the left, title, author, facts); the message itself stays one line. */
+  /* The text alone is a complete card. When Telegram can fetch /b/<id> it also draws the cover preview above it (hidden link). */
   const page=base?`${base}/b/${b.id}`:'';
-  if(page)return{type:'article',id:b.id,title:b.t,description:listLine,
-    ...(b.img?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
-    input_message_content:{message_text:`📖 <a href="${page}">${hesc(b.t)}</a>`,parse_mode:'HTML',link_preview_options:{url:page,prefer_small_media:true,show_above_text:true}},...reply};
+  const hidden=page&&b.img?`<a href="${page}">&#8203;</a>`:'';
   return{type:'article',id:b.id,title:b.t,description:listLine,
-    input_message_content:{message_text:text,parse_mode:'HTML',link_preview_options:{is_disabled:true}},...reply};
+    ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
+    input_message_content:{message_text:hidden+text,parse_mode:'HTML',link_preview_options:page&&b.img?{url:page,prefer_small_media:true,show_above_text:true}:{is_disabled:true}},...reply};
 }
 const getAppLink=async c=>{const al=await get(c,"SELECT value FROM meta WHERE key='applink'");return al?P(al.value):''};
 async function onInline(c,q){
