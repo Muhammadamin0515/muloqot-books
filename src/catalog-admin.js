@@ -31,7 +31,8 @@ export function initCatalogAdmin(x,adm){
     const d=L.demo,c=d.counts||{};
     return `<div class="card" style="margin:14px 0"><b>Тестовые данные</b><p class="mute" style="font-size:12.5px;margin:6px 0 10px">${c.demo||0} вымышленных книг с образцами текста. Они не смешиваются с настоящим каталогом: пока настоящих книг нет, показываются автоматически, затем скрываются.</p>
       <div class="seg mini">${[['auto','Авто'],['true','Показывать'],['false','Скрыть']].map(([v,n])=>`<button class="${String(d.show)===v?'on':''}" data-a="ciDemo" data-v="${v}">${n}</button>`).join('')}</div>
-      <p class="hint" style="margin-top:8px">Сейчас читатели видят: ${d.visible?'тестовые данные':'только настоящий каталог'}.</p></div>`;
+      <p class="hint" style="margin-top:8px">Сейчас читатели видят: ${d.visible?'тестовые данные':'только настоящий каталог'}.</p>
+      ${c.demo&&c.real?`<button class="btn sm ghost" style="margin-top:10px;color:var(--err,#e5604a)" data-a="ciDemoPurge">Удалить тестовые книги навсегда (${c.demo})</button>`:''}</div>`;
   }
   const field=(id,label,key,ph='',type='text')=>`<div class="field"><label for="${id}">${label}</label><input id="${id}" class="in" type="${type}" data-m="adm:${key}" value="${esc(M[key])}" placeholder="${esc(ph)}" autocomplete="off"></div>`;
   const rightsFields=(p)=>`<div class="field"><label for="${p}St">Основание для публикации полного текста</label><select id="${p}St" class="in" data-chg="ciSel" data-k="${p==='ci'?'ci_status':'rt_status'}">${STATUS.map(([v,n])=>`<option value="${v}" ${M[p==='ci'?'ci_status':'rt_status']===v?'selected':''}>${n}</option>`).join('')}</select></div>
@@ -111,6 +112,8 @@ export function initCatalogAdmin(x,adm){
     const meta=document.getElementById('ciMeta');
     try{await api(`/api/admin/books/${el.dataset.id}/publish`,'POST',{on:el.dataset.on==='1',metaConfirmed:!!(meta&&meta.checked)});closeSheet();toast(el.dataset.on==='1'?'Книга опубликована':'Книга снята с публикации');await loadBoot();reloadCatalog()}
     catch(e){toast(ERR[e.detail]||'Не удалось: '+(e.detail||'ошибка'))}};
+  ACT.ciDemoPurge=()=>openSheet(`<h2>${esc(`Удалить ${L.demo.counts.demo} тестовых книг вместе с их отзывами и обсуждениями? Это нельзя отменить. Настоящие книги не затрагиваются.`)}</h2><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="ciDemoPurgeGo">Удалить навсегда</button></div>`);
+  ACT.ciDemoPurgeGo=()=>{closeSheet();bg(api('/api/admin/demo/purge','POST',{confirm:true}).then(async r=>{await loadBoot();adm.A.fresh.stats=false;toast('Удалено тестовых книг: '+r.deleted);reloadCatalog()}).catch(e=>toast(e.detail==='no_real_books'?'Сначала должны быть настоящие книги':'Не удалось удалить')))};
   ACT.ciDemo=el=>bg(api('/api/admin/demo','POST',{show:el.dataset.v==='auto'?'auto':el.dataset.v==='true'}).then(async()=>{await loadBoot();toast('Сохранено');reloadCatalog()}));
 
   CHG.ciFile=async el=>{const f=el.files&&el.files[0];el.value='';if(!f)return;

@@ -94,6 +94,12 @@ await api('ghost','/api/state','PUT',{finished:['b1','b2','b3','gone1'],saved:['
 {const bid=(await api('r1','/api/bootstrap')).j.books[0].id;const r=await fetch(B+'/b/'+bid),h=await r.text();ok(r.status===200&&/og:site_name" content="Muloqot Books"/.test(h)&&/og:title/.test(h)&&!/⭐ 0/.test(h),'share page /b/:id carries card tags without a fake rating');ok((await fetch(B+'/b/nope')).status===404,'unknown book share page is 404');}
 /* admin overview counts only real published books */
 {const st=(await api('admin','/api/admin/stats')).j,bs=(await api('admin','/api/bootstrap')).j.books;ok(st.books===bs.filter(b=>!b.demo).length&&st.demoBooks>=12&&st.errors.length===0,'admin overview: real books exclude demo and drafts ('+st.books+' real, '+st.demoBooks+' demo)')}
+/* purging the test sample: needs confirmation, removes only demo content */
+{const a=await api('admin','/api/admin/demo/purge','POST',{});ok(a.s===400,'purge needs explicit confirmation');
+const before=(await api('admin','/api/admin/stats')).j,r=await api('admin','/api/admin/demo/purge','POST',{confirm:true});
+const after=(await api('admin','/api/admin/stats')).j;
+ok(r.s===200&&r.j.deleted>=12&&after.demoBooks===0&&after.books===before.books,'purge removes the demo books and keeps real ones ('+r.j.deleted+' deleted)');
+const bs=(await api('admin','/api/bootstrap')).j;ok(bs.books.every(b=>!b.demo)&&bs.books.length===before.books,'catalog after purge has only real books');}
 /* audit */
 const au=(await api('admin','/api/admin/audit')).j.list.map(x=>x.action);ok(['import','rights','text','audio','demo'].every(a=>au.includes(a)),'rights and import actions are written to the audit log');
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

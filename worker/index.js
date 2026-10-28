@@ -555,6 +555,23 @@ route('POST','/api/admin/demo',async c=>{
   const v=c.body.show===true||c.body.show===false?c.body.show:'auto';
   await run(c,"INSERT INTO meta(key,value) VALUES('showDemo',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(v));await audit(c,'demo',null,{show:v});return json({ok:true});
 },true);
+/* Permanently removes the test sample (books, authors, reviews, discussions) once real books exist. */
+route('POST','/api/admin/demo/purge',async c=>{
+  if(c.body.confirm!==true)return bad(400,'confirm');
+  const real=(await get(c,`SELECT COUNT(*) n FROM books WHERE ${PUB_REAL}`)).n;
+  if(real<1)return bad(409,'no_real_books');
+  const D="(SELECT id FROM books WHERE json_extract(data,'$.demo')=1)",n=(await get(c,`SELECT COUNT(*) n FROM books WHERE id IN ${D}`)).n;
+  const T=`(SELECT id FROM threads WHERE book_id IN ${D} OR demo=1)`;
+  await batch(c,[
+    stmt(c,`DELETE FROM comments WHERE thread_id IN ${T}`),stmt(c,`DELETE FROM threads WHERE id IN ${T}`),
+    stmt(c,`DELETE FROM reviews WHERE book_id IN ${D} OR demo=1`),stmt(c,`DELETE FROM quotes WHERE book_id IN ${D} OR demo=1`),
+    stmt(c,`DELETE FROM ratings WHERE book_id IN ${D}`),stmt(c,`DELETE FROM book_stats WHERE book_id IN ${D}`),stmt(c,`DELETE FROM book_seen WHERE book_id IN ${D}`),
+    stmt(c,`DELETE FROM book_versions WHERE book_id IN ${D}`),stmt(c,`DELETE FROM audio_tracks WHERE book_id IN ${D}`),
+    stmt(c,`DELETE FROM reading_progress WHERE book_id IN ${D}`),stmt(c,`DELETE FROM bookmarks WHERE book_id IN ${D}`),
+    stmt(c,"DELETE FROM books WHERE json_extract(data,'$.demo')=1"),
+    stmt(c,"DELETE FROM authors WHERE json_extract(data,'$.demo')=1 AND id NOT IN (SELECT json_extract(data,'$.a') FROM books WHERE json_extract(data,'$.a') IS NOT NULL)")]);
+  await audit(c,'demo_purge',null,{books:n});return json({ok:true,deleted:n});
+},true);
 route('GET','/api/admin/demo',async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='showDemo'");return json({show:r?P(r.value):'auto',visible:await demoVisible(c),
   counts:await get(c,"SELECT SUM(CASE WHEN json_extract(data,'$.demo')=1 THEN 1 ELSE 0 END) demo,SUM(CASE WHEN json_extract(data,'$.demo') IS NOT 1 THEN 1 ELSE 0 END) real FROM books")})},true);
 /* Audio: the player needs real files. Tracks are links to audio the admin is entitled to distribute (https only); the same rights rule as text applies. */
