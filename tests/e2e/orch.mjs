@@ -127,6 +127,20 @@ r=await A(`/jobs/${J7}/resume`,'POST',{limits:{maxCalls:9999}});ok(r.s===200&&r.
 await A(`/jobs/${J7}/cancel`,'POST',{});
 r=await drive((await create({title:'Нет провайдера'})).j.job.id,()=>false,3);void r;
 
+
+/* ---------- the author model chooses genre, chapters and size ---------- */
+await reset();
+r=await A('/jobs','POST',{idea:'Мой готовый план: 1. Письмо. 2. Погоня. 3. Развязка. Историческая драма о торговце из Бухары.',lang:'ru'});
+ok(r.s===200&&r.j.job.config.auto===true,'only a plan/idea and a language are enough: the rest is chosen by the author model');
+const JA=r.j.job.id;r=await drive(JA);d=await detail(JA);
+ok(r.j.waiting==='plan_ready'&&d.job.config.genre==='historical'&&d.job.config.chapters===3&&d.job.config.words===600,'the plan fixed the genre, the number of chapters and the chapter size');
+{const pc=(await mcalls()).filter(x=>x.task==='plan');ok(pc.length===1&&pc[0].prompt.includes('Сам выбери жанр')&&pc[0].prompt.includes('1. Письмо. 2. Погоня. 3. Развязка.'),'the author model gets the administrator plan and is asked to choose genre, chapters and size')}
+ok((await A(`/jobs/${JA}/plan`,'PUT',{...d.plan,chapters:[...d.plan.chapters,{title:'Эпилог',summary:'Финал'}]})).j.job.config.chapters===4,'in the automatic mode the administrator may change the number of chapters');
+await A(`/jobs/${JA}/cancel`,'POST',{});
+r=await A('/jobs','POST',{idea:'Детектив в Бухаре про письмо торговца.',lang:'ru',genre:'detective',chapters:3,words:600});
+ok(r.j.job.config.auto===false,'choosing genre/chapters/size by hand keeps the manual mode');
+await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
+
 /* a job whose only editor key disappears is paused, not failed */
 await reset();
 r=await create({title:'Без ключа'});const J8=r.j.job.id;await A('/key','POST',{provider:'gemini',key:''});

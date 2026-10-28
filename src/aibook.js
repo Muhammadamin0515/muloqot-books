@@ -22,7 +22,7 @@ export function initAiBook(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,bg,here}=adm;
   Object.assign(M,{ai_idea:'',ai_title:'',ai_author:'Muloqot Books',ai_model:'',ai_syn:'',ai_ptitle:'',ai_desc:'',ai_key:''});
-  const D0=()=>({stage:'form',provider:'gemini',lang:'ru',genre:'novel',chapters:6,words:900,plan:null,texts:[],error:'',busy:false,done:0,published:null});
+  const D0=()=>({stage:'form',auto:true,provider:'gemini',lang:'ru',genre:'novel',chapters:6,words:900,plan:null,texts:[],error:'',busy:false,done:0,published:null});
   let AI=D0(),CFG=null,stop=false;
   try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&s.stage){AI={...D0(),...s,busy:false,error:''};if(AI.stage==='writing')AI.stage='plan';Object.assign(M,s.m||{})}}catch(e){}
   const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({...AI,busy:false,m:{ai_idea:M.ai_idea,ai_title:M.ai_title,ai_author:M.ai_author,ai_model:M.ai_model,ai_syn:M.ai_syn,ai_ptitle:M.ai_ptitle,ai_desc:M.ai_desc}}))}catch(e){}};
@@ -37,7 +37,7 @@ export function initAiBook(x,adm){
   /* ---------- prompts ---------- */
   const LANGN=l=>l==='uz'?'узбекском (латиница, литературный язык)':'русском';
   const SYS=l=>`Ты опытный писатель-прозаик. Пишешь оригинальные художественные тексты на ${LANGN(l)} языке. Не копируй и не пересказывай существующие произведения, не подражай стилю живых авторов, не используй цитаты из защищённых авторским правом книг. Все герои и события вымышленные. Пиши живо: сцены, диалоги, детали, без морализаторства и без повторов.`;
-  const planPrompt=()=>`Придумай книгу.\nЖанр: ${(GENRES.find(g=>g[0]===AI.genre)||[])[1]}.\nИдея от заказчика: ${M.ai_idea.trim()}\n${M.ai_title.trim()?`Название: ${M.ai_title.trim()}\n`:''}Количество глав: ${AI.chapters}.\nВерни ТОЛЬКО JSON без пояснений и без markdown в таком виде:\n{"title":"название","synopsis":"описание книги на 2-3 предложения для читателей","chapters":[{"title":"название главы","summary":"что происходит в главе, 2-3 предложения"}]}\nГлав ровно ${AI.chapters}. Язык названий и описаний: ${LANGN(AI.lang)}.`;
+  const planPrompt=()=>`${AI.auto?'Ниже план или идея заказчика. Сам выбери жанр (novel, detective, historical, adventure, drama, stories, modern, prose), число глав (от 3 до 12 по смыслу материала) и объём главы в словах (от 600 до 1500). Если заказчик уже разбил план на главы, сохрани его деление.':`Жанр: ${(GENRES.find(g=>g[0]===AI.genre)||[])[1]}. Количество глав: ${AI.chapters}.`}\nИдея или план заказчика: ${M.ai_idea.trim()}\n${M.ai_title.trim()?`Название: ${M.ai_title.trim()}\n`:''}Верни ТОЛЬКО JSON без пояснений и без markdown в таком виде:\n{"title":"название","genre":"жанр из списка","wordsPerChapter":900,"synopsis":"описание книги на 2-3 предложения для читателей","chapters":[{"title":"название главы","summary":"что происходит в главе, 2-3 предложения"}]}\n${AI.auto?'':`Глав ровно ${AI.chapters}. `}Язык названий и описаний: ${LANGN(AI.lang)}.`;
   const chPrompt=i=>{const p=AI.plan,prev=i>0?AI.texts[i-1]:'';
     return `Книга «${p.title}». Жанр: ${(GENRES.find(g=>g[0]===AI.genre)||[])[1]}.\nО чём: ${p.synopsis}\nПлан глав:\n${p.chapters.map((c,k)=>`${k+1}. ${c.title}: ${c.summary}`).join('\n')}\n\n${prev?`Конец предыдущей главы (продолжи плавно, не повторяйся):\n«…${prev.slice(-1500)}»\n\n`:''}Напиши главу ${i+1} «${p.chapters[i].title}» целиком. Что в ней происходит: ${p.chapters[i].summary}\nОбъём около ${AI.words} слов. Язык: ${LANGN(AI.lang)}. Выдай только текст главы без заголовка, без номера и без пояснений. Абзацы разделяй пустой строкой, без markdown.`};
 
@@ -52,7 +52,9 @@ export function initAiBook(x,adm){
       const j=JSON.parse(raw.slice(a,b+1));
       const ch=(Array.isArray(j.chapters)?j.chapters:[]).slice(0,14).map(c=>({title:String(c.title||'').slice(0,100),summary:String(c.summary||'').slice(0,400)})).filter(c=>c.title);
       if(!ch.length)throw new Error('plan');
-      setPlan({title:String(j.title||M.ai_title||'Без названия').slice(0,150),synopsis:String(j.synopsis||'').slice(0,1500),chapters:ch});AI.stage='plan';AI.texts=[];AI.done=0;
+      setPlan({title:String(j.title||M.ai_title||'Без названия').slice(0,150),synopsis:String(j.synopsis||'').slice(0,1500),chapters:ch});
+      if(AI.auto){if(GENRES.some(g=>g[0]===j.genre))AI.genre=j.genre;AI.chapters=ch.length;const w=Math.round(+j.wordsPerChapter);AI.words=w>=300&&w<=2000?w:900}
+      AI.stage='plan';AI.texts=[];AI.done=0;
     }catch(e){AI.error=e instanceof SyntaxError||e.message==='plan'?'Модель вернула план в неверном формате. Нажмите ещё раз или выберите другую модель.':errText(e)}
     AI.busy=false;refresh();
   };
@@ -80,7 +82,7 @@ export function initAiBook(x,adm){
   };
   ACT.aiBack=()=>{syncPlan();AI.stage=AI.stage==='review'?'plan':'form';AI.error='';refresh()};
   ACT.aiReset=()=>{AI=D0();Object.assign(M,{ai_idea:'',ai_title:'',ai_syn:'',ai_ptitle:'',ai_desc:''});try{localStorage.removeItem(KEY)}catch(e){}x.refresh()};
-  ACT.aiSet=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.dataset.v:el.dataset.v;if(el.dataset.k==='provider')M.ai_model='';refresh()};
+  ACT.aiSet=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.dataset.v:el.dataset.k==='auto'?el.dataset.v==='1':el.dataset.v;if(el.dataset.k==='provider')M.ai_model='';refresh()};
   CHG.aiSel=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.value:el.value;if(el.dataset.k==='provider')M.ai_model='';refresh()};
 
   ACT.aiPublish=()=>openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей без пометки об ИИ, с автором, которого вы укажете. Это оригинальный вымышленный текст.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="aiPublishGo">Опубликовать</button></div>`);
@@ -125,23 +127,25 @@ export function initAiBook(x,adm){
       <div class="field" style="margin-top:10px"><label for="aiModel">Модель</label><input id="aiModel" class="in" data-m="adm:ai_model" list="aiModels" value="${esc(M.ai_model)}" placeholder="${esc(MODELS[AI.provider][0])}" autocomplete="off"><datalist id="aiModels">${MODELS[AI.provider].map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>
       ${ready?'':`<p class="hint" style="color:var(--acc)">Для ${esc(pr?pr.name:'')} ключ не добавлен. ${CFG.canSetKeys?'Нажмите «Ключи» ниже.':'Добавьте секрет '+esc(pr?pr.env:'')+' в Cloudflare.'}</p>`}
       <button class="btn sm ghost" data-a="aiKeys" style="margin-top:6px">Ключи сервисов</button>
-      <div class="step" style="margin-top:18px"><i>2</i><b>О чём книга</b></div>
-      <textarea id="aiIdea" class="in" data-m="adm:ai_idea" maxlength="1500" style="min-height:120px" placeholder="Например: Детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека.">${esc(M.ai_idea)}</textarea>
+      <div class="step" style="margin-top:18px"><i>2</i><b>Ваш план или идея</b></div>
+      <p class="hint" style="margin:0 0 8px">Вставьте готовый план или идею. ИИ-автор сам определит жанр, число глав и объём; если план уже разбит на главы, он сохранит ваше деление.</p>
+      <textarea id="aiIdea" class="in" data-m="adm:ai_idea" maxlength="8000" style="min-height:180px" placeholder="Вставьте готовый план или идею. Например: Детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека.">${esc(M.ai_idea)}</textarea>
       <div class="field" style="margin-top:12px"><label for="aiTitle">Название (если пусто, придумает ИИ)</label><input id="aiTitle" class="in" data-m="adm:ai_title" value="${esc(M.ai_title)}" maxlength="100" autocomplete="off"></div>
       <div class="step" style="margin-top:18px"><i>3</i><b>Язык книги</b></div>
       ${seg('lang',[['ru','Русский'],['uz','Oʻzbekcha']],AI.lang)}
-      <div class="step" style="margin-top:18px"><i>4</i><b>Жанр и размер</b></div>
-      <select class="in" data-chg="aiSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${AI.genre===v?'selected':''}>${n}</option>`).join('')}</select>
+      <div class="step" style="margin-top:18px"><i>4</i><b>Жанр, главы и объём</b></div>
+      ${seg('auto',[['1','Подберёт ИИ-автор'],['0','Задам сам']],AI.auto?'1':'0')}
+      ${AI.auto?'<p class="hint">Подбор увидите в плане и сможете поправить его до начала работы.</p>':`<select class="in" style="margin-top:10px" data-chg="aiSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${AI.genre===v?'selected':''}>${n}</option>`).join('')}</select>
       <div class="lbl" style="margin:12px 0 6px">Глав в книге</div>${seg('chapters',[3,5,8,10,12].map(n=>[n,n]),AI.chapters)}
       <div class="lbl" style="margin:12px 0 6px">Слов в главе (примерно)</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],AI.words)}
-      <p class="hint">Книга из ${AI.chapters} глав по ${AI.words} слов: около ${Math.round(AI.chapters*AI.words/250)} страниц, написание займёт несколько минут.</p>
+      <p class="hint">Книга из ${AI.chapters} глав по ${AI.words} слов: около ${Math.round(AI.chapters*AI.words/250)} страниц, написание займёт несколько минут.</p>`}
       ${err()}
       <button class="btn block" style="margin-top:14px" data-a="aiPlan" ${AI.busy||!ready?'disabled':''}>${AI.busy?'Составляю план…':'Составить план книги'}</button></div>`;
   }
   function planView(){
     const p=AI.plan,partial=AI.done>0&&AI.done<p.chapters.length;
     return `<div class="card">
-      ${step(1,'План книги')}<p class="hint" style="margin:0 0 10px">Поправьте название и главы, если нужно. По этому плану ИИ напишет всю книгу.</p>
+      ${step(1,'План книги')}<p class="hint" style="margin:0 0 6px">${AI.auto?'ИИ-автор выбрал: ':'Параметры: '}жанр — ${esc((GENRES.find(g=>g[0]===AI.genre)||[])[1]||'проза')}, глав — ${p.chapters.length}, около ${AI.words} слов в главе (примерно ${Math.round(p.chapters.length*AI.words/250)} страниц).</p><p class="hint" style="margin:0 0 10px">Поправьте название и главы, если нужно. По этому плану ИИ напишет всю книгу.</p>
       <div class="field"><label for="aiPT">Название</label><input id="aiPT" class="in" data-m="adm:ai_ptitle" value="${esc(M.ai_ptitle)}" maxlength="150"></div>
       <div class="field"><label for="aiSyn">О чём книга</label><textarea id="aiSyn" class="in" data-m="adm:ai_syn" style="min-height:90px">${esc(M.ai_syn)}</textarea></div>
       ${p.chapters.map((c,i)=>`<div class="card" style="margin:10px 0;padding:12px"><div class="mute" style="font-size:12px">Глава ${i+1}${AI.texts[i]?` · написана, ${words(AI.texts[i])} слов`:''}</div><input class="in" data-m="adm:aip_t${i}" value="${esc(M['aip_t'+i])}" maxlength="100" aria-label="Название главы ${i+1}" style="margin:6px 0"><textarea class="in" data-m="adm:aip_s${i}" style="min-height:70px" aria-label="Содержание главы ${i+1}">${esc(M['aip_s'+i])}</textarea></div>`).join('')}

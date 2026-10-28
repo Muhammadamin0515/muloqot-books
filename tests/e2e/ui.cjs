@@ -32,7 +32,7 @@ ok((await a.textContent('.card:has-text("✓")')).includes('(текст)'),'EPUB
 ok((await a.textContent('.tiles')).includes('1'),'stats updated');
 await a.screenshot({path:'/tmp/ui_admin_catalog.png'});
 await a.click('[data-a=admTab][data-v=ai]');await a.waitForTimeout(700);
-{const t=await a.textContent('.adm');ok(t.includes('Сервис и модель')&&t.includes('О чём книга')&&t.includes('ключ не добавлен'),'AI tab opens and says that no key is added');
+{const t=await a.textContent('.adm');ok(t.includes('Сервис и модель')&&t.includes('Ваш план или идея')&&t.includes('Подберёт ИИ-автор')&&t.includes('ключ не добавлен'),'AI tab opens and says that no key is added');
 ok(await a.locator('[data-a=aiPlan]').isDisabled(),'plan button is disabled until a key exists');
 await a.click('[data-a=aiSet][data-k=provider][data-v=groq]');await a.waitForTimeout(200);ok((await a.inputValue('#aiModel'))===''&&(await a.getAttribute('#aiModel','placeholder'))==='llama-3.3-70b-versatile','switching the service shows its default model');
 await a.screenshot({path:'/tmp/ui_admin_ai.png'});}

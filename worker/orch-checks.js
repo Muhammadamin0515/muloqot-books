@@ -52,6 +52,7 @@ export function parseJsonLoose(text){
   }
   return null;
 }
+export const GENRE_IDS=['novel','detective','historical','adventure','drama','stories','modern','prose'];
 const TYPES=['continuity','character','style','logic','language','plot','other'];
 /** An editor's answer → {ok,issues}. Throws when the answer is not usable. */
 export function parseReview(text){
@@ -65,8 +66,9 @@ export function parsePlan(text,{chapters}={}){
   const j=parseJsonLoose(text);if(!j||!Array.isArray(j.chapters))throw new Error('bad_format');
   const ch=j.chapters.slice(0,14).map(c=>({title:String(c?.title||'').slice(0,100),summary:String(c?.summary||'').slice(0,500)})).filter(c=>c.title);
   if(!ch.length||(chapters&&ch.length!==chapters))throw new Error('bad_format');
+  const wpc=Math.round(+j.wordsPerChapter);
   const st=j.style&&typeof j.style==='object'?j.style:{};
-  return{title:String(j.title||'').slice(0,150),synopsis:String(j.synopsis||'').slice(0,1500),
+  return{title:String(j.title||'').slice(0,150),synopsis:String(j.synopsis||'').slice(0,1500),genre:GENRE_IDS.includes(j.genre)?j.genre:'',wordsPerChapter:Number.isFinite(wpc)?Math.max(300,Math.min(2000,wpc)):0,
     style:{voice:String(st.voice||'').slice(0,200),pov:String(st.pov||'').slice(0,100),tense:String(st.tense||'').slice(0,60),tone:String(st.tone||'').slice(0,200),rules:(Array.isArray(st.rules)?st.rules:[]).slice(0,8).map(x=>String(x).slice(0,200))},
     characters:(Array.isArray(j.characters)?j.characters:[]).slice(0,12).map(x=>({name:String(x?.name||'').slice(0,60),role:String(x?.role||'').slice(0,120),traits:String(x?.traits||'').slice(0,240)})).filter(x=>x.name),
     facts:(Array.isArray(j.facts)?j.facts:[]).slice(0,20).map(x=>String(x).slice(0,240)),chapters:ch};

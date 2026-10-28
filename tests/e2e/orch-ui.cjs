@@ -17,12 +17,12 @@ ok((await a.inputValue('#asMd'))==='draft-model'&&(await a.inputValue('#asMe'))=
 await a.click('[data-a=asModels][data-p=gemini]');await a.waitForTimeout(500);
 ok((await a.locator('#l_asMe option').count())===1,'the live model list of the service fills the suggestions');
 await a.fill('#asMd','invented-model');await a.fill('.card textarea','Детектив в старой Бухаре: торговец находит письмо.');
-await a.click('[data-a=asSet][data-k=chapters][data-v="3"]');await a.click('[data-a=asSet][data-k=words][data-v="600"]');
+ok(await a.locator('[data-a=asSet][data-k=chapters]').count()===0,'by default genre, chapters and size are left to the author model');
 await a.click('[data-a=asCreate]');await a.waitForTimeout(1200);
 ok((await a.textContent('.demo-banner')).includes('Этих моделей нет в списке сервиса'),'an invented model is refused with a clear message');
 await a.fill('#asMd','draft-model');await a.click('[data-a=asCreate]');
 await a.waitForSelector('[data-a=asApprove]',{timeout:20000});
-ok((await a.textContent('.adm')).includes('План книги')&&(await a.inputValue('#asPT'))==='Письмо из Бухары','the plan is shown for approval and nothing is written yet');
+ok((await a.textContent('.adm')).includes('План книги')&&(await a.textContent('.adm')).includes('ИИ-автор выбрал: жанр — Исторический, глав — 3')&&(await a.inputValue('#asPT'))==='Письмо из Бухары','the plan shows what the author model chose and nothing is written yet');
 await a.screenshot({path:'/tmp/ui_studio_plan.png'});
 await a.click('[data-a=asApprove]');
 await a.waitForSelector('[data-a=asPublish]',{timeout:90000});

@@ -23,12 +23,17 @@ export function context(job,i,chapters){
     `Текущая глава ${i+1} «${p.chapters[i].title}»: ${p.chapters[i].summary}`
   ].filter(Boolean).join('\n\n');
 }
-export const planPrompt=job=>`[task:plan]
+export const planPrompt=job=>{
+  const c=job.config,auto=!!c.auto;
+  return `[task:plan]
 Спроектируй книгу.
-Жанр: ${genreName(job.config.genre)}. Идея заказчика: ${job.config.idea}
-${job.config.title?`Название: ${job.config.title}\n`:''}Глав ровно ${job.config.chapters}. Язык названий и описаний: ${LANGN(job.config.lang)}.
+${auto?`Ниже план или идея заказчика. Сам выбери жанр (из списка: novel — роман, detective — детектив, historical — исторический, adventure — приключения, drama — драма, stories — рассказы, modern — современная проза, prose — проза), число глав (от 3 до 12, по смыслу и объёму материала) и объём одной главы в словах (от 600 до 1500), чтобы книга получилась цельной. Если заказчик уже разбил план на главы, сохрани его разбивку и названия.`:`Жанр: ${genreName(c.genre)}. Глав ровно ${c.chapters}.`}
+Идея или план заказчика:
+${c.idea}
+${c.title?`Название: ${c.title}\n`:''}Язык названий и описаний: ${LANGN(c.lang)}.
 Верни ТОЛЬКО JSON такого вида:
-{"title":"название","synopsis":"описание книги, 2-3 предложения","style":{"voice":"...","pov":"от какого лица","tense":"время","tone":"тон","rules":["правило стиля"]},"characters":[{"name":"имя","role":"роль","traits":"черты и речь"}],"facts":["исходный факт мира или сюжета"],"chapters":[{"title":"название главы","summary":"что происходит, 2-3 предложения"}]}`;
+{"title":"название","genre":"${auto?'novel|detective|historical|adventure|drama|stories|modern|prose':c.genre}","wordsPerChapter":${auto?'900':c.words},"synopsis":"описание книги, 2-3 предложения","style":{"voice":"...","pov":"от какого лица","tense":"время","tone":"тон","rules":["правило стиля"]},"characters":[{"name":"имя","role":"роль","traits":"черты и речь"}],"facts":["исходный факт мира или сюжета"],"chapters":[{"title":"название главы","summary":"что происходит, 2-3 предложения"}]}`;
+};
 export const draftPrompt=(job,i,chapters)=>`[task:chapter_draft]
 ${context(job,i,chapters)}
 

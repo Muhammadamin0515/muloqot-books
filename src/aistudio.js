@@ -15,7 +15,7 @@ export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
   Object.assign(M,{as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
-  const S={jobs:null,cfg:null,models:{},form:{lang:'ru',genre:'novel',chapters:6,words:900,second:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  const S={jobs:null,cfg:null,models:{},form:{lang:'ru',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
   const errOf=e=>{const b=e&&e.body||{};const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
@@ -41,13 +41,13 @@ export function initAiStudio(x,adm){
   ACT.asNew=()=>{S.cur='new';S.d=null;S.err='';refresh()};
   ACT.asBack=()=>{S.cur=null;S.d=null;S.err='';S.loop=false;loadList()};
   ACT.asOpen=el=>openJob(el.dataset.id);
-  ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
+  ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'||el.dataset.k==='auto'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
   CHG.asSel=el=>{S.form[el.dataset.k]=el.value;refresh()};
   ACT.asModels=async el=>{const p=el.dataset.p;try{S.models[p]=(await api('/api/admin/ai/models?provider='+p)).models.map(m=>m.id);toast(`${p}: моделей в списке сервиса — ${S.models[p].length}`)}catch(e){toast(e.body&&e.body.error==='no_key'?'Сначала добавьте ключ сервиса (вкладка «ИИ: быстро» → Ключи)':'Не удалось получить список: '+errOf(e))}refresh()};
   ACT.asCreate=async()=>{
     const f=S.form,roles={draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null};
     const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
-    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,lang:f.lang,genre:f.genre,chapters:f.chapters,words:f.words,roles,limits,noSecondOpinion:!f.second});
+    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,lang:f.lang,...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,noSecondOpinion:!f.second});
     if(r){S.cur=r.job.id;S.d=null;await reloadJob();runLoop()}
   };
 
@@ -101,14 +101,18 @@ export function initAiStudio(x,adm){
   function createView(){
     const f=S.form;
     return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button><div class="card">
-      ${step(1,'О чём книга')}
-      <textarea class="in" data-m="adm:as_idea" maxlength="1500" style="min-height:110px" placeholder="Например: Детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека.">${esc(M.as_idea)}</textarea>
-      <div class="field" style="margin-top:12px"><label for="asT">Название (если пусто, придумает Gemini)</label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
-      ${step(2,'Язык, жанр, размер').replace('<div class="step">','<div class="step" style="margin-top:16px">')}
+      ${step(1,'Ваш план или идея')}
+      <p class="hint" style="margin:0 0 8px">Вставьте готовый план книги или просто идею. ИИ-автор сам определит жанр, число глав и объём. Если ваш план уже разбит на главы, он сохранит ваше деление.</p>
+      <textarea class="in" data-m="adm:as_idea" maxlength="8000" style="min-height:200px" placeholder="Например: Детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека. Или вставьте весь ваш план по главам.">${esc(M.as_idea)}</textarea>
+      <div class="counter"><span>${M.as_idea.length} / 8000</span></div>
+      <div class="field" style="margin-top:12px"><label for="asT">Название (если пусто, придумает ИИ)</label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
+      <div class="step" style="margin-top:16px"><i>2</i><b>Язык книги</b></div>
       ${seg('lang',[['ru','Русский'],['uz','Oʻzbekcha']],f.lang)}
-      <select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
+      <div class="lbl" style="margin:14px 0 6px">Жанр, число глав и объём</div>
+      ${seg('auto',[['1','Подберёт ИИ-автор'],['0','Задам сам']],f.auto?'1':'0')}
+      ${f.auto?'<p class="hint">Подбор увидите в плане и сможете поправить его до начала работы.</p>':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
       <div class="lbl" style="margin:12px 0 6px">Глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
-      <div class="lbl" style="margin:12px 0 6px">Слов в главе</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}
+      <div class="lbl" style="margin:12px 0 6px">Слов в главе</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
       <div class="step" style="margin-top:18px"><i>3</i><b>Модели</b></div>
       <p class="hint" style="margin:0 0 8px">Названия моделей берутся только из списка самого сервиса: нажмите «Список». Неизвестная модель будет отклонена.</p>
       ${modelField('asMd','as_draft','Groq: черновики и правки','groq','id модели Groq')}
@@ -126,7 +130,7 @@ export function initAiStudio(x,adm){
   function planView(d){
     const p=d.plan;
     return `${head(d)}<div class="card">${step(1,'План книги: проверьте и утвердите')}
-      <p class="hint" style="margin:0 0 10px">Пока вы не утвердите план, ни одна глава не пишется. План можно править.</p>
+      <p class="hint" style="margin:0 0 6px">${d.job.config.auto?'ИИ-автор выбрал: ':'Параметры: '}жанр — ${esc((GENRES.find(g=>g[0]===d.job.config.genre)||[])[1]||'проза')}, глав — ${p.chapters.length}, около ${d.job.config.words} слов в главе (примерно ${Math.round(p.chapters.length*d.job.config.words/250)} страниц).</p><p class="hint" style="margin:0 0 10px">Пока вы не утвердите план, ни одна глава не пишется. План можно править.</p>
       <div class="field"><label for="asPT">Название</label><input id="asPT" class="in" data-m="adm:as_ptitle" value="${esc(M.as_ptitle||p.title)}" maxlength="150"></div>
       <div class="field"><label for="asPS">О чём книга</label><textarea id="asPS" class="in" data-m="adm:as_psyn" style="min-height:80px">${esc(M.as_psyn||p.synopsis)}</textarea></div>
       ${p.style&&(p.style.voice||p.style.tone)?`<p class="hint">Стиль: ${esc([p.style.voice,p.style.pov,p.style.tense,p.style.tone].filter(Boolean).join(' · '))}</p>`:''}

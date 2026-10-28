@@ -24,7 +24,7 @@ export function registerOrch(d){
   const addVersion=(c,job,chapter,kind,text,who,note='')=>stmt(c,'INSERT INTO ai_versions(job_id,chapter,kind,text,provider,model,note,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,text,who?.provider||'',who?.model||'',note,Date.now());
   const addCheck=(c,job,chapter,kind,ok,issues,who)=>stmt(c,'INSERT INTO ai_checks(job_id,chapter,kind,ok,issues,provider,model,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,ok?1:0,J(issues),who?.provider||'',who?.model||'',Date.now());
 
-  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
+  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{auto:!!job.config.auto,lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
     state:job.state,usage:{calls:job.calls,tokensIn:job.tokens_in,tokensOut:job.tokens_out,cost:job.cost,costUnknown:!!job.cost_unknown},bookId:job.book_id||null});
 
   /* ---------- calling a role: fallbacks, retries, limits, journal ---------- */
@@ -64,8 +64,12 @@ export function registerOrch(d){
   async function doStep(c,job){
     const lim=job.config.limits;
     if(job.status==='draft'){
-      const r=await callRole(c,job,'plan',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.planPrompt(job),max:3500,temperature:.8,json:true,parse:t=>parsePlan(t,{chapters:job.config.chapters})});
-      const plan=r.value;if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
+      const r=await callRole(c,job,'plan',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.planPrompt(job),max:3500,temperature:.8,json:true,parse:t=>parsePlan(t,{chapters:job.config.auto?0:job.config.chapters})});
+      const plan=r.value;
+      if(job.config.auto){ /* the author model chose the genre, the number of chapters and their size */
+        job.config.chapters=plan.chapters.length;job.config.genre=plan.genre||'novel';job.config.words=plan.wordsPerChapter||900;
+        await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id);
+      }if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
       job.plan=plan;job.title=plan.title;job.status='plan_ready';job.pause_reason='';
       await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=? WHERE id=?',job.title,job.id)]);return;
     }
@@ -173,7 +177,8 @@ export function registerOrch(d){
   A('POST','/api/admin/ai/jobs/:id/step',async(c,id)=>{const r=await step(c,id);return json(r.j,r.s)});
 
   A('POST','/api/admin/ai/jobs',async c=>{
-    const b=c.body,idea=String(b.idea||'').trim().slice(0,1500);if(idea.length<10)return bad(400,'idea');
+    const b=c.body,idea=String(b.idea||'').trim().slice(0,8000);if(idea.length<10)return bad(400,'idea');
+    const auto=b.auto!==false&&!b.chapters&&!b.genre&&!b.words||b.auto===true;
     const lang=b.lang==='uz'?'uz':'ru',genre=['novel','detective','historical','adventure','drama','stories','modern','prose'].includes(b.genre)?b.genre:'novel';
     const chapters=Math.max(2,Math.min(12,Math.round(+b.chapters)||6)),wordsN=Math.max(300,Math.min(2000,Math.round(+b.words)||900));
     if((await get(c,`SELECT COUNT(*) n FROM ai_jobs WHERE status IN (${ACTIVE.map(()=>'?').join(',')})`,...ACTIVE)).n>=MAX_ACTIVE)return bad(429,'too_many_active');
@@ -192,7 +197,7 @@ export function registerOrch(d){
     const bad_=unknownModels(roles,available);if(bad_.length)return json({error:'unknown_model',models:bad_},422);
     if(limits.maxCostUsd!=null){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
     const used2=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]);
-    const cfg={idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
+    const cfg={auto,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
     await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});
@@ -212,9 +217,11 @@ export function registerOrch(d){
 
   A('PUT','/api/admin/ai/jobs/:id/plan',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');
-    let np;try{np=parsePlan(J(c.body),{chapters:job.config.chapters})}catch{return bad(422,'plan')}
-    if(!np.title)np.title=job.plan.title;job.plan={...job.plan,...np};job.title=job.plan.title;
-    await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=? WHERE id=?',job.title,id)]);return json({job:view(job),plan:job.plan});
+    let np;try{np=parsePlan(J(c.body),{chapters:job.config.auto?0:job.config.chapters})}catch{return bad(422,'plan')}
+    if(!np.title)np.title=job.plan.title;if(!np.genre)np.genre=job.config.genre;if(!np.wordsPerChapter)np.wordsPerChapter=job.config.words;
+    job.plan={...job.plan,...np};job.title=job.plan.title;
+    if(job.config.auto){job.config.chapters=job.plan.chapters.length;job.config.genre=np.genre;job.config.words=np.wordsPerChapter}
+    await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=?,config=? WHERE id=?',job.title,J(job.config),id)]);return json({job:view(job),plan:job.plan});
   });
   A('POST','/api/admin/ai/jobs/:id/approve-plan',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');

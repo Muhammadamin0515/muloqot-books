@@ -19,13 +19,13 @@ const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on(
   }
   const j=JSON.parse(b),prompt=provider==='gemini'?j.contents[0].parts[0].text:j.messages[1].content;
   const task=(/^\[task:(\w+)\]/.exec(prompt)||[])[1]||'?',ch=+((/ТЕКСТ ГЛАВЫ (\d+)/.exec(prompt)||/Глава (\d+) «/.exec(prompt)||/Текущая глава (\d+)/.exec(prompt)||[])[1]||0);
-  const call={provider,task,chapter:ch,model:provider==='gemini'?decodeURIComponent(m[2].replace(':generateContent','')):j.model};rec.push(call);
+  const call={provider,task,chapter:ch,prompt:task==='plan'?prompt:undefined,model:provider==='gemini'?decodeURIComponent(m[2].replace(':generateContent','')):j.model};rec.push(call);
   if(ctl.delayMs)await sleep(ctl.delayMs);
   const key=provider+task+ch;seen[key]=(seen[key]||0)+1;const nth=seen[key];
   if(provider==='groq'&&ctl.groqMode==='429'){res.statusCode=429;return res.end(JSON.stringify({error:{message:'rate limit'}}))}
   if(provider==='groq'&&ctl.groqMode==='empty-once'&&task==='chapter_draft'&&nth===1)return reply(res,provider,'');
   if(provider==='groq'&&ctl.groqMode==='short-once'&&task==='chapter_draft'&&nth===1)return reply(res,provider,'Слишком коротко.');
-  if(task==='plan'){const n=+((/Глав ровно (\d+)/.exec(prompt)||[])[1]||3);return reply(res,provider,JSON.stringify({title:'Письмо из Бухары',synopsis:'Торговец находит письмо и идёт по следу.',style:{voice:'спокойный',pov:'третье лицо',tense:'прошедшее',tone:'тёплый',rules:['без анахронизмов']},characters:[{name:'Алишер',role:'торговец',traits:'осторожный'}],facts:['Действие в Бухаре'],chapters:Array.from({length:n},(_,i)=>({title:`Глава ${i+1}: путь`,summary:`Алишер делает шаг ${i+1}.`}))}))}
+  if(task==='plan'){const n=+((/Глав ровно (\d+)/.exec(prompt)||[])[1]||3);return reply(res,provider,JSON.stringify({title:'Письмо из Бухары',genre:'historical',wordsPerChapter:600,synopsis:'Торговец находит письмо и идёт по следу.',style:{voice:'спокойный',pov:'третье лицо',tense:'прошедшее',tone:'тёплый',rules:['без анахронизмов']},characters:[{name:'Алишер',role:'торговец',traits:'осторожный'}],facts:['Действие в Бухаре'],chapters:Array.from({length:n},(_,i)=>({title:`Глава ${i+1}: путь`,summary:`Алишер делает шаг ${i+1}.`}))}))}
   if(task==='chapter_draft')return reply(res,provider,chapterText(ch*10+nth));
   if(task==='chapter_fix')return reply(res,provider,chapterText(ch*10+50+nth)+'\n\nИСПРАВЛЕНО.');
   if(task==='chapter_expert')return reply(res,provider,chapterText(ch*10+90+nth)+'\n\nЭКСПЕРТНАЯ ПРАВКА.');

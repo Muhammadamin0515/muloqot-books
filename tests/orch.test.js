@@ -90,7 +90,8 @@ test('editor review: major issues fail the chapter, minor ones do not, garbage t
 });
 test('plan and analysis parsers validate the shape',()=>{
   const plan=JSON.stringify({title:'T',synopsis:'S',style:{voice:'v',rules:['r']},characters:[{name:'А',role:'r',traits:'t'}],facts:['f'],chapters:[{title:'1',summary:'s'},{title:'2',summary:'s'}]});
-  assert.equal(parsePlan(plan,{chapters:2}).chapters.length,2);assert.throws(()=>parsePlan(plan,{chapters:3}),/bad_format/);assert.throws(()=>parsePlan('{}'),/bad_format/);
+  assert.equal(parsePlan(plan,{chapters:2}).chapters.length,2);assert.equal(parsePlan(plan,{chapters:0}).chapters.length,2,'any count when the author model chooses');
+  const auto=parsePlan(JSON.stringify({...JSON.parse(plan),genre:'detective',wordsPerChapter:5000}));assert.equal(auto.genre,'detective');assert.equal(auto.wordsPerChapter,2000,'chapter size is clamped');assert.equal(parsePlan(JSON.stringify({...JSON.parse(plan),genre:'nonsense'})).genre,'','an unknown genre is not accepted');assert.throws(()=>parsePlan(plan,{chapters:3}),/bad_format/);assert.throws(()=>parsePlan('{}'),/bad_format/);
   assert.equal(parseAnalysis('{"summary":"Краткое содержание главы здесь","facts":["a"],"characters":[{"name":"А","state":"s"}]}').facts[0],'a');assert.throws(()=>parseAnalysis('{"summary":"x"}'),/bad_format/);
 });
 test('provider errors are classified',()=>{
