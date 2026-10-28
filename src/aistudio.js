@@ -4,6 +4,7 @@ import {coverJpeg} from './aibook.js';
 import {COVER_STYLES} from '../worker/covers.js';
 
 const GENRES=[['novel','Роман'],['detective','Детектив'],['historical','Исторический'],['adventure','Приключения'],['drama','Драма'],['stories','Рассказы'],['modern','Современная проза'],['prose','Проза']];
+const ST_CLASS={running:'run',draft:'run',paused:'warn',needs_admin:'warn',plan_ready:'info',awaiting_publish:'ok',published:'ok',cancelled:'off'};
 const STATUS={draft:'Составляется план',plan_ready:'План ждёт вашего утверждения',running:'Идёт работа',paused:'На паузе',needs_admin:'Нужно ваше решение',awaiting_publish:'Готово: ждёт подтверждения публикации',published:'Опубликована',cancelled:'Отменена'};
 const PHASE={plan:'Gemini составляет план',draft:'Groq пишет черновик главы',check:'Программная проверка текста',review:'Gemini проверяет главу',fix:'Groq исправляет по замечаниям',expert:'Эксперт (OpenRouter) правит главу',analyze:'Gemini фиксирует факты и краткое содержание',final:'Gemini проверяет книгу целиком',final2:'Эксперт (OpenRouter) даёт вторую оценку',annotation:'Groq пишет аннотацию'};
 const PAUSE={manual:'Остановлено вручную','budget:calls':'Достигнут лимит вызовов','budget:tokens':'Достигнут лимит токенов','budget:cost':'Достигнут лимит стоимости'};
@@ -99,8 +100,9 @@ export function initAiStudio(x,adm){
 
   /* ---------- views ---------- */
   const tag=(t,cls='')=>`<span class="tag ${cls}">${esc(t)}</span>`;
-  const money=u=>u.cost>0||!u.costUnknown?`$${(u.cost||0).toFixed(4)}${u.costUnknown?' + неизвестно':''}`:'цена неизвестна';
-  const usageLine=(u,free)=>`Вызовов: ${u.calls} · токенов: ${u.tokensIn+u.tokensOut} · ${free?'расходы: бесплатно (платные модели не используются)':'стоимость: '+money(u)}`;
+  
+  const kfmt=n=>n>=1000?(n/1000).toFixed(n>=10000?0:1).replace('.0','')+' тыс.':String(n);
+  const statChips=(u,free)=>`<div class="jstats"><span><b>${u.calls}</b>вызовов</span><span><b>${kfmt(u.tokensIn+u.tokensOut)}</b>токенов</span><span><b>${free?'бесплатно':'≈ $'+(u.cost||0).toFixed(2)}</b>${free?'расходы':'расчётные расходы'}</span></div>`;
   const issueList=l=>(l||[]).length?`<ul class="issues">${l.map(i=>`<li><b class="${i.severity==='major'?'bad':''}">${i.severity==='major'?'Серьёзно':'Замечание'}</b> ${esc(i.note)}${i.where?` <span class="mute">(${esc(i.where)})</span>`:''}${i.fix?`<br><span class="mute">Как исправить: ${esc(i.fix)}</span>`:''}</li>`).join('')}</ul>`:'<p class="mute">Замечаний нет.</p>';
   const err=()=>S.err?`<div class="demo-banner" style="margin:12px 0"><b>${esc(S.err)}</b></div>`:'';
   const seg=(k,list,cur)=>`<div class="seg">${list.map(([v,n])=>`<button class="${String(cur)===String(v)?'on':''}" data-a="asSet" data-k="${k}" data-v="${v}">${n}</button>`).join('')}</div>`;
@@ -160,9 +162,14 @@ export function initAiStudio(x,adm){
       <p class="hint">При достижении лимита работа встаёт на паузу, написанное сохраняется.</p>
     </div></details>`;
   }
-  const modelsLine=c=>{const r=c.roles||{},m=x=>x?esc(x.primary.model):'нет';return `<div class="mute" style="font-size:12px;margin-top:6px">Писатель: ${m(r.draft)} · Редактор: ${m(r.editor)} · Эксперт: ${m(r.expert)}${c.autoModels?' (подобраны автоматически)':''}</div>${(c.dropped||[]).length?`<div class="mute" style="font-size:12px;margin-top:4px">Не используются: ${c.dropped.map(x=>esc(x.provider+':'+x.model)+(x.reason==='not_free'?' (платная)':' (нет в списке сервиса)')).join(', ')}</div>`:''}`};
-  const head=d=>`<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
-    <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage,d.job.config.freeOnly)}</div>${modelsLine(d.job.config)}</div>`;
+  const modelsLine=c=>{const r=c.roles||{},row=(l,x)=>`<div class="mrow2"><span>${l}</span><b>${x?esc(x.primary.model):'не задан'}</b></div>`;
+    return `<details class="mdet" data-asg="models" ${OPEN.models?'open':''}><summary>Какие модели работают${c.autoModels?' (подобраны автоматически)':''}</summary>${row('Писатель',r.draft)}${row('Редактор',r.editor)}${row('Эксперт',r.expert)}${(c.dropped||[]).length?`<p class="hint" style="margin:6px 0 0">Не используются: ${c.dropped.map(x=>esc(x.provider+':'+x.model)+(x.reason==='not_free'?' (платная)':' (нет в списке сервиса)')).join(', ')}</p>`:''}</details>`};
+  const head=d=>{const j=d.job,done=d.chapters.filter(c=>c.status==='approved').length,n=j.config.chapters||0;
+    return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
+    <div class="card jhead"><div class="jtitle"><b>${esc(j.title)}</b></div>
+      <div class="jbadge ${ST_CLASS[j.status]||''}"><i></i>${esc(STATUS[j.status]||j.status)}</div>
+      ${n?`<div class="mute" style="font-size:13px;margin:10px 0 2px">${j.status==='published'?'Книга опубликована':`Глав готово: ${done} из ${n}`}</div>`:''}
+      ${statChips(j.usage,j.config.freeOnly)}${modelsLine(j.config)}</div>`};
   function planView(d){
     const p=d.plan;
     return `${head(d)}<div class="card">${step(1,'План книги: проверьте и утвердите')}
@@ -194,10 +201,15 @@ export function initAiStudio(x,adm){
     if(j.status==='plan_ready')return planView(d);
     const running=['draft','running'].includes(j.status);
     let body='';
-    if(running)body=`<div class="card"><b>${S.loop?'Работаем…':'Остановлено'}</b><div class="bar" style="margin:10px 0"><i style="width:${Math.round(d.chapters.filter(c=>c.status==='approved').length/Math.max(1,j.config.chapters)*100)}%"></i></div>
-      <div class="mute" style="font-size:13px">${esc(PHASE[st.phase]||PHASE[j.status==='draft'?'plan':'draft'])}${st.chapter!==undefined&&!/^final|annotation/.test(st.phase||'')?` · глава ${st.chapter+1} из ${j.config.chapters}`:''}${st.fix?` · круг исправлений ${st.fix}`:''}</div>
-      <p class="hint">Не закрывайте приложение. Если связь пропадёт, всё сохранено: нажмите «Продолжить».</p>
+    if(running){
+      const approved=d.chapters.filter(c=>c.status==='approved').length,n=Math.max(1,j.config.chapters),fin=/^final|annotation/.test(st.phase||'');
+      const frac={draft:.1,check:.3,review:.45,fix:.55,expert:.6,analyze:.8}[st.phase]||0,pct=Math.min(100,Math.round(((fin?n:approved+frac)/n)*100));
+      body=`<div class="card jrun"><div class="jrun-h"><span class="spin"></span><b>${S.loop?esc(PHASE[st.phase]||PHASE[j.status==='draft'?'plan':'draft']):'Остановлено'}</b></div>
+      <div class="bar" style="margin:12px 0 8px"><i style="width:${pct}%"></i></div>
+      <div class="mute" style="font-size:13px">${fin?'Все главы написаны, идёт итоговая проверка':`Глава ${(st.chapter||0)+1} из ${j.config.chapters}`}${st.fix?` · круг исправлений ${st.fix}`:''} · готово ${pct}%</div>
+      <p class="hint" style="margin:10px 0 12px">Не закрывайте приложение. Если связь пропадёт, всё сохранено: вернитесь сюда и нажмите «Продолжить».</p>
       <div class="row" style="gap:10px"><button class="btn ghost grow" data-a="asPause">Пауза</button>${S.loop?'':'<button class="btn grow" data-a="asResume2">Продолжить</button>'}</div></div>`;
+    }
     else if(j.status==='paused')body=`<div class="card"><b>На паузе</b><p class="mute" style="font-size:13.5px;margin:6px 0">${esc(pauseText(j.pauseReason))}</p>${/^budget/.test(j.pauseReason)?`<div class="field"><label for="asLc2">Новый лимит вызовов (не выше серверного)</label><input id="asLc2" class="in" type="number" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${esc(j.config.limits.maxCalls)}"></div>`:''}<div class="row" style="gap:10px"><button class="btn grow" data-a="asResume">Продолжить</button><button class="btn ghost" data-a="asCancel">Отменить</button></div>${/^all_failed:chapter_expert/.test(j.pauseReason)?`<p class="hint" style="margin-top:12px">Эксперт временно недоступен (у бесплатных моделей строгие лимиты: обычно помогает подождать минуту, а при дневном лимите до следующих суток). Можно не ждать: решите по главе сами.</p><button class="btn block ghost" data-a="asSkipExpert">Обойтись без эксперта: решу сам</button>`:''}</div>`;
     else if(j.status==='needs_admin')body=`<div class="card"><b>Нужно ваше решение по главе ${st.chapter+1}</b><p class="mute" style="font-size:13.5px;margin-top:6px">Откройте главу ниже: вы можете поправить текст, принять как есть или написать заново.</p></div>`;
     else if(j.status==='awaiting_publish'){

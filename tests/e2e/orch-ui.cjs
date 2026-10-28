@@ -26,7 +26,7 @@ ok((await a.textContent('.adm')).includes('План книги')&&(await a.textC
 await a.screenshot({path:'/tmp/ui_studio_plan.png'});
 await a.click('[data-a=asApprove]');
 await a.waitForSelector('[data-a=asPublish]',{timeout:90000});
-ok((await a.textContent('.adm')).includes('расходы: бесплатно')&&(await a.textContent('.adm')).includes('Книга готова'),'chapters are written and checked, the job waits for the publication decision');
+ok((await a.textContent('.adm')).includes('бесплатно')&&(await a.textContent('.adm')).includes('Книга готова'),'chapters are written and checked, the job waits for the publication decision');
 await a.click('[data-a=asLog]');await a.waitForTimeout(300);
 ok((await a.textContent('.logtbl')).includes('chapter_review')&&(await a.textContent('.logtbl')).includes('(тест)'),'the journal shows calls and marks mock calls as test');
 await a.click('[data-a=asChapter][data-i="0"]');await a.waitForTimeout(500);
@@ -42,7 +42,7 @@ await a.screenshot({path:'/tmp/ui_studio_done.png'});
 await a.click('[data-a=asBack]');await a.waitForTimeout(600);await a.click('[data-a=asNew]');await a.waitForTimeout(300);
 await a.fill('.card textarea','План: 1. Письмо. 2. Погоня. 3. Развязка. Историческая драма о торговце из Бухары.');
 await a.click('[data-a=asCreate]');await a.waitForSelector('[data-a=asApprove]',{timeout:20000});
-ok((await a.textContent('.adm')).includes('ИИ-автор выбрал')&&(await a.textContent('.adm')).includes('Писатель: draft-model'),'a plan alone is enough: the rest is chosen automatically and shown');
+ok((await a.textContent('.adm')).includes('ИИ-автор выбрал')&&(await a.textContent('.adm')).includes('Писатель')&&(await a.textContent('.adm')).includes('draft-model'),'a plan alone is enough: the rest is chosen automatically and shown');
 await a.screenshot({path:'/tmp/ui_studio_auto.png'});
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,3)));
 await br.close();mock.close();

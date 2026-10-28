@@ -634,3 +634,18 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .rolecard{border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;background:var(--card)}
 .rolehead{display:flex;gap:12px;align-items:center}.rolehead b{display:block;font-size:15px}.rolehead small{color:var(--mute);font-size:12.5px}
 .roleico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--line);font-size:18px}
+
+.jhead{margin-bottom:12px}.jtitle b{font-size:18px;line-height:1.3;display:block;overflow-wrap:anywhere}
+.jbadge{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:6px 12px;border-radius:999px;border:1px solid var(--line2);font-size:12.5px;font-weight:700;white-space:nowrap}
+.jbadge i{width:8px;height:8px;border-radius:50%;background:var(--mute)}
+.jbadge.run i{background:var(--acc);animation:jp 1.2s ease-in-out infinite}.jbadge.ok i{background:#5cb85c}.jbadge.warn{border-color:var(--acc)}.jbadge.warn i{background:var(--acc)}.jbadge.info i{background:#6aa7ff}
+@keyframes jp{50%{opacity:.25}}
+.jstats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.jstats span{display:flex;flex-direction:column;gap:2px;padding:10px;border-radius:12px;background:var(--line);font-size:11.5px;color:var(--mute)}
+.jstats b{font-size:16px;color:var(--fg)}
+.mdet{margin-top:12px;font-size:13px}.mdet summary{cursor:pointer;color:var(--mute);padding:4px 0}
+.mrow2{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}.mrow2 span{color:var(--mute)}.mrow2 b{text-align:right;overflow-wrap:anywhere;font-weight:600}
+
+.jrun-h{display:flex;align-items:center;gap:10px}.jrun-h b{font-size:15.5px}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc);animation:sp .9s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
