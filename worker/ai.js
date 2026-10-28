@@ -20,7 +20,9 @@ export function buildRequest(provider,model,key,{system,prompt,max=3000,temperat
   }
   const url=base?`${base}/${provider}/chat/completions`:p.url;
   const headers={'content-type':'application/json',authorization:'Bearer '+key,...(provider==='openrouter'?{'x-title':'Muloqot Books'}:{})};
-  return{url,init:{method:'POST',headers,body:JSON.stringify({model,messages:[{role:'system',content:system},{role:'user',content:prompt}],max_tokens:max,temperature})}};
+  /* gpt-oss models think before they answer and the thinking is paid from max_tokens: keep it short so the text is not cut off */
+  const reasoning=provider==='groq'&&/^openai\/gpt-oss/.test(model)?{reasoning_effort:'low'}:{};
+  return{url,init:{method:'POST',headers,body:JSON.stringify({model,messages:[{role:'system',content:system},{role:'user',content:prompt}],max_tokens:max,temperature,...reasoning})}};
 }
 /** The generated text of a provider answer, or '' when there is none. */
 export function parseText(provider,j){
@@ -56,7 +58,9 @@ export async function callModel(env,key,{provider,model,system,prompt,max,temper
   const text=parseText(provider,j);
   if(!text){const e=new AiError('empty','empty answer');e.latency=latency;throw e}
   const u=parseUsage(provider,j);
-  return{text,usage:u?{...u,estimated:false}:{in:estimate(system+prompt),out:estimate(text),estimated:true},latency,via:base?'override':'api'};
+  /* routers such as openrouter/free pick the model per request: report the model that really answered */
+  const served=typeof j?.model==='string'&&j.model&&j.model!==model?j.model:'';
+  return{text,served,usage:u?{...u,estimated:false}:{in:estimate(system+prompt),out:estimate(text),estimated:true},latency,via:base?'override':'api'};
 }
 
 /** The models an account can really use, asked from the provider itself: [{id,price?:[inPerM,outPerM]}]. */
@@ -67,7 +71,7 @@ export async function listModels(env,key,provider){
   if(!r.ok)throw classify(r.status,j);
   if(provider==='gemini')return(j?.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>({id:String(m.name||'').replace(/^models\//,'')})).filter(m=>m.id);
   return(j?.data||[]).map(m=>{
-    const pr=m.pricing,price=pr&&pr.prompt!=null&&pr.completion!=null&&Number.isFinite(+pr.prompt)&&Number.isFinite(+pr.completion)?[+pr.prompt*1e6,+pr.completion*1e6]:undefined;
+    const pr=m.pricing,price=pr&&pr.prompt!=null&&pr.completion!=null&&Number.isFinite(+pr.prompt)&&Number.isFinite(+pr.completion)&&+pr.prompt>=0&&+pr.completion>=0?[+pr.prompt*1e6,+pr.completion*1e6]:undefined;
     return{id:m.id,...(price?{price}:{})};
   }).filter(m=>m.id);
 }

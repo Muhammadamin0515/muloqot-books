@@ -99,3 +99,25 @@ test('provider errors are classified',()=>{
 test('usage is read from both API shapes',()=>{
   assert.deepEqual(parseUsage('groq',{usage:{prompt_tokens:5,completion_tokens:7}}),{in:5,out:7});assert.deepEqual(parseUsage('gemini',{usageMetadata:{promptTokenCount:3,candidatesTokenCount:4}}),{in:3,out:4});assert.equal(parseUsage('groq',{}),null);void words;
 });
+
+import {buildRequest,callModel,listModels} from '../worker/ai.js';
+test('gpt-oss on Groq gets a short reasoning effort; other models are untouched',()=>{
+  const b=m=>JSON.parse(buildRequest('groq',m,'K',{system:'S',prompt:'P'}).init.body);
+  assert.equal(b('openai/gpt-oss-120b').reasoning_effort,'low');assert.equal(b('llama-3.3-70b-versatile').reasoning_effort,undefined);
+  assert.equal(JSON.parse(buildRequest('openrouter','openai/gpt-oss-120b','K',{system:'S',prompt:'P'}).init.body).reasoning_effort,undefined);
+});
+test('the model that really answered is reported when a router picked it',async()=>{
+  const real=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(JSON.stringify({model:'qwen/some-free',choices:[{message:{content:'текст'}}],usage:{prompt_tokens:3,completion_tokens:4}}),{status:200});
+  try{
+    const r=await callModel({},'K',{provider:'openrouter',model:'openrouter/free',system:'S',prompt:'P',max:100});
+    assert.equal(r.served,'qwen/some-free');assert.deepEqual(r.usage,{in:3,out:4,estimated:false});assert.equal(r.via,'api');
+    globalThis.fetch=async()=>new Response(JSON.stringify({model:'m',choices:[{message:{content:'x'}}]}),{status:200});
+    assert.equal((await callModel({},'K',{provider:'groq',model:'m',system:'S',prompt:'P',max:100})).served,'','nothing extra when the model is the requested one');
+  }finally{globalThis.fetch=real}
+});
+test('router prices (negative = variable) are not turned into a cost',async()=>{
+  const real=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(JSON.stringify({data:[{id:'openrouter/auto',pricing:{prompt:'-1',completion:'-1'}},{id:'openrouter/free',pricing:{prompt:'0',completion:'0'}},{id:'x/y',pricing:{prompt:'0.000001',completion:'0.000002'}}]}),{status:200});
+  try{const l=await listModels({},'K','openrouter');assert.equal(l.find(m=>m.id==='openrouter/auto').price,undefined);assert.deepEqual(l.find(m=>m.id==='openrouter/free').price,[0,0]);assert.deepEqual(l.find(m=>m.id==='x/y').price,[1,2])}finally{globalThis.fetch=real}
+});

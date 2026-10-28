@@ -38,10 +38,10 @@ export function registerOrch(d){
       for(let attempt=0;attempt<=RETRIES;attempt++){
         const b=budgetCheck(job,job.config.limits);if(b)throw new Halt('budget:'+b);
         const price=priceOf(job.config.prices,cand.provider,cand.model);
-        let status='ok',error='',usage={in:0,out:0,estimated:false},latency=0,via='api',value=null,text='';
+        let status='ok',error='',usage={in:0,out:0,estimated:false},latency=0,via='api',value=null,text='',served='';
         try{
-          const r=await callModel(c.env,keys[cand.provider],{provider:cand.provider,model:cand.model,system,prompt,max,temperature,json:wantJson&&cand.provider==='gemini'});
-          usage=r.usage;latency=r.latency;via=r.via;text=r.text;
+          const r=await callModel(c.env,keys[cand.provider],{provider:cand.provider,model:cand.model,system,prompt,max:Math.min(8000,max+1500),temperature,json:wantJson&&cand.provider==='gemini'}); /* headroom for models that think before answering */
+          served=r.served;usage=r.usage;latency=r.latency;via=r.via;text=r.text;
           if(parse){try{value=parse(text)}catch(e){status='bad_format';error=String(e.message||'bad_format')}}
         }catch(e){
           const k=e instanceof AiError?e.kind:'provider';status=k;error=String(e.message||k).slice(0,200);latency=e.latency||0;lastKind=k;
@@ -49,7 +49,7 @@ export function registerOrch(d){
         const cost=costOf(usage,price);
         job.calls++;job.tokens_in+=usage.in;job.tokens_out+=usage.out;if(cost!=null)job.cost=Math.round((job.cost+cost)*1e6)/1e6;else if(usage.in+usage.out>0)job.cost_unknown=1;
         await batch(c,[
-          stmt(c,'INSERT INTO ai_calls(job_id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',job.id,chapter,task,cand.provider,cand.model,via,latency,usage.in,usage.out,usage.estimated?1:0,cost,status,error,Date.now()),
+          stmt(c,'INSERT INTO ai_calls(job_id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',job.id,chapter,task,cand.provider,served?`${cand.model} → ${served}`:cand.model,via,latency,usage.in,usage.out,usage.estimated?1:0,cost,status,error,Date.now()),
           stmt(c,'UPDATE ai_jobs SET calls=?,tokens_in=?,tokens_out=?,cost=?,cost_unknown=? WHERE id=?',job.calls,job.tokens_in,job.tokens_out,job.cost,job.cost_unknown?1:0,job.id)]);
         if(status==='ok')return{text,value,provider:cand.provider,model:cand.model};
         lastKind=status;
