@@ -4,6 +4,7 @@ import {COVER_STYLES} from './covers.js';
 import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,rightsOf,publicRights,validateImport,fetchCover,popularity,isDemo,checkTextRights,cleanRights,httpsUrl,hasText,isPublished} from './catalog.js';
 import {registerLibrary,tokenCheck} from './library.js';
 import {registerAi} from './ai.js';
+import {registerOrch} from './orch.js';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
 const clip=(s,n)=>String(s??'').trim().slice(0,n);
@@ -503,25 +504,26 @@ route('POST','/api/admin/books/:id/edit',async(c,id)=>{
 const audit=(c,action,target,detail)=>run(c,'INSERT INTO audit_log(ts,user_id,action,target,detail) VALUES(?,?,?,?,?)',Date.now(),c.user.id,action,target,J(detail||{}).slice(0,2000));
 route('GET','/api/admin/audit',async c=>json({list:await all(c,'SELECT ts,user_id,action,target,detail FROM audit_log ORDER BY id DESC LIMIT 60')}),true);
 /** Imports up to 8 records. Text is stored only when the rights check passes; otherwise the record can only be a metadata-only card. */
+/** Creates one catalog book from an admin import record (rights-checked). Shared by the import route and the AI orchestrator's publish step. */
+async function importOne(c,r){
+  const v=validateImport(r);if(v.error)return{title:clip(r?.title,60),error:v.error};
+  const dup=await get(c,"SELECT b.id FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE lower(json_extract(b.data,'$.title'))=lower(?) AND lower(json_extract(a.data,'$.name'))=lower(?)",v.book.title,v.author.name);
+  if(dup)return{title:v.book.title,error:'duplicate',id:dup.id};
+  let cover=null;
+  if(/^data:image\/(jpeg|png|webp);base64,/.test(v.cover)&&v.cover.length<=MAX_COVER_CHARS)cover=v.cover;
+  else if(v.coverUrl)try{cover=await fetchCover(v.coverUrl)}catch{cover=null}
+  let a=await get(c,"SELECT id FROM authors WHERE lower(json_extract(data,'$.name'))=lower(?)",v.author.name);
+  const aid=a?.id||'a'+id8(),bid='b'+id8(),h=[...bid].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];
+  const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
+  const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover}:{}),imported:{by:c.user.id,at:Date.now()}};
+  const ops=[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added)];
+  if(!a)ops.push(stmt(c,'INSERT INTO authors(id,data,followers_base,user_id) VALUES(?,?,0,NULL)',aid,J({id:aid,name:v.author.name,city:v.author.city,hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal:[['#2a1a14','#7a2e17'],['#10282c','#2f6672'],['#26141a','#7a3346'],['#2a1f12','#8a5a22']][h%4],bio:v.author.bio,...(v.author.deathYear?{deathYear:v.author.deathYear}:{})})));
+  await batch(c,ops);await audit(c,'import',bid,{title:v.book.title,rights:v.book.rights.status,fullText:v.book.chapters.length>0});
+  return{title:v.book.title,id:bid,fullText:v.book.chapters.length>0,cover:!!cover};
+}
 route('POST','/api/admin/import',async c=>{
   const recs=Array.isArray(c.body.records)?c.body.records.slice(0,8):[];if(!recs.length)return bad(400,'empty');
-  const results=[];
-  for(const r of recs){
-    const v=validateImport(r);if(v.error){results.push({title:clip(r?.title,60),error:v.error});continue}
-    const dup=await get(c,"SELECT b.id FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE lower(json_extract(b.data,'$.title'))=lower(?) AND lower(json_extract(a.data,'$.name'))=lower(?)",v.book.title,v.author.name);
-    if(dup){results.push({title:v.book.title,error:'duplicate',id:dup.id});continue}
-    let cover=null;
-    if(/^data:image\/(jpeg|png|webp);base64,/.test(v.cover)&&v.cover.length<=MAX_COVER_CHARS)cover=v.cover;
-    else if(v.coverUrl)try{cover=await fetchCover(v.coverUrl)}catch{cover=null}
-    let a=await get(c,"SELECT id FROM authors WHERE lower(json_extract(data,'$.name'))=lower(?)",v.author.name);
-    const aid=a?.id||'a'+id8(),bid='b'+id8(),h=[...bid].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];
-    const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
-    const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover}:{}),imported:{by:c.user.id,at:Date.now()}};
-    const ops=[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added)];
-    if(!a)ops.push(stmt(c,'INSERT INTO authors(id,data,followers_base,user_id) VALUES(?,?,0,NULL)',aid,J({id:aid,name:v.author.name,city:v.author.city,hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal:[['#2a1a14','#7a2e17'],['#10282c','#2f6672'],['#26141a','#7a3346'],['#2a1f12','#8a5a22']][h%4],bio:v.author.bio,...(v.author.deathYear?{deathYear:v.author.deathYear}:{})})));
-    await batch(c,ops);await audit(c,'import',bid,{title:v.book.title,rights:v.book.rights.status,fullText:v.book.chapters.length>0});
-    results.push({title:v.book.title,id:bid,fullText:v.book.chapters.length>0,cover:!!cover});
-  }
+  const results=[];for(const r of recs)results.push(await importOne(c,r));
   return json({results});
 },true);
 /** Confirms or revokes the right to publish the full text. Revoking hides the text from readers immediately. */
@@ -1042,7 +1044,8 @@ async function reminders(env,ctx){
 /** A token pasted into the dashboard often carries a trailing space or newline; normalise it once. */
 const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKEN||'').trim().replace(/^bot/i,''),WEBHOOK_SECRET:String(env.WEBHOOK_SECRET||'').trim()});
 LIB=registerLibrary({route,stmt,get,all,run,batch,json,bad,P,J,audit,id8});
-registerAi({route,get,run,json,bad,P,J,audit});
+const AID={route,get,run,json,bad,P,J,audit};registerAi(AID);
+registerOrch({...AID,stmt,all,batch,id8,importOne,aiKey:AID.aiKey});
 export default {
   async fetch(request,env0,ctx){
     const env=clean(env0);

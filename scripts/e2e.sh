@@ -22,6 +22,8 @@ fresh(){
 }
 fresh; BASE="http://localhost:$PORT" node tests/e2e/api.mjs
 fresh "--var BOT_TOKEN:123456:FAKETOKEN --var TG_API:http://localhost:9999 --var ADMIN_IDS:1 --var WEBAPP_URL:http://localhost:$PORT --var AI_BASE:http://localhost:9999/ai"; BASE="http://localhost:$PORT" node tests/e2e/broadcast.mjs
+fresh "--var BOT_TOKEN:123456:FAKETOKEN --var ADMIN_IDS:1 --var AI_BASE:http://localhost:9997 --var AI_DRAFT_MODEL:draft-model --var AI_EDITOR_MODEL:editor-model --var AI_EXPERT_MODEL:expert-model --var AI_DRAFT_FALLBACK:gemini:editor-model --var AI_MAX_CALLS:60"; BASE="http://localhost:$PORT" node tests/e2e/orch.mjs
+fresh "--var AI_BASE:http://localhost:9997 --var AI_DRAFT_MODEL:draft-model --var AI_EDITOR_MODEL:editor-model --var AI_EXPERT_MODEL:expert-model --var AI_DRAFT_FALLBACK:gemini:editor-model --var AI_MAX_CALLS:60"; BASE="http://localhost:$PORT" node tests/e2e/orch-ui.cjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit.mjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit-ui.cjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ui.cjs

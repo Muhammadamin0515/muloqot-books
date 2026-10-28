@@ -25,7 +25,14 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS survey_votes(broadcast_id TEXT,user_id TEXT,opt INTEGER,ts INTEGER,PRIMARY KEY(broadcast_id,user_id))',
   'CREATE TABLE IF NOT EXISTS broadcast_media(id TEXT PRIMARY KEY,mime TEXT,data TEXT,created INTEGER)',
   'CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts INTEGER,user_id TEXT,action TEXT,target TEXT,detail TEXT)',
-  'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
+  'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)',
+  'CREATE TABLE IF NOT EXISTS ai_jobs(id TEXT PRIMARY KEY,created INTEGER,updated INTEGER,created_by TEXT,status TEXT,pause_reason TEXT DEFAULT \'\',title TEXT,config TEXT,plan TEXT,state TEXT,calls INTEGER DEFAULT 0,tokens_in INTEGER DEFAULT 0,tokens_out INTEGER DEFAULT 0,cost REAL DEFAULT 0,cost_unknown INTEGER DEFAULT 0,lock_until INTEGER DEFAULT 0,book_id TEXT)',
+  'CREATE TABLE IF NOT EXISTS ai_chapters(job_id TEXT,idx INTEGER,status TEXT,text TEXT DEFAULT \'\',summary TEXT DEFAULT \'\',facts TEXT DEFAULT \'[]\',updated INTEGER,PRIMARY KEY(job_id,idx))',
+  'CREATE TABLE IF NOT EXISTS ai_versions(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT,chapter INTEGER,kind TEXT,text TEXT,provider TEXT,model TEXT,note TEXT DEFAULT \'\',created INTEGER)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_versions ON ai_versions(job_id,chapter)',
+  'CREATE TABLE IF NOT EXISTS ai_checks(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT,chapter INTEGER,kind TEXT,ok INTEGER,issues TEXT,provider TEXT,model TEXT,created INTEGER)',
+  'CREATE TABLE IF NOT EXISTS ai_calls(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT,chapter INTEGER,task TEXT,provider TEXT,model TEXT,via TEXT,latency INTEGER,tokens_in INTEGER,tokens_out INTEGER,estimated INTEGER DEFAULT 0,cost REAL,status TEXT,error TEXT DEFAULT \'\',created INTEGER)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_calls ON ai_calls(job_id,id)'
 ];
 const ALTERS=[
   'ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0',

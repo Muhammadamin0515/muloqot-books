@@ -7,6 +7,7 @@ import {initAdmin} from './admin.js';
 import {initDonate} from './donate.js';
 import {initCatalogAdmin} from './catalog-admin.js';
 import {initAiBook} from './aibook.js';
+import {initAiStudio} from './aistudio.js';
 import {initStudio} from './studio.js';
 import {initAchievements} from './achievements.js';
 import {search as fuzzySearch,suggest as suggestWord,key as skey} from './search.js';
@@ -758,6 +759,7 @@ const admApi=initAdmin({AUTHORS,SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
 initCatalogAdmin({SCREENS,ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,refresh,tg},admApi);
 initAiBook({ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go,refresh},admApi);
+initAiStudio({ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go,refresh},admApi);
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
 initAchievements(ctx2);
 initAudio(ctx2);

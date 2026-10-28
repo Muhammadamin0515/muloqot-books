@@ -68,7 +68,7 @@ ok((await api(11,`/api/admin/broadcasts/${id}/results`)).s===403,'readers cannot
 const hist=(await api(1,'/api/admin/broadcasts')).j.list.find(b=>b.id===id);ok(hist.kind==='poll'&&hist.votes.join()==='0,2,1'&&hist.options.length===3,'history carries the survey and its results');
 /* AI book tool: keys stay on the server, text is relayed, the published book is marked as AI-made */
 {const cfg0=(await api(1,'/api/admin/ai/config')).j;ok(cfg0.canSetKeys&&Object.values(cfg0.providers).every(p=>!p.set),'AI config: no keys at first');
-ok((await api(1,'/api/admin/ai/generate','POST',{provider:'groq',prompt:'Привет'})).j.error==='no_key','generate without a key is refused');
+ok((await api(1,'/api/admin/ai/generate','POST',{provider:'groq',model:'some-model',prompt:'Привет'})).j.error==='no_key','generate without a key is refused');
 ok((await api(11,'/api/admin/ai/config')).s===403,'AI config is for admins only');
 ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:'short'})).j.error==='key','malformed key is refused');
 const KEY='gsk_TESTKEY1234567890abcdef';

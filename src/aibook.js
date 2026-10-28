@@ -10,6 +10,14 @@ const KEY='muloqot.aibook';
 const clean=t=>String(t||'').replace(/\r/g,'').replace(/^\s*#+\s.*$/gm,'').replace(/\*\*|__/g,'').replace(/^\s*[-*]\s+/gm,'— ').replace(/\n{3,}/g,'\n\n').trim();
 const words=t=>(String(t).match(/\S+/g)||[]).length;
 
+export async function coverJpeg(b){
+  try{
+    const svg=coverSvg(b,false).replace('<svg ','<svg width="300" height="450" '),url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));
+    const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
+    const c=document.createElement('canvas');c.width=300;c.height=450;c.getContext('2d').drawImage(img,0,0,300,450);URL.revokeObjectURL(url);
+    return c.toDataURL('image/jpeg',.82);
+  }catch(e){return ''}
+}
 export function initAiBook(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,bg,here}=adm;
@@ -75,15 +83,6 @@ export function initAiBook(x,adm){
   ACT.aiSet=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.dataset.v:el.dataset.v;if(el.dataset.k==='provider')M.ai_model='';refresh()};
   CHG.aiSel=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.value:el.value;if(el.dataset.k==='provider')M.ai_model='';refresh()};
 
-  /* a JPEG cover drawn from the app artwork (Telegram cards need a picture) */
-  async function coverJpeg(b){
-    try{
-      const svg=coverSvg(b,false).replace('<svg ','<svg width="300" height="450" '),url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));
-      const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
-      const c=document.createElement('canvas');c.width=300;c.height=450;c.getContext('2d').drawImage(img,0,0,300,450);URL.revokeObjectURL(url);
-      return c.toDataURL('image/jpeg',.82);
-    }catch(e){return ''}
-  }
   ACT.aiPublish=()=>openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей с пометкой «Создано с помощью ИИ». Это оригинальный вымышленный текст.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="aiPublishGo">Опубликовать</button></div>`);
   ACT.aiPublishGo=async()=>{
     closeSheet();AI.busy=true;AI.error='';refresh();
@@ -176,5 +175,5 @@ export function initAiBook(x,adm){
     const body=AI.stage==='form'?formView():AI.stage==='plan'?planView():AI.stage==='writing'?writingView():AI.stage==='review'?reviewView():doneView();
     return `${AI.stage!=='form'&&AI.stage!=='done'?`<div style="text-align:right;margin-bottom:8px"><button class="btn sm ghost" data-a="aiReset">Начать заново</button></div>`:''}${body}`;
   }
-  T.push(['ai','ИИ-книга']);bodies.ai=tabAi;loaders.ai=loadCfg;
+  T.push(['ai','ИИ: быстро']);bodies.ai=tabAi;loaders.ai=loadCfg;
 }

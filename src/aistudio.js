@@ -1,0 +1,182 @@
+/* Admin → ИИ-студия: the AI orchestrator. Groq drafts, Gemini plans and edits, an OpenRouter model of your choice is the expert;
+   the server keeps every version and call, this screen drives the steps and asks for your decisions. */
+import {coverJpeg} from './aibook.js';
+import {COVER_STYLES} from '../worker/covers.js';
+
+const GENRES=[['novel','Роман'],['detective','Детектив'],['historical','Исторический'],['adventure','Приключения'],['drama','Драма'],['stories','Рассказы'],['modern','Современная проза'],['prose','Проза']];
+const STATUS={draft:'Составляется план',plan_ready:'План ждёт вашего утверждения',running:'Идёт работа',paused:'На паузе',needs_admin:'Нужно ваше решение',awaiting_publish:'Готово: ждёт подтверждения публикации',published:'Опубликована',cancelled:'Отменена'};
+const PHASE={plan:'Gemini составляет план',draft:'Groq пишет черновик главы',check:'Программная проверка текста',review:'Gemini проверяет главу',fix:'Groq исправляет по замечаниям',expert:'Эксперт (OpenRouter) правит главу',analyze:'Gemini фиксирует факты и краткое содержание',final:'Gemini проверяет книгу целиком',final2:'Эксперт (OpenRouter) даёт вторую оценку',annotation:'Groq пишет аннотацию'};
+const PAUSE={manual:'Остановлено вручную','budget:calls':'Достигнут лимит вызовов','budget:tokens':'Достигнут лимит токенов','budget:cost':'Достигнут лимит стоимости'};
+const pauseText=r=>PAUSE[r]||(/^no_provider:/.test(r)?'Нет ключа или модели для задачи «'+r.split(':')[1]+'»':/^all_failed:/.test(r)?`Все провайдеры не ответили (${r.split(':')[1]}: ${r.split(':')[2]}). Подождите и продолжите`:r);
+const CREATE_ERR={no_key:'Не добавлен ключ сервиса: ',roles_required:'Укажите модели для черновика (Groq) и редактора (Gemini)',unknown_model:'Этих моделей нет в списке сервиса: ',price_unknown:'Для лимита стоимости нужны цены всех моделей (список OpenRouter даёт цены, для Groq и Gemini добавьте AI_PRICES)',models_unverified:'Не удалось получить список моделей сервиса: ',too_many_active:'Слишком много незавершённых заданий: завершите или отмените старые',idea:'Опишите идею книги хотя бы одним предложением',model:'Название модели указано неверно'};
+const words=t=>(String(t).match(/\S+/g)||[]).length;
+
+export function initAiStudio(x,adm){
+  const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
+  const {A,M,T,bodies,loaders,loading,here}=adm;
+  Object.assign(M,{as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
+  const S={jobs:null,cfg:null,models:{},form:{lang:'ru',genre:'novel',chapters:6,words:900,second:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  const refresh=()=>{if(here('admin'))x.refresh()};
+  const errOf=e=>{const b=e&&e.body||{};const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
+
+  async function loadList(){try{const [j,c]=await Promise.all([api('/api/admin/ai/jobs'),S.cfg?S.cfg:api('/api/admin/ai/jobs-config')]);S.jobs=j.jobs;S.cfg=c;if(!M.as_draft&&c.roles.draft)M.as_draft=c.roles.draft.model;if(!M.as_editor&&c.roles.editor)M.as_editor=c.roles.editor.model;if(!M.as_expert&&c.roles.expert)M.as_expert=c.roles.expert.model}catch(e){S.jobs=[];S.err='Не удалось загрузить: '+errOf(e)}refresh()}
+  async function openJob(id){S.cur=id;S.d=null;S.err='';S.chText=null;refresh();await reloadJob();if(S.d&&['draft','running'].includes(S.d.job.status))runLoop()}
+  async function reloadJob(){try{S.d=await api('/api/admin/ai/jobs/'+S.cur)}catch(e){S.err=errOf(e)}refresh()}
+
+  /* the loop: one step at a time until the job waits for you */
+  async function runLoop(){
+    if(S.loop)return;S.loop=true;refresh();
+    try{
+      for(let i=0;i<400&&S.cur;i++){
+        let r;try{r=await api(`/api/admin/ai/jobs/${S.cur}/step`,'POST',{})}
+        catch(e){const c=e.body&&e.body.error;if(c==='busy'){await new Promise(r=>setTimeout(r,2500));continue}S.err=c==='too_many_jobs'?'Уже работает другое задание: дождитесь его':errOf(e);break}
+        await reloadJob();
+        if(r.waiting||!['draft','running'].includes(r.job.status))break;
+      }
+    }finally{S.loop=false;refresh()}
+  }
+  const call=async(path,method='POST',body={})=>{try{const r=await api(path,method,method==='GET'?undefined:body);S.err='';return r}catch(e){S.err=errOf(e);toast(S.err);refresh();return null}};
+
+  /* ---------- list / create ---------- */
+  ACT.asNew=()=>{S.cur='new';S.d=null;S.err='';refresh()};
+  ACT.asBack=()=>{S.cur=null;S.d=null;S.err='';S.loop=false;loadList()};
+  ACT.asOpen=el=>openJob(el.dataset.id);
+  ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
+  CHG.asSel=el=>{S.form[el.dataset.k]=el.value;refresh()};
+  ACT.asModels=async el=>{const p=el.dataset.p;try{S.models[p]=(await api('/api/admin/ai/models?provider='+p)).models.map(m=>m.id);toast(`${p}: моделей в списке сервиса — ${S.models[p].length}`)}catch(e){toast(e.body&&e.body.error==='no_key'?'Сначала добавьте ключ сервиса (вкладка «ИИ: быстро» → Ключи)':'Не удалось получить список: '+errOf(e))}refresh()};
+  ACT.asCreate=async()=>{
+    const f=S.form,roles={draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null};
+    const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
+    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,lang:f.lang,genre:f.genre,chapters:f.chapters,words:f.words,roles,limits,noSecondOpinion:!f.second});
+    if(r){S.cur=r.job.id;S.d=null;await reloadJob();runLoop()}
+  };
+
+  /* ---------- plan ---------- */
+  const syncPlan=()=>{const p=S.d.plan;return{...p,title:M.as_ptitle.trim()||p.title,synopsis:M.as_psyn.trim()||p.synopsis,chapters:p.chapters.map((c,i)=>({title:(M['asp_t'+i]??c.title).trim()||c.title,summary:(M['asp_s'+i]??c.summary).trim()||c.summary}))}};
+  ACT.asPlanSave=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(r){toast('План сохранён');await reloadJob()}};
+  ACT.asApprove=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(!r)return;const a=await call(`/api/admin/ai/jobs/${S.cur}/approve-plan`,'POST',{confirm:true});if(a){await reloadJob();runLoop()}};
+
+  /* ---------- running ---------- */
+  ACT.asPause=async()=>{S.loop=false;await call(`/api/admin/ai/jobs/${S.cur}/pause`);await reloadJob()};
+  ACT.asResume=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/resume`,'POST',{limits:{...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{})}});if(r){await reloadJob();runLoop()}};
+  ACT.asCancel=()=>openSheet(`<h2>Отменить задание?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Написанные главы и журнал останутся, но задание нельзя будет продолжить.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Нет</button><button class="btn grow" data-a="asCancelGo">Отменить задание</button></div>`);
+  ACT.asCancelGo=async()=>{closeSheet();S.loop=false;await call(`/api/admin/ai/jobs/${S.cur}/cancel`);await reloadJob()};
+  ACT.asLog=()=>{S.showLog=!S.showLog;refresh()};
+  ACT.asChapter=async el=>{const i=el.dataset.i;if(S.chText&&S.chText.i===i){S.chText=null;refresh();return}const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${i}`,'GET');if(r){S.chText={i,...r};M.as_edit=r.chapter.text;refresh()}};
+  ACT.asVersion=async el=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/versions/${el.dataset.v}`,'GET');if(r){S.chText.shown=r.version;refresh()}};
+  ACT.asResolve=async el=>{
+    const body={action:el.dataset.act};if(el.dataset.act==='edit')body.text=M.as_edit;
+    const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${el.dataset.i}/resolve`,'POST',body);if(r){S.chText=null;await reloadJob();runLoop()}
+  };
+  ACT.asSaveEdit=async el=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${el.dataset.i}/text`,'PUT',{text:M.as_edit});if(r){toast('Правка сохранена. Итоговая проверка книги устарела');await reloadJob()}};
+
+  /* ---------- publishing ---------- */
+  ACT.asPublish=()=>{const fin=S.d.job.state.final;openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей с пометкой «Создано с помощью ИИ». ${fin&&!fin.ok?'<b>Итоговая проверка нашла серьёзные замечания. Вы публикуете вопреки им.</b>':''}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="asPublishGo">Опубликовать</button></div>`)};
+  ACT.asPublishGo=async()=>{
+    closeSheet();const d=S.d,fin=d.job.state.final,title=(M.as_pub_title||d.plan.title).trim(),author=(M.as_pub_author||'').trim()||'Muloqot Books';
+    const h=[...title].reduce((s,ch)=>s+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];
+    const cover=await coverJpeg({id:'ai'+h,title,authorName:author,motif:st.motif,pal:st.pal});
+    const r=await call(`/api/admin/ai/jobs/${S.cur}/publish`,'POST',{confirm:true,override:!!(fin&&!fin.ok),title,author,description:(M.as_pub_desc||d.plan.annotation||d.plan.synopsis).trim(),cover});
+    if(r){await loadBoot();adm.A.fresh.stats=false;toast('Книга опубликована в каталоге');await reloadJob()}
+  };
+  ACT.asOpenBook=()=>go('book',{id:S.d.job.bookId});
+
+  /* ---------- views ---------- */
+  const tag=(t,cls='')=>`<span class="tag ${cls}">${esc(t)}</span>`;
+  const money=u=>u.cost>0||!u.costUnknown?`$${(u.cost||0).toFixed(4)}${u.costUnknown?' + неизвестно':''}`:'цена неизвестна';
+  const usageLine=u=>`Вызовов: ${u.calls} · токенов: ${u.tokensIn+u.tokensOut} · стоимость: ${money(u)}`;
+  const issueList=l=>(l||[]).length?`<ul class="issues">${l.map(i=>`<li><b class="${i.severity==='major'?'bad':''}">${i.severity==='major'?'Серьёзно':'Замечание'}</b> ${esc(i.note)}${i.where?` <span class="mute">(${esc(i.where)})</span>`:''}${i.fix?`<br><span class="mute">Как исправить: ${esc(i.fix)}</span>`:''}</li>`).join('')}</ul>`:'<p class="mute">Замечаний нет.</p>';
+  const err=()=>S.err?`<div class="demo-banner" style="margin:12px 0"><b>${esc(S.err)}</b></div>`:'';
+  const seg=(k,list,cur)=>`<div class="seg">${list.map(([v,n])=>`<button class="${String(cur)===String(v)?'on':''}" data-a="asSet" data-k="${k}" data-v="${v}">${n}</button>`).join('')}</div>`;
+  const step=(n,t)=>`<div class="step"><i>${n}</i><b>${t}</b></div>`;
+  const modelField=(id,key,label,provider,ph,optional)=>`<div class="field"><label for="${id}">${label}${optional?' (необязательно)':''}</label><div class="row" style="gap:8px"><input id="${id}" class="in grow" data-m="adm:${key}" list="l_${id}" value="${esc(M[key])}" placeholder="${esc(ph)}" autocomplete="off"><button class="btn sm ghost" data-a="asModels" data-p="${provider}">Список</button></div><datalist id="l_${id}">${(S.models[provider]||[]).map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>`;
+
+  function listView(){
+    if(!S.jobs)return loading();
+    return `<button class="btn block" data-a="asNew">${ico('pen',18)} Новая книга</button>
+      <p class="hint">Groq пишет черновики, Gemini строит план и проверяет текст, выбранная вами модель OpenRouter помогает со сложными главами. Публикация только после вашего подтверждения.</p>
+      ${err()}
+      <div class="sec"><div class="sec-h"><h2>Задания</h2></div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
+  }
+  function createView(){
+    const f=S.form;
+    return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button><div class="card">
+      ${step(1,'О чём книга')}
+      <textarea class="in" data-m="adm:as_idea" maxlength="1500" style="min-height:110px" placeholder="Например: Детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека.">${esc(M.as_idea)}</textarea>
+      <div class="field" style="margin-top:12px"><label for="asT">Название (если пусто, придумает Gemini)</label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
+      ${step(2,'Язык, жанр, размер').replace('<div class="step">','<div class="step" style="margin-top:16px">')}
+      ${seg('lang',[['ru','Русский'],['uz','Oʻzbekcha']],f.lang)}
+      <select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
+      <div class="lbl" style="margin:12px 0 6px">Глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
+      <div class="lbl" style="margin:12px 0 6px">Слов в главе</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}
+      <div class="step" style="margin-top:18px"><i>3</i><b>Модели</b></div>
+      <p class="hint" style="margin:0 0 8px">Названия моделей берутся только из списка самого сервиса: нажмите «Список». Неизвестная модель будет отклонена.</p>
+      ${modelField('asMd','as_draft','Groq: черновики и правки','groq','id модели Groq')}
+      ${modelField('asMe','as_editor','Gemini: план и редактор','gemini','id модели Gemini')}
+      ${modelField('asMx','as_expert','OpenRouter: эксперт для сложных глав','openrouter','id модели OpenRouter',true)}
+      ${seg('second',[['1','Вторая оценка книги экспертом'],['0','Без второй оценки']],f.second?'1':'0')}
+      <div class="step" style="margin-top:18px"><i>4</i><b>Лимиты</b></div>
+      <div class="row" style="gap:10px"><div class="field grow"><label for="asLc">Вызовов (макс.)</label><input id="asLc" class="in" type="number" inputmode="numeric" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${esc(S.cfg&&S.cfg.limits.maxCalls)}"></div><div class="field grow"><label for="asLm">Стоимость, $ (макс.)</label><input id="asLm" class="in" type="number" inputmode="decimal" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без лимита"></div></div>
+      <p class="hint">Лимит стоимости работает, когда известны цены моделей (список OpenRouter даёт цены; для Groq и Gemini задайте AI_PRICES). Серверные лимиты нельзя превысить.</p>
+      ${err()}
+      <button class="btn block" style="margin-top:14px" data-a="asCreate">Составить план</button></div>`;
+  }
+  const head=d=>`<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
+    <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage)}</div></div>`;
+  function planView(d){
+    const p=d.plan;
+    return `${head(d)}<div class="card">${step(1,'План книги: проверьте и утвердите')}
+      <p class="hint" style="margin:0 0 10px">Пока вы не утвердите план, ни одна глава не пишется. План можно править.</p>
+      <div class="field"><label for="asPT">Название</label><input id="asPT" class="in" data-m="adm:as_ptitle" value="${esc(M.as_ptitle||p.title)}" maxlength="150"></div>
+      <div class="field"><label for="asPS">О чём книга</label><textarea id="asPS" class="in" data-m="adm:as_psyn" style="min-height:80px">${esc(M.as_psyn||p.synopsis)}</textarea></div>
+      ${p.style&&(p.style.voice||p.style.tone)?`<p class="hint">Стиль: ${esc([p.style.voice,p.style.pov,p.style.tense,p.style.tone].filter(Boolean).join(' · '))}</p>`:''}
+      ${(p.characters||[]).length?`<details class="dgroup"><summary><b>Персонажи (${p.characters.length})</b></summary><div class="dbody">${p.characters.map(c=>`<p><b>${esc(c.name)}</b> ${esc(c.role)}<br><span class="mute">${esc(c.traits)}</span></p>`).join('')}</div></details>`:''}
+      ${p.chapters.map((c,i)=>`<div class="card" style="margin:10px 0;padding:12px"><div class="mute" style="font-size:12px">Глава ${i+1}</div><input class="in" data-m="adm:asp_t${i}" value="${esc(M['asp_t'+i]??c.title)}" maxlength="100" aria-label="Название главы ${i+1}" style="margin:6px 0"><textarea class="in" data-m="adm:asp_s${i}" style="min-height:64px" aria-label="Содержание главы ${i+1}">${esc(M['asp_s'+i]??c.summary)}</textarea></div>`).join('')}
+      ${err()}<div class="row" style="gap:10px;margin-top:12px"><button class="btn ghost" data-a="asPlanSave">Сохранить правки</button><button class="btn grow" data-a="asApprove">Утвердить и писать</button></div>
+      <button class="btn block ghost" style="margin-top:10px" data-a="asCancel">Отменить задание</button></div>`;
+  }
+  const chapterRows=d=>d.plan?d.plan.chapters.map((c,i)=>{const ch=d.chapters[i]||{status:'pending'},cur=d.job.state.chapter===i&&['running','needs_admin','paused'].includes(d.job.status);
+    return `<button class="li" style="text-align:left" data-a="asChapter" data-i="${i}"><div class="grow" style="min-width:0"><b>${i+1}. ${esc(c.title)}</b><div class="mute" style="font-size:12.5px">${ch.status==='approved'?`Принята · ${ch.words} слов`:ch.status==='draft'?`Черновик · ${ch.words} слов`:cur?'В работе':'Ждёт очереди'}</div></div>${ico('chev',18)}</button>`}).join(''):'';
+  function chapterPanel(d){
+    const c=S.chText;if(!c)return'';const i=+c.i,cur=d.job.state.chapter===i;
+    const issues=(d.checks.find(x=>x.chapter===i&&!x.ok)||{}).issues;
+    return `<div class="card" style="margin-top:10px"><b>Глава ${i+1}: ${esc(d.plan.chapters[i].title)}</b>
+      ${c.shown?`<p class="mute" style="font-size:12.5px">Версия «${esc(c.shown.kind)}» ${esc(c.shown.provider)} ${esc(c.shown.model)}</p><div class="chtext">${esc(c.shown.text)}</div><button class="btn sm ghost" data-a="asChapter" data-i="${i}">Закрыть</button>`
+      :`<textarea class="in" data-m="adm:as_edit" style="min-height:260px;line-height:1.55;margin-top:8px" aria-label="Текст главы">${esc(M.as_edit)}</textarea>`}
+      <details class="dgroup" style="margin-top:8px"><summary><b>Версии (${c.versions.length})</b></summary><div class="dbody">${c.versions.map(v=>`<button class="li" data-a="asVersion" data-v="${v.id}"><div class="grow"><b>${esc(v.kind)}</b> <span class="mute">${esc(v.provider)} ${esc(v.model)} · ${v.len} зн. ${esc(v.note||'')}</span></div></button>`).join('')}</div></details>
+      ${d.job.status==='needs_admin'&&cur?`<div class="demo-banner" style="margin:10px 0;flex-direction:column;align-items:flex-start"><b>Модели не довели эту главу до качества</b>${issueList(issues)}</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-a="asResolve" data-act="edit" data-i="${i}">Сохранить мою правку и продолжить</button><button class="btn sm ghost" data-a="asResolve" data-act="accept" data-i="${i}">Принять как есть</button><button class="btn sm ghost" data-a="asResolve" data-act="retry" data-i="${i}">Написать заново</button></div>`
+      :d.job.status==='awaiting_publish'?`<button class="btn sm ghost" style="margin-top:8px" data-a="asSaveEdit" data-i="${i}">Сохранить правку</button>`:''}</div>`;
+  }
+  const journal=d=>`<button class="btn sm ghost" style="margin-top:12px" data-a="asLog">${S.showLog?'Скрыть журнал':'Журнал вызовов и проверок'}</button>${S.showLog?`<div class="card" style="margin-top:8px;font-size:12.5px"><b>Вызовы</b><div class="logtbl">${d.calls.map(c=>`<div class="logrow"><span>${esc(c.task)}${c.chapter>=0?' · гл.'+(c.chapter+1):''}</span><span>${esc(c.provider)} / ${esc(c.model)}${c.via==='override'?' (тест)':''}</span><span>${c.latency} мс · ${c.tokens_in}+${c.tokens_out}${c.estimated?'~':''} ток. · ${c.cost==null?'цена неизвестна':'$'+c.cost.toFixed(5)}</span><span class="${c.status==='ok'?'':'bad'}">${esc(c.status)}${c.error?': '+esc(c.error):''}</span></div>`).join('')}</div><b style="display:block;margin-top:10px">Проверки</b>${d.checks.slice(0,20).map(k=>`<div style="margin-top:6px"><span class="${k.ok?'':'bad'}">${k.ok?'✓':'✕'}</span> ${esc(k.kind)}${k.chapter>=0?' · гл.'+(k.chapter+1):''} ${esc(k.provider)} ${esc(k.model)}${k.ok?'':issueList(k.issues)}</div>`).join('')}</div>`:''}`;
+  function jobView(d){
+    const j=d.job,st=j.state;
+    if(j.status==='plan_ready')return planView(d);
+    const running=['draft','running'].includes(j.status);
+    let body='';
+    if(running)body=`<div class="card"><b>${S.loop?'Работаем…':'Остановлено'}</b><div class="bar" style="margin:10px 0"><i style="width:${Math.round(d.chapters.filter(c=>c.status==='approved').length/Math.max(1,j.config.chapters)*100)}%"></i></div>
+      <div class="mute" style="font-size:13px">${esc(PHASE[st.phase]||PHASE[j.status==='draft'?'plan':'draft'])}${st.chapter!==undefined&&!/^final|annotation/.test(st.phase||'')?` · глава ${st.chapter+1} из ${j.config.chapters}`:''}${st.fix?` · круг исправлений ${st.fix}`:''}</div>
+      <p class="hint">Не закрывайте приложение. Если связь пропадёт, всё сохранено: нажмите «Продолжить».</p>
+      <div class="row" style="gap:10px"><button class="btn ghost grow" data-a="asPause">Пауза</button>${S.loop?'':'<button class="btn grow" data-a="asResume2">Продолжить</button>'}</div></div>`;
+    else if(j.status==='paused')body=`<div class="card"><b>На паузе</b><p class="mute" style="font-size:13.5px;margin:6px 0">${esc(pauseText(j.pauseReason))}</p>${/^budget/.test(j.pauseReason)?`<div class="field"><label for="asLc2">Новый лимит вызовов (не выше серверного)</label><input id="asLc2" class="in" type="number" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${esc(j.config.limits.maxCalls)}"></div>`:''}<div class="row" style="gap:10px"><button class="btn grow" data-a="asResume">Продолжить</button><button class="btn ghost" data-a="asCancel">Отменить</button></div></div>`;
+    else if(j.status==='needs_admin')body=`<div class="card"><b>Нужно ваше решение по главе ${st.chapter+1}</b><p class="mute" style="font-size:13.5px;margin-top:6px">Откройте главу ниже: вы можете поправить текст, принять как есть или написать заново.</p></div>`;
+    else if(j.status==='awaiting_publish'){
+      const fin=st.final||{ok:true,issues:[]};
+      body=`<div class="card"><b>Книга готова</b><p class="mute" style="font-size:13.5px;margin:6px 0">Итоговая проверка: ${fin.stale?'устарела после ваших правок':fin.ok?'серьёзных замечаний нет':'<b class="bad">найдены серьёзные замечания</b>'}</p>${issueList(fin.issues)}
+        <div class="field" style="margin-top:12px"><label for="asUT">Название</label><input id="asUT" class="in" data-m="adm:as_pub_title" value="${esc(M.as_pub_title||d.plan.title)}" maxlength="150"></div>
+        <div class="field"><label for="asUA">Автор (имя или псевдоним)</label><input id="asUA" class="in" data-m="adm:as_pub_author" value="${esc(M.as_pub_author)}" maxlength="100"></div>
+        <div class="field"><label for="asUD">Описание для каталога</label><textarea id="asUD" class="in" data-m="adm:as_pub_desc" style="min-height:90px">${esc(M.as_pub_desc||d.plan.annotation||d.plan.synopsis)}</textarea></div>
+        <p class="hint">Прочитайте главы ниже. Публикация только по вашей кнопке, без неё книга в каталог не попадёт.</p>
+        <button class="btn block" data-a="asPublish">Опубликовать в каталог…</button><button class="btn block ghost" style="margin-top:8px" data-a="asCancel">Отменить задание</button></div>`;
+    }else if(j.status==='published')body=`<div class="card" style="text-align:center"><div style="font-size:36px">📚</div><b>Книга опубликована</b><button class="btn block" style="margin-top:12px" data-a="asOpenBook">Открыть книгу</button></div>`;
+    else body=`<div class="card"><b>${esc(STATUS[j.status]||j.status)}</b></div>`;
+    return `${head(d)}${err()}${body}<div class="sec"><div class="sec-h"><h2>Главы</h2></div><div class="list">${chapterRows(d)}</div>${chapterPanel(d)}</div>${journal(d)}`;
+  }
+  ACT.asResume2=()=>{runLoop()};
+  function tabStudio(){
+    if(S.cur==='new')return createView();
+    if(S.cur){if(!S.d)return S.err?`<button class="btn sm ghost" data-a="asBack">← К заданиям</button>${err()}`:loading();return jobView(S.d)}
+    return listView();
+  }
+  T.push(['aistudio','ИИ-студия']);bodies.aistudio=tabStudio;loaders.aistudio=loadList;
+}
