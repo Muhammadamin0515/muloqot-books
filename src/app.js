@@ -129,6 +129,11 @@ const bkCard=(b,badge)=>{const st=stat(b);return `<button class="bk" data-a="ope
 const colCard=c=>{const bs=c.ids.slice(0,3).map(book);return `<button class="col" data-a="openCollection" data-id="${c.id}" style="background:linear-gradient(135deg,${c.pal[0]},${c.pal[1]})"><div class="stack">${bs.map((b,i)=>`<div style="position:absolute;left:${i*28}px;top:${i*9}px;width:62px;z-index:${3-i}">${cover(b,'sm')}</div>`).join('')}</div><div class="tx"><b>${esc(L(c.t))}</b><small>${c.ids.length} ${t('books_n')}</small></div></button>`};
 const donCard=()=>{const g=S.donateGoal,pct=g?Math.min(100,Math.round(g.raised/g.target*100)):0;
   return `<div class="px" style="margin-top:30px"><button class="don-card cine" data-a="openDonate"><span class="don-ico">${ico('heart',22)}</span><div class="grow" style="min-width:0;text-align:left"><span class="eyebrow" style="color:#f4a07c">${tr('Поддержать проект','Loyihani qo‘llab-quvvatlash')}</span><b class="don-t">${g?esc(L(g.title)):tr('Помогите создавать новые книги','Yangi kitoblar yaratishga yordam bering')}</b>${g?`<div class="bar" style="margin:9px 0 5px"><i style="width:${pct}%"></i></div><span class="mono" style="font-size:12px;color:#c8bcae">⭐ ${g.raised} / ${g.target}</span>`:''}</div>${ico('chev',18)}</button></div>`};
+/* The platform's own books ("Muloqot Books"): one swipeable shelf however many there are, ranked newest first, with a full list behind "all". */
+const OWN_RAIL=12;
+const ownCard=(b,i)=>`<button class="bk own" data-a="openBook" data-id="${b.id}"><span class="rank">${i+1}</span>${cover(b)}<span class="t">${esc(b.title)}</span><span class="a">${esc(gl(b.genre))} · ${b.lang.toUpperCase()}</span></button>`;
+const ownRail=own=>`<section class="sec own-sec"><div class="sec-h px"><div><h2>Muloqot Books</h2><small class="mute">${tr('Наши книги','Bizning kitoblar')} · ${own.length}</small></div>${own.length>3?`<button class="link acc" data-a="openOwn">${t('all')} ${own.length}</button>`:''}</div><div class="hs px own-rail">${own.slice(0,OWN_RAIL).map(ownCard).join('')}${own.length>OWN_RAIL?`<button class="bk own more" data-a="openOwn"><span class="morebox"><b>+${own.length-OWN_RAIL}</b><small>${tr('Все книги','Hammasi')}</small></span></button>`:''}</div></section>`;
+const contMini=cb=>`<button class="contmini" data-a="read" data-id="${cb.id}"><div class="cv">${cover(cb,'sm')}</div><div class="grow"><small class="eyebrow" style="color:#f4a07c">${t('continue')}</small><b>${esc(cb.title)}</b><div class="bar" style="margin-top:6px"><i style="width:${pctOf(cb.id)}%"></i></div></div><span class="btn sm">${pctLabel(pctOf(cb.id))} ${ico('arrow',15)}</span></button>`;
 SCREENS.home=()=>{
   const h=new Date().getHours(),g=h<5?'g_night':h<12?'g_morning':h<18?'g_day':'g_evening';
   const rd=readingIds(),cb=rd.length?book(rd[0]):null;
@@ -139,12 +144,14 @@ SCREENS.home=()=>{
   const recs=recommend({books:BOOKS,progress:S.progress,finished:S.finished,saved:S.saved,ratings:S.ratings,follows:S.follows,limit:8});
   const why=r=>r.why.book?(r.why.kind==='author'?tr('Тот же автор, что «','Muallif bir xil: «'):tr('Похоже на «','O‘xshash: «'))+r.why.book.title+'»':'';
   const nw=BOOKS.slice().sort((a,b)=>b.added-a.added).slice(0,8);
+  const own=BOOKS.filter(b=>b.own).sort((x,y)=>y.added-x.added);
   const gc=g=>BOOKS.filter(b=>b.genre===g).length;
   const head=(title,link)=>`<div class="sec-h px"><h2>${title}</h2>${link||''}</div>`;
   return `<header class="hello px"><div class="grow"><p class="eyebrow">${t(g)}</p><h1 class="display">${esc(dispName())}</h1><span class="streak">${ico('flame',14)} ${streak()?`${streak()} ${tr('дн. подряд','kun ketma-ket')}`:tr('Начните серию сегодня','Bugun boshlang')}</span></div><button class="avatar" data-a="tab" data-id="profile" aria-label="${t('nav_profile')}" style="background:${AVC[0]}">${hasName()?esc(S.name[0].toUpperCase()):ico('user',20)}</button></header>
   <div class="px" style="margin-top:18px"><button class="fakesearch" data-a="openSearch">${ico('search',20)}<span>${t('search_ph')}</span></button></div>
   ${BOOKS.length?'':`<div class="px" style="margin-top:20px"><div class="card">${empty('lib',tr('Каталог пока пуст','Katalog hozircha bo‘sh'),tr('Книги появятся здесь после добавления администратором или авторами.','Kitoblar administrator yoki mualliflar qo‘shgach shu yerda paydo bo‘ladi.'))}</div></div>`}
-  <div class="px" style="margin-top:20px">${cont}</div>
+  ${own.length?ownRail(own):''}
+  ${own.length&&cb?`<div class="px" style="margin-top:14px">${contMini(cb)}</div>`:own.length?'':`<div class="px" style="margin-top:20px">${cont}</div>`}
   ${COLLECTIONS.length?`<section class="sec">${head(t('collections'))}<div class="hs px">${COLLECTIONS.map(colCard).join('')}</div></section>`:''}
   ${recs.length?`<section class="sec">${head(tr('Для вас','Siz uchun'))}<div class="hs px">${recs.map(r=>`<div class="recw">${bkCard(r.book)}<small class="why">${esc(why(r))}</small></div>`).join('')}</div></section>`:''}
   ${pop.length?`<section class="sec">${head(t('popular'),`<button class="link acc" data-a="tab" data-id="catalog">${t('all')}</button>`)}<div class="hs px">${pop.map(b=>bkCard(b)).join('')}</div></section>`:''}
@@ -158,6 +165,7 @@ ACT.openBook=el=>{BK.tab='about';BK.syn=false;go('book',{id:el.dataset.id});load
 ACT.openAuthor=el=>go('author',{id:el.dataset.id});
 ACT.openSearch=()=>{resetCat();CAT.focus=true;go('catalog')};
 ACT.openNew=()=>{resetCat();CAT.sort='new';go('catalog')};
+ACT.openOwn=()=>{resetCat();CAT.only='own';CAT.sort='new';go('catalog')};
 ACT.genreFilter=el=>{resetCat();CAT.genres=[el.dataset.id];go('catalog')};
 ACT.openCollection=el=>{const c=COLLECTIONS.find(x=>x.id===el.dataset.id);resetCat();CAT.ids=c.ids;CAT.coll=c.id;go('catalog')};
 ACT.back=back;
@@ -182,6 +190,7 @@ function catList(){
   if(CAT.genres.length)l=l.filter(b=>CAT.genres.includes(b.genre));
   if(CAT.only==='text')l=l.filter(b=>b.fullText!==false);
   if(CAT.only==='audio')l=l.filter(b=>b.audio>0);
+  if(CAT.only==='own')l=l.filter(b=>b.own);
   const q=CAT.q.trim();lastSuggest=null;
   if(q){
     const docs=l.map(docOf),hits=fuzzySearch(q,docs),rank=new Map(hits.map((h,i)=>[h.id,i]));
@@ -212,7 +221,7 @@ SCREENS.catalog=()=>{const l=catList();
   <div class="px"><div class="searchbox">${ico('search',20)}<input id="q" class="in" type="search" data-m="cat:q" value="${esc(CAT.q)}" placeholder="${t('search_ph')}" autocomplete="off" enterkeyhint="search" aria-label="${t('search_ph')}"><button class="iconbtn flat x" data-a="clearQ" aria-label="${t('close')}" ${CAT.q?'':'hidden'}>${ico('x',18)}</button></div>
   ${CAT.coll?`<div style="margin-top:12px"><button class="chip on" data-a="clearColl">${esc(L(COLLECTIONS.find(c=>c.id===CAT.coll).t))} ${ico('x',14)}</button></div>`:''}
   <div class="seg" style="margin-top:14px" role="group" aria-label="${t('language')}">${seg.map(([k,n])=>`<button class="${CAT.lang===k?'on':''}" data-a="catLang" data-v="${k}">${n}</button>`).join('')}</div></div>
-  <div class="hs px" style="margin-top:14px"><button class="chip ${CAT.only==='text'?'on':''}" data-a="catOnly" data-v="text">${ico('text',15)} ${tr('Читать целиком','To‘liq o‘qish')}</button>${BOOKS.some(b=>b.audio>0)?`<button class="chip ${CAT.only==='audio'?'on':''}" data-a="catOnly" data-v="audio">${ico('headphones',15)} ${tr('Аудио','Audio')}</button>`:''}${GENRES.filter(g=>BOOKS.some(b=>b.genre===g)).map(g=>`<button class="chip ${CAT.genres.includes(g)?'on':''}" data-a="catGenre" data-id="${g}" aria-pressed="${CAT.genres.includes(g)}">${gl(g)}</button>`).join('')}</div>
+  <div class="hs px" style="margin-top:14px">${BOOKS.some(b=>b.own)?`<button class="chip ${CAT.only==='own'?'on':''}" data-a="catOnly" data-v="own">Muloqot Books</button>`:''}<button class="chip ${CAT.only==='text'?'on':''}" data-a="catOnly" data-v="text">${ico('text',15)} ${tr('Читать целиком','To‘liq o‘qish')}</button>${BOOKS.some(b=>b.audio>0)?`<button class="chip ${CAT.only==='audio'?'on':''}" data-a="catOnly" data-v="audio">${ico('headphones',15)} ${tr('Аудио','Audio')}</button>`:''}${GENRES.filter(g=>BOOKS.some(b=>b.genre===g)).map(g=>`<button class="chip ${CAT.genres.includes(g)?'on':''}" data-a="catGenre" data-id="${g}" aria-pressed="${CAT.genres.includes(g)}">${gl(g)}</button>`).join('')}</div>
   <div class="px"><div class="sortrow"><span id="catCount" class="mute" style="font-size:13px;font-weight:600">${t('found')}: ${l.length}</span><select class="in" data-chg="catSort" aria-label="${t('sort')}">${[['pop','s_pop'],['rating','s_rating'],['new','s_new'],['az','s_az']].map(([k,n])=>`<option value="${k}" ${CAT.sort===k?'selected':''}>${t(n)}</option>`).join('')}</select></div>
   <div id="catRes">${catResults(l)}</div></div>`};
 AFTER.catalog=()=>{if(CAT.focus){CAT.focus=false;const q=$('#q');if(q)q.focus()}};

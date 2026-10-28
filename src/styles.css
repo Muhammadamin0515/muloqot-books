@@ -651,3 +651,12 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 @keyframes sp{to{transform:rotate(360deg)}}
 
 .fixbox{margin:14px 0;padding:14px;border:1px solid var(--acc);border-radius:16px;background:color-mix(in srgb,var(--acc) 8%,transparent)}
+
+.own-sec .sec-h small{display:block;font-size:12.5px;margin-top:2px}
+.own-rail{scroll-snap-type:x mandatory}.own-rail .bk{scroll-snap-align:start;position:relative}
+.bk.own .cover{box-shadow:0 10px 26px rgba(0,0,0,.45)}
+.bk .rank{position:absolute;top:8px;left:8px;z-index:3;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:var(--acc);color:#fff;font-weight:800;font-size:12.5px;display:grid;place-items:center}
+.bk.more .morebox{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;aspect-ratio:2/3;border:1.5px dashed var(--line2);border-radius:14px;color:var(--fg)}
+.bk.more .morebox b{font-size:22px}
+.contmini{display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--fg);font:inherit}
+.contmini .cv{width:44px;flex:none}.contmini b{display:block;font-size:14.5px;line-height:1.25}

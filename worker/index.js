@@ -531,8 +531,10 @@ route('POST','/api/admin/admins',async c=>{
 },true);
 
 /* ---------- admin: content ---------- */
-route('GET','/api/admin/books',async c=>json({list:(await all(c,'SELECT id,data,added,hidden FROM books ORDER BY added DESC')).map(r=>{const b=P(r.data),ri=rightsOf(b);return{id:r.id,title:b.title,desc:b.desc,author:b.a,lang:b.lang,hidden:!!r.hidden,chapters:b.lazy?b.nch:b.chapters.length,demo:isDemo(b),fullText:canRead(b)&&hasText(b),publish:b.publish==='draft'?'draft':'published',lazy:!!b.lazy,ver:b.ver||'',lit:b.lit?{collection:b.lit.collection,metaStatus:b.lit.metaStatus,review:b.lit.review||[],info:b.lit.info||[],path:b.lit.path,sourceUrl:b.lit.sourceUrl,commit:b.lit.commit,metaConfirmed:!!b.lit.metaConfirmed,dupOf:b.lit.dupOf||'',possibleDuplicate:b.lit.possibleDuplicate||''}:null,
+route('GET','/api/admin/books',async c=>json({list:(await all(c,'SELECT id,data,added,hidden FROM books ORDER BY added DESC')).map(r=>{const b=P(r.data),ri=rightsOf(b);return{id:r.id,title:b.title,desc:b.desc,author:b.a,lang:b.lang,own:!!b.own,hidden:!!r.hidden,chapters:b.lazy?b.nch:b.chapters.length,demo:isDemo(b),fullText:canRead(b)&&hasText(b),publish:b.publish==='draft'?'draft':'published',lazy:!!b.lazy,ver:b.ver||'',lit:b.lit?{collection:b.lit.collection,metaStatus:b.lit.metaStatus,review:b.lit.review||[],info:b.lit.info||[],path:b.lit.path,sourceUrl:b.lit.sourceUrl,commit:b.lit.commit,metaConfirmed:!!b.lit.metaConfirmed,dupOf:b.lit.dupOf||'',possibleDuplicate:b.lit.possibleDuplicate||''}:null,
   rights:{status:ri.status,license:ri.license||'',evidenceUrl:ri.evidenceUrl||'',note:ri.note||'',source:ri.source?.name||'',sourceUrl:ri.source?.url||'',legacy:!!ri.legacy,authorDeathYear:ri.authorDeathYear||null}}})}),true);
+/* "Muloqot Books": the platform's own books, shown first on the home screen */
+route('POST','/api/admin/books/:id/own',async(c,id)=>{const row=await get(c,'SELECT data FROM books WHERE id=?',id);if(!row)return bad(404);const b=P(row.data);if(c.body.on)b.own=true;else delete b.own;await run(c,'UPDATE books SET data=? WHERE id=?',J(b),id);await audit(c,'own',id,{on:!!c.body.on});return json({ok:true})},true);
 route('POST','/api/admin/books/:id/hide',async(c,id)=>{await run(c,'UPDATE books SET hidden=? WHERE id=?',c.body.on?1:0,id);return json({ok:true})},true);
 route('POST','/api/admin/books/:id/delete',async(c,id)=>{
   await batch(c,[stmt(c,'DELETE FROM books WHERE id=?',id),stmt(c,'DELETE FROM ratings WHERE book_id=?',id),stmt(c,'DELETE FROM reviews WHERE book_id=?',id)]);return json({ok:true});
@@ -557,7 +559,7 @@ async function importOne(c,r){
   let a=await get(c,"SELECT id FROM authors WHERE lower(json_extract(data,'$.name'))=lower(?)",v.author.name);
   const aid=a?.id||'a'+id8(),bid='b'+id8(),h=[...bid].reduce((x,ch)=>x+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];
   const added=((await get(c,'SELECT COALESCE(MAX(added),0) m FROM books')).m)+1;
-  const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover,...(r.ai?{imgAuto:true}:{})}:{}),imported:{by:c.user.id,at:Date.now()}};
+  const book={id:bid,a:aid,...v.book,rating:0,count:0,added,motif:st.motif,pal:st.pal,...(cover?{img:cover,...(r.ai?{imgAuto:true}:{})}:{}),...(r.ai||/^muloqot books$/i.test(v.author.name)?{own:true}:{}),imported:{by:c.user.id,at:Date.now()}};
   const ops=[stmt(c,'INSERT INTO books(id,data,added) VALUES(?,?,?)',bid,J(book),added)];
   if(!a)ops.push(stmt(c,'INSERT INTO authors(id,data,followers_base,user_id) VALUES(?,?,0,NULL)',aid,J({id:aid,name:v.author.name,city:v.author.city,hair:'short',hairc:'#2a1c12',skin:'#d3ab88',glasses:0,pal:[['#2a1a14','#7a2e17'],['#10282c','#2f6672'],['#26141a','#7a3346'],['#2a1f12','#8a5a22']][h%4],bio:v.author.bio,...(v.author.deathYear?{deathYear:v.author.deathYear}:{})})));
   await batch(c,ops);await audit(c,'import',bid,{title:v.book.title,rights:v.book.rights.status,fullText:v.book.chapters.length>0});

@@ -59,6 +59,15 @@ await a.waitForSelector('.jrun',{timeout:15000});
 ok((await a.textContent('.jrun')).includes('Исправление замечаний'),'while repairing, the screen says so');
 await a.waitForSelector('[data-a=asPublish]',{timeout:90000});
 ok(!(await a.locator('.fixbox').count())&&(await a.textContent('.adm')).includes('серьёзных замечаний нет'),'after the repair the book passes the final review again');
+/* the platform's own shelf */
+await a.goto(B+'/?as=admin');await a.waitForTimeout(1500);
+ok((await a.locator('.own-rail .bk.own').count())>=1&&(await a.textContent('.own-sec')).includes('Muloqot Books')&&(await a.textContent('.own-sec')).includes('Письмо из Бухары'),'the published AI book appears on the home screen in the Muloqot Books shelf');
+ok(await a.locator('.own-rail .bk .rank').first().textContent()==='1','books on the shelf are ranked');
+await a.screenshot({path:'/tmp/ui_home_own.png'});
+await a.goto(B+'/?as=admin&open=catalog');await a.waitForTimeout(1200);
+ok(await a.locator('[data-a=catOnly][data-v=own]').count()===1,'the catalog has a Muloqot Books filter');
+await a.click('[data-a=catOnly][data-v=own]');await a.waitForTimeout(800);
+ok((await a.locator('.cardbk').count())>=1&&(await a.locator('.cardbk').count())<=(await api('admin','/api/bootstrap')).j.books.length,'the filter lists only the own books');
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,3)));
 await br.close();mock.close();
 console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

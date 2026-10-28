@@ -59,6 +59,9 @@ ok((await A(`/jobs/${J1}/publish`,'POST',{})).s===400,'publishing needs an expli
 ok((await A(`/jobs/${J1}/publish`,'POST',{confirm:true,author:'Тест Автор'})).j.bookId!==undefined,'published after the administrator confirmed');
 const bk=(await api(11,'/api/bootstrap')).j.books.find(b=>b.title==='Письмо из Бухары. Правка');
 ok(bk&&bk.ai&&bk.fullText&&bk.nch===3&&bk.ai.provider==='groq+gemini+openrouter','the book is in the catalog, readable, labelled as AI-made');
+ok(bk.own===true,'a book made with the AI tool joins the Muloqot Books shelf automatically');
+ok((await api(1,`/api/admin/books/${bk.id}/own`,'POST',{on:false})).s===200&&!(await api(11,'/api/bootstrap')).j.books.find(b=>b.id===bk.id).own,'the administrator can take a book off the shelf');
+await api(1,`/api/admin/books/${bk.id}/own`,'POST',{on:true});ok((await api(11,'/api/bootstrap')).j.books.find(b=>b.id===bk.id).own===true,'and put it back');
 ok((await A(`/jobs/${J1}/publish`,'POST',{confirm:true})).s===409,'a job cannot be published twice');
 const J0=r.j.job.id;void J0;
 
