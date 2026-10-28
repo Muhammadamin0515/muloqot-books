@@ -6,6 +6,7 @@ import {api,net} from './api.js';
 import {initAdmin} from './admin.js';
 import {initDonate} from './donate.js';
 import {initCatalogAdmin} from './catalog-admin.js';
+import {initAiBook} from './aibook.js';
 import {initStudio} from './studio.js';
 import {initAchievements} from './achievements.js';
 import {search as fuzzySearch,suggest as suggestWord,key as skey} from './search.js';
@@ -264,6 +265,7 @@ function detailRows(b){
   if(b.nch>1)r.push([t('d_chapters'),b.nch]);
   if(b.publisher)r.push([tr('Издатель','Nashriyot'),esc(b.publisher)]);
   if(b.isbn)r.push(['ISBN',esc(b.isbn)]);
+  if(b.ai)r.push([tr('Создание','Yaratilishi'),tr('Создано с помощью ИИ','Sun’iy intellekt yordamida yaratilgan')]);
   r.push([tr('Формат','Format'),[b.fullText?tr('Текст','Matn'):tr('Только описание','Faqat tavsif'),b.audio?tr('Аудио','Audio'):''].filter(Boolean).join(' + ')]);
   return r;
 }
@@ -755,6 +757,7 @@ try{await loadBoot(true)}catch(e){net.online=false;banned=e.status===403;stale=e
 const admApi=initAdmin({AUTHORS,SCREENS,ACT,CHG,FORMS,AFTER,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr,gl,refresh,get S(){return S}});
 initDonate({SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,empty,NAV,$,tr,tg,L,refresh,loadBoot,get S(){return S}},admApi);
 initCatalogAdmin({SCREENS,ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,setSheet,loadBoot,refresh,tg},admApi);
+initAiBook({ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go,refresh},admApi);
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
 initAchievements(ctx2);
 initAudio(ctx2);

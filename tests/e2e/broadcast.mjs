@@ -2,8 +2,11 @@
 import http from 'node:http';import {createHmac} from 'node:crypto';
 const B=process.env.BASE||'http://localhost:8806',TOKEN='123456:FAKETOKEN',MOCK=+(process.env.MOCK_PORT||9999);
 let fails=0;const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m);if(!c)fails++};
-const calls=[];
-const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on('end',()=>{calls.push({method:req.url.split('/').pop(),body:b?JSON.parse(b):null});res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result:true}))})}).listen(MOCK);
+const calls=[],aiCalls=[];
+const mock=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on('end',()=>{if(req.url.startsWith('/ai/')){const j=b?JSON.parse(b):{};aiCalls.push({url:req.url,auth:req.headers.authorization||req.headers['x-goog-api-key']||'',body:j});res.setHeader('content-type','application/json');
+  if(req.url.includes('limit-model')||j.model==='limit-model'){res.statusCode=429;return res.end(JSON.stringify({error:{message:'quota'}}))}
+  const t='Он вышел во двор. '.repeat(30);return res.end(JSON.stringify(req.url.startsWith('/ai/gemini')?{candidates:[{content:{parts:[{text:t}]}}]}:{choices:[{message:{content:t}}]}))}
+calls.push({method:req.url.split('/').pop(),body:b?JSON.parse(b):null});res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result:true}))})}).listen(MOCK);
 const init=(id,name='User',extra={})=>{const p=new URLSearchParams({auth_date:String(Math.floor(Date.now()/1000)),user:JSON.stringify({id,first_name:name,...extra})});const str=[...p.entries()].map(([k,v])=>`${k}=${v}`).sort().join('\n');const sk=createHmac('sha256','WebAppData').update(TOKEN).digest();p.set('hash',createHmac('sha256',sk).update(str).digest('hex'));return p.toString()};
 const api=async(uid,path,method='GET',body)=>{const r=await fetch(B+path,{method,headers:{'content-type':'application/json',authorization:'tma '+init(uid)},body:body&&JSON.stringify(body)});return{s:r.status,j:await r.json().catch(()=>null)}};
 const secret=createHmac('sha256',TOKEN).update('muloqot-webhook').digest('hex').slice(0,48);
@@ -63,4 +66,25 @@ await vote(11,9);await hook({callback_query:{id:'x',from:{id:11},data:'bv:nonexi
 res=(await api(1,`/api/admin/broadcasts/${id}/results`)).j.broadcast;ok(res.votes.join()==='0,2,1','an invalid option or an unknown survey changes nothing');
 ok((await api(11,`/api/admin/broadcasts/${id}/results`)).s===403,'readers cannot see results');
 const hist=(await api(1,'/api/admin/broadcasts')).j.list.find(b=>b.id===id);ok(hist.kind==='poll'&&hist.votes.join()==='0,2,1'&&hist.options.length===3,'history carries the survey and its results');
-mock.close();console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);
+/* AI book tool: keys stay on the server, text is relayed, the published book is marked as AI-made */
+{const cfg0=(await api(1,'/api/admin/ai/config')).j;ok(cfg0.canSetKeys&&Object.values(cfg0.providers).every(p=>!p.set),'AI config: no keys at first');
+ok((await api(1,'/api/admin/ai/generate','POST',{provider:'groq',prompt:'Привет'})).j.error==='no_key','generate without a key is refused');
+ok((await api(11,'/api/admin/ai/config')).s===403,'AI config is for admins only');
+ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:'short'})).j.error==='key','malformed key is refused');
+const KEY='gsk_TESTKEY1234567890abcdef';
+ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:KEY})).s===200,'key is saved');
+const cfg1=await api(1,'/api/admin/ai/config');ok(cfg1.j.providers.groq.set&&cfg1.j.providers.groq.source==='db'&&!JSON.stringify(cfg1.j).includes(KEY),'config reports the key as set but never returns it');
+const g=await api(1,'/api/admin/ai/generate','POST',{provider:'groq',model:'llama-3.3-70b-versatile',system:'S',prompt:'PP',max:500});
+const gc=aiCalls.at(-1);ok(g.s===200&&g.j.text.includes('Он вышел')&&gc.url==='/ai/groq/chat/completions'&&gc.auth==='Bearer '+KEY&&gc.body.model==='llama-3.3-70b-versatile'&&gc.body.messages[0].content==='S','groq request is relayed with the saved key');
+await api(1,'/api/admin/ai/key','POST',{provider:'gemini',key:KEY+'g'});
+const ge=await api(1,'/api/admin/ai/generate','POST',{provider:'gemini',model:'gemini-2.5-flash',system:'S',prompt:'PP'});const gec=aiCalls.at(-1);
+ok(ge.s===200&&ge.j.text.includes('Он вышел')&&gec.url==='/ai/gemini/gemini-2.5-flash:generateContent'&&gec.auth===KEY+'g'&&gec.body.systemInstruction.parts[0].text==='S','gemini request has the right shape');
+ok((await api(1,'/api/admin/ai/generate','POST',{provider:'groq',model:'limit-model',prompt:'PP'})).j.error==='rate_limit','provider rate limit is reported');
+ok((await api(1,'/api/admin/ai/generate','POST',{provider:'groq',model:'bad model!',prompt:'PP'})).j.error==='model','bad model name is refused');
+const text='# Глава первая\n\n'+'Он вышел во двор и увидел старый дом. '.repeat(40)+'\n\n# Глава вторая\n\n'+'Дом молчал, и двор молчал вместе с ним. '.repeat(40);
+const pub=await api(1,'/api/admin/import','POST',{records:[{title:'Книга ИИ',author:'Muloqot Books',lang:'ru',genre:'novel',description:'Тест',text,rights:{status:'author',note:'ИИ'},source:{name:'Muloqot Books (ИИ)'},ai:{provider:'groq',model:'llama-3.3-70b-versatile'}}]});
+ok(pub.j.results[0].id&&pub.j.results[0].fullText,'AI book is published through the import route');
+const bk=(await api(1,'/api/bootstrap')).j.books.find(b=>b.id===pub.j.results[0].id);ok(bk&&bk.ai&&bk.ai.model==='llama-3.3-70b-versatile'&&bk.fullText&&bk.nch===2,'published AI book is in the catalog, readable, marked as AI-made');
+ok((await api(1,'/api/admin/ai/key','POST',{provider:'groq',key:''})).s===200&&!(await api(1,'/api/admin/ai/config')).j.providers.groq.set,'key can be deleted');}
+mock.close();
+console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0);

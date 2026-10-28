@@ -71,6 +71,7 @@ export function validateImport(r,{now=new Date().getFullYear()}={}){
     ...(clip(r.translator,100)?{translator:clip(r.translator,100)}:{}),
     ...(clip(r.publisher,100)?{publisher:clip(r.publisher,100)}:{}),
     ...(/^[\dXx-]{10,17}$/.test(String(r.isbn||'').trim())?{isbn:String(r.isbn).trim()}:{}),
+    ...(r.ai&&clip(r.ai.model,80)?{ai:{provider:clip(r.ai.provider,20),model:clip(r.ai.model,80)}}:{}),
     format:'text'
   };
   return{book,author:{name:author,city:{ru:clip(r.authorCity,60),uz:clip(r.authorCity,60)},bio:{ru:clip(r.authorBio,600),uz:clip(r.authorBio,600)},...(death!==null?{deathYear:death}:{})},coverUrl:httpsUrl(r.coverUrl),cover:typeof r.cover==='string'?r.cover:''};

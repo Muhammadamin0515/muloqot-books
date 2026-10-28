@@ -31,6 +31,13 @@ await a.fill('#ciDt','1900');await a.fill('#ciSe','Дворовые истори
 ok((await a.textContent('.card:has-text("✓")')).includes('(текст)'),'EPUB imported with full text');
 ok((await a.textContent('.tiles')).includes('1'),'stats updated');
 await a.screenshot({path:'/tmp/ui_admin_catalog.png'});
+await a.click('[data-a=admTab][data-v=ai]');await a.waitForTimeout(700);
+{const t=await a.textContent('.adm');ok(t.includes('Сервис и модель')&&t.includes('О чём книга')&&t.includes('ключ не добавлен'),'AI tab opens and says that no key is added');
+ok(await a.locator('[data-a=aiPlan]').isDisabled(),'plan button is disabled until a key exists');
+await a.click('[data-a=aiSet][data-k=provider][data-v=groq]');await a.waitForTimeout(200);ok((await a.inputValue('#aiModel'))===''&&(await a.getAttribute('#aiModel','placeholder'))==='llama-3.3-70b-versatile','switching the service shows its default model');
+await a.screenshot({path:'/tmp/ui_admin_ai.png'});}
+await a.click('[data-a=admTab][data-v=catalog]');await a.waitForTimeout(700);
+
 /* metadata-only card */
 const meta=await api('admin','/api/admin/import','POST',{records:[{title:'Только карточка',author:'Иван Тестов',lang:'ru',genre:'novel',description:'Карточка без текста.',source:{name:'Каталог издательства'},rights:{status:'unverified'}}]});
 ok(meta.j.results[0].id&&!meta.j.results[0].fullText,'metadata-only card created');

@@ -21,7 +21,7 @@ fresh(){
   echo "wrangler did not start"; exit 1
 }
 fresh; BASE="http://localhost:$PORT" node tests/e2e/api.mjs
-fresh "--var BOT_TOKEN:123456:FAKETOKEN --var TG_API:http://localhost:9999 --var ADMIN_IDS:1 --var WEBAPP_URL:http://localhost:$PORT"; BASE="http://localhost:$PORT" node tests/e2e/broadcast.mjs
+fresh "--var BOT_TOKEN:123456:FAKETOKEN --var TG_API:http://localhost:9999 --var ADMIN_IDS:1 --var WEBAPP_URL:http://localhost:$PORT --var AI_BASE:http://localhost:9999/ai"; BASE="http://localhost:$PORT" node tests/e2e/broadcast.mjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit.mjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ruslit-ui.cjs
 fresh; BASE="http://localhost:$PORT" node tests/e2e/ui.cjs

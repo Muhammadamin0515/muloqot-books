@@ -3,6 +3,7 @@ import {ensureSchema} from './schema.js';
 import {COVER_STYLES} from './covers.js';
 import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,rightsOf,publicRights,validateImport,fetchCover,popularity,isDemo,checkTextRights,cleanRights,httpsUrl,hasText,isPublished} from './catalog.js';
 import {registerLibrary,tokenCheck} from './library.js';
+import {registerAi} from './ai.js';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
 const clip=(s,n)=>String(s??'').trim().slice(0,n);
@@ -1041,6 +1042,7 @@ async function reminders(env,ctx){
 /** A token pasted into the dashboard often carries a trailing space or newline; normalise it once. */
 const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKEN||'').trim().replace(/^bot/i,''),WEBHOOK_SECRET:String(env.WEBHOOK_SECRET||'').trim()});
 LIB=registerLibrary({route,stmt,get,all,run,batch,json,bad,P,J,audit,id8});
+registerAi({route,get,run,json,bad,P,J,audit});
 export default {
   async fetch(request,env0,ctx){
     const env=clean(env0);
