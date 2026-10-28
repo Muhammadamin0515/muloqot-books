@@ -326,8 +326,15 @@ route('POST','/api/submissions/:id/withdraw',async(c,id)=>{
 route('POST','/api/author/profile',async c=>{
   const a=await get(c,'SELECT * FROM authors WHERE user_id=?',c.user.id);if(!a)return bad(404,'noauthor');
   const d=P(a.data);
-  d.city={ru:clip(c.body.cityRu,60),uz:clip(c.body.cityUz,60)||clip(c.body.cityRu,60)};
-  d.bio={ru:clip(c.body.bioRu,600),uz:clip(c.body.bioUz,600)||clip(c.body.bioRu,600)};
+  const nm=c.body.name===undefined?null:clip(c.body.name,60);
+  if(nm!==null){
+    if(nm.length<2||!/\p{L}/u.test(nm))return bad(422,'name');
+    if(nm.toLowerCase()!==String(d.name||'').toLowerCase()&&await get(c,"SELECT 1 x FROM authors WHERE lower(json_extract(data,'$.name'))=lower(?) AND id<>?",nm,a.id))return bad(409,'name_taken');
+    d.name=nm;
+  }
+  /* each language keeps its own text; a field that is not sent stays as it is */
+  const cityRu=c.body.cityRu!==undefined?clip(c.body.cityRu,60):d.city?.ru||'',cityUz=c.body.cityUz!==undefined?clip(c.body.cityUz,60):d.city?.uz||'',bioRu=c.body.bioRu!==undefined?clip(c.body.bioRu,600):d.bio?.ru||'',bioUz=c.body.bioUz!==undefined?clip(c.body.bioUz,600):d.bio?.uz||'';
+  d.city={ru:cityRu||cityUz,uz:cityUz||cityRu};d.bio={ru:bioRu||bioUz,uz:bioUz||bioRu};
   await run(c,'UPDATE authors SET data=? WHERE id=?',J(d),a.id);return json({ok:true});
 });
 route('GET','/api/author/profile',async c=>{
@@ -825,6 +832,29 @@ route('POST','/api/books/:id/event',async(c,id)=>{
   return json({ok:true});
 });
 const OWN="FROM books b JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=?";
+/* The author's cabinet: profile, totals, every book with its numbers, the latest reviews of the readers. */
+route('GET','/api/author/cabinet',async c=>{
+  const a=await get(c,'SELECT id,data,followers_base FROM authors WHERE user_id=?',c.user.id);
+  const since=new Date(Date.now()-13*864e5).toISOString().slice(0,10);
+  const [books,tot,series,rev,fol,revs]=await batch(c,[
+    stmt(c,`SELECT b.id,b.data,b.hidden ${OWN} ORDER BY b.added DESC`,c.user.id),
+    stmt(c,`SELECT s.book_id,SUM(s.views) v,SUM(s.reads) r,SUM(s.finishes) f FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? GROUP BY s.book_id`,c.user.id),
+    stmt(c,`SELECT s.day,SUM(s.views) v,SUM(s.reads) r FROM book_stats s JOIN books b ON b.id=s.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? AND s.day>=? GROUP BY s.day ORDER BY s.day`,c.user.id,since),
+    stmt(c,`SELECT r.book_id,COUNT(*) n FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? AND (r.hidden=0 OR r.hidden IS NULL) GROUP BY r.book_id`,c.user.id),
+    stmt(c,'SELECT COUNT(*) n FROM follows WHERE author_id=?',a?a.id:''),
+    stmt(c,`SELECT r.id,r.rating,r.text,r.user_name,r.created,b.id book_id,json_extract(b.data,'$.title') title FROM reviews r JOIN books b ON b.id=r.book_id JOIN authors a ON a.id=json_extract(b.data,'$.a') WHERE a.user_id=? AND (r.hidden=0 OR r.hidden IS NULL) ORDER BY r.created DESC LIMIT 10`,c.user.id)]);
+  const agg=await ratingAgg(c);
+  const pend=new Set((await all(c,"SELECT update_book_id FROM submissions WHERE user_id=? AND status='moderation' AND update_book_id IS NOT NULL",c.user.id)).map(x=>x.update_book_id));
+  const list=books.map(r=>{const b=bookOut(r,agg),t=tot.find(x=>x.book_id===r.id)||{},v=rev.find(x=>x.book_id===r.id);
+    return{pending:pend.has(r.id),id:r.id,title:b.title,rating:b.rating,count:b.count,hidden:!!r.hidden,draft:P(r.data).publish==='draft',chapters:b.chapters.length,views:t.v||0,reads:t.r||0,finishes:t.f||0,reviews:v?.n||0}});
+  const shown=list.filter(b=>!b.draft&&!b.hidden);
+  let rn=0,rs=0;for(const b of shown){const g=agg[b.id];if(g){rn+=g.n;rs+=g.s}}
+  const sum=k=>list.reduce((n,b)=>n+b[k],0);
+  const d=a?P(a.data):null;
+  return json({author:d?{...d,id:a.id,cityRu:d.city?.ru||'',cityUz:d.city?.uz||'',bioRu:d.bio?.ru||'',bioUz:d.bio?.uz||'',followers:(a.followers_base||0)+(fol[0]?.n||0)}:null,
+    totals:{books:shown.length,views:sum('views'),reads:sum('reads'),finishes:sum('finishes'),reviews:sum('reviews'),ratings:rn,rating:rn?Math.round(rs/rn*10)/10:0,followers:d?(a.followers_base||0)+(fol[0]?.n||0):0},
+    books:list,series,reviews:revs.map(r=>({id:r.id,bookId:r.book_id,book:r.title,user:r.user_name,rating:r.rating,text:r.text,date:rel(r.created)}))});
+});
 route('GET','/api/author/stats',async c=>{
   const since=new Date(Date.now()-13*864e5).toISOString().slice(0,10);
   const [books,tot,series,rev]=await batch(c,[

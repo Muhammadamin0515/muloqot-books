@@ -152,6 +152,21 @@ await su.click('[data-a=supDelete]');await su.waitForTimeout(300);await su.click
 ok((await su.textContent('#screen')).includes('Чатов пока нет'),'a chat can be deleted from the list');
 await su.close()}
 
+/* the author's cabinet in the app */
+{const txt='Глава 1\n\n'+'Это длинный абзац для проверки кабинета автора, он повторяется много раз. '.repeat(40)+'\n\nГлава 2\n\n'+'Вторая глава тоже достаточно длинная для публикации в тесте. '.repeat(40);
+const sub=(await api('cabui','/api/submissions','POST',{title:'Книга кабинета',author:'Кабинет Автор',desc:'Описание книги для проверки кабинета автора, достаточно длинное.',genre:'novel',lang:'ru',rights:true,body:txt})).j.sub;
+await api('admin',`/api/admin/submissions/${sub.id}/approve`,'POST',{});
+const ca=await page('cabui');await ca.goto(B+'/?as=cabui&open=profile');await ca.waitForTimeout(1000);
+await ca.click('[data-a=openStudio]');await ca.waitForTimeout(1500);
+const txt1=await ca.textContent('.wz');
+ok(txt1.includes('Кабинет Автор')&&txt1.includes('Мои книги')&&txt1.includes('Книга кабинета')&&txt1.includes('Подписчиков')&&txt1.includes('Изменить данные'),'the author cabinet shows the profile, the numbers and the books');
+await ca.screenshot({path:'/tmp/ui_cabinet.png'});
+await ca.click('[data-a=wzProfile]');await ca.waitForTimeout(800);
+await ca.fill('#apName','Кабинет Новый');await ca.fill('#apCity','Хива');await ca.fill('#apBio','Пишу рассказы о городах.');await ca.click('[data-a=wzProfileSave]');await ca.waitForTimeout(1500);
+const txt2=await ca.textContent('.wz');
+ok(txt2.includes('Кабинет Новый')&&txt2.includes('Хива')&&txt2.includes('Пишу рассказы'),'the changed name, city and bio are shown in the cabinet at once');
+await ca.close()}
+
 /* G. no JS errors anywhere */
 ok(errs.length===0,'no page errors '+JSON.stringify(errs.slice(0,4)));
 await br.close();console.log(fails?`\n${fails} FAILED`:'\nall passed');process.exit(fails?1:0)})();

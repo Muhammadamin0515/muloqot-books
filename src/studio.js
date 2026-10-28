@@ -1,5 +1,5 @@
 /* Author studio: a four-step publishing wizard (manuscript, details, cover, review), the author's submissions and their book stats. */
-import {cover} from './art.js';
+import {cover,portrait} from './art.js';
 import {COVER_STYLES} from '../worker/covers.js';
 import {compressImage} from './image.js';
 import {readManuscript,readManuscriptFull,analyze,detectLang,titleFromFile,textBytes,MAX_FILE,MAX_TEXT_BYTES} from './manuscript.js';
@@ -15,7 +15,7 @@ export function initStudio(x){
   const W=blank();MODEL.wz=W;
   const AUT={data:null,profile:undefined};
   const UPD={id:null,body:'',fileName:'',busy:false,note:'',reading:false};
-  MODEL.aut={title:'',desc:'',note:'',cityRu:'',bioRu:''};
+  MODEL.aut={title:'',desc:'',note:'',cityRu:'',bioRu:'',name:''};
 
   /* ---------- draft kept on the device so a crash or a closed app loses nothing ---------- */
   let dT;
@@ -29,7 +29,7 @@ export function initStudio(x){
   const draftClear=()=>{clearTimeout(dT);try{localStorage.removeItem(DRAFT_KEY)}catch(e){}};
   ['title','author','desc','tags'].forEach(k=>{ONINPUT['wz:'+k]=()=>{if(k==='desc'){const c=$('#wzCnt');if(c)c.textContent=W.desc.trim().length+' / 1500'}draftSave()}});
 
-  const loadAuthor=()=>{if(!net.online)return;api('/api/author/stats').then(d=>{AUT.data=d;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
+  const loadAuthor=()=>{if(!net.online)return;api('/api/author/cabinet').then(d=>{AUT.data=d;if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
   const loadSubs=()=>{if(net.online)api('/api/bootstrap').then(d=>{S().subs=d.subs;save();if(NAV.cur.name==='studio')refresh()}).catch(()=>{})};
 
   /* ---------- human wording for every failure ---------- */
@@ -168,32 +168,44 @@ export function initStudio(x){
       ${s.status==='rejected'&&!s.update?`<button class="btn sm" data-a="wzFix" data-id="${esc(s.id)}">${tr('Исправить и отправить снова','Tuzatib qayta yuborish')}</button>`:''}
       ${s.status==='approved'&&s.bookId?`<button class="btn sm ghost" data-a="openBook" data-id="${esc(s.bookId)}">${tr('Открыть книгу','Kitobni ochish')}</button>`:''}</div></div>${statusChip(s)}</div>`).join('')}</div>`;
   }
-  function booksBlock(){
-    const d=AUT.data;if(!d||!d.books.length)return '';
-    const max=Math.max(1,...d.series.map(v=>v.v));
-    return `<div class="sec"><div class="sec-h"><h2>${tr('Мои книги','Mening kitoblarim')}</h2></div>
-    ${d.series.length?`<div class="card" style="margin-bottom:12px"><div class="lbl" style="margin-bottom:12px">${tr('Просмотры за 14 дней','14 kunlik ko‘rishlar')}</div><div class="bars">${d.series.map(v=>`<div><i style="height:${Math.max(6,v.v/max*100)}%"></i><small>${v.v}</small><em>${esc(v.day.slice(8))}</em></div>`).join('')}</div></div>`:''}
-    ${d.books.map(b=>`<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(b.title)}</b>${b.hidden?`<span class="tag">${tr('скрыта','yashirin')}</span>`:''}</div>
-      <div class="stat3" style="margin:12px 0"><div><b>${b.views}</b><small>${tr('Просмотры','Ko‘rishlar')}</small></div><div><b>${b.reads}</b><small>${tr('Начали читать','O‘qiy boshladi')}</small></div><div><b>${b.finishes}</b><small>${tr('Дочитали','Tugatdi')}</small></div></div>
-      <p class="mute" style="font-size:12.5px;margin-bottom:10px">⭐ ${b.rating} (${b.count}) · ${tr('отзывов','sharhlar')}: ${b.reviews} · ${tr('глав','bob')}: ${b.chapters}</p>
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-a="openBook" data-id="${esc(b.id)}">${tr('Открыть','Ochish')}</button><button class="btn sm ghost" data-a="autEdit" data-id="${esc(b.id)}">${tr('Править','Tahrirlash')}</button>${b.pending?`<span class="status m">${tr('Новый текст на проверке','Yangi matn tekshiruvda')}</span>`:`<button class="btn sm ghost" data-a="autUpdate" data-id="${esc(b.id)}">${tr('Заменить текст','Matnni almashtirish')}</button>`}</div></div>`).join('')}</div>`;
+  const bookCard=b=>`<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(b.title)}</b>${b.draft?`<span class="tag">${tr('черновик','qoralama')}</span>`:b.hidden?`<span class="tag">${tr('скрыта','yashirin')}</span>`:''}</div>
+    <div class="stat3" style="margin:12px 0"><div><b>${b.views}</b><small>${tr('Просмотры','Ko‘rishlar')}</small></div><div><b>${b.reads}</b><small>${tr('Начали читать','O‘qiy boshladi')}</small></div><div><b>${b.finishes}</b><small>${tr('Дочитали','Tugatdi')}</small></div></div>
+    <p class="mute" style="font-size:12.5px;margin-bottom:10px">${b.count?`⭐ ${b.rating} (${b.count})`:tr('Оценок пока нет','Baho hali yo‘q')} · ${tr('отзывов','sharhlar')}: ${b.reviews} · ${tr('глав','bob')}: ${b.chapters}</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-a="openBook" data-id="${esc(b.id)}">${tr('Открыть','Ochish')}</button><button class="btn sm ghost" data-a="autEdit" data-id="${esc(b.id)}">${tr('Править','Tahrirlash')}</button>${b.pending?`<span class="status m">${tr('Новый текст на проверке','Yangi matn tekshiruvda')}</span>`:`<button class="btn sm ghost" data-a="autUpdate" data-id="${esc(b.id)}">${tr('Заменить текст','Matnni almashtirish')}</button>`}</div></div>`;
+  /* the author's cabinet: who they are, the numbers, every book, what readers write */
+  function cabinetBlock(){
+    const d=AUT.data,uz=S().lang==='uz';
+    if(!d)return `<div class="sk" style="height:150px;border-radius:22px;margin-bottom:14px"></div><div class="sk" style="height:180px;border-radius:22px"></div>`;
+    const a=d.author,tt=d.totals,max=Math.max(1,...d.series.map(v=>v.v));
+    const tile=(n,l)=>`<div class="tile"><b>${n}</b><span>${l}</span></div>`;
+    const hero=a?`<div class="card auhero"><div class="row" style="gap:14px;align-items:center"><div class="aupt">${portrait(a)}</div><div class="grow" style="min-width:0"><h2 class="display" style="font-size:22px;line-height:1.2">${esc(a.name)}</h2><div class="mute" style="font-size:13px;margin-top:3px">${esc((uz?a.cityUz:a.cityRu)||tr('Город не указан','Shahar ko‘rsatilmagan'))}</div></div></div>
+        <p class="mute" style="font-size:13.5px;line-height:1.5;margin:12px 0">${esc((uz?a.bioUz:a.bioRu)||tr('Расскажите о себе: читатели увидят это на странице автора.','O‘zingiz haqingizda yozing: o‘quvchilar muallif sahifasida ko‘radi.'))}</p>
+        <button class="btn sm ghost" data-a="wzProfile">${ico('pen',15)} ${tr('Изменить данные','Ma’lumotlarni o‘zgartirish')}</button></div>`
+      :`<div class="card auhero"><div class="row" style="gap:14px;align-items:center"><span class="wz-di">${ico('pen',22)}</span><div class="grow"><b style="font-size:16px">${tr('Станьте автором','Muallif bo‘ling')}</b><p class="mute" style="font-size:13.5px;margin-top:4px">${tr('Отправьте первую книгу на проверку. После публикации здесь появятся ваш профиль, статистика, отзывы и рейтинг.','Birinchi kitobingizni tekshiruvga yuboring. Nashrdan so‘ng bu yerda profil, statistika, sharhlar va reyting paydo bo‘ladi.')}</p></div></div></div>`;
+    if(!a)return hero;
+    return `${hero}
+      <div class="tiles" style="margin-top:12px">${tile(tt.books,tr('Книг','Kitob'))}${tile(tt.ratings?'⭐ '+tt.rating:'—',tt.ratings?`${tr('Рейтинг','Reyting')} · ${tt.ratings}`:tr('Рейтинг','Reyting'))}${tile(tt.reviews,tr('Отзывов','Sharh'))}${tile(tt.followers,tr('Подписчиков','Obunachi'))}${tile(tt.views,tr('Просмотров','Ko‘rish'))}${tile(tt.reads,tr('Начали читать','O‘qiy boshladi'))}</div>
+      ${d.series.length?`<div class="card" style="margin-top:12px"><div class="lbl" style="margin-bottom:12px">${tr('Просмотры за 14 дней','14 kunlik ko‘rishlar')}</div><div class="bars">${d.series.map(v=>`<div><i style="height:${Math.max(6,v.v/max*100)}%"></i><small>${v.v}</small><em>${esc(v.day.slice(8))}</em></div>`).join('')}</div></div>`:''}`;
   }
+  const booksBlock=()=>{const d=AUT.data;return d&&d.books.length?`<div class="sec"><div class="sec-h"><h2>${tr('Мои книги','Mening kitoblarim')}</h2><span class="mute" style="font-size:13px">${d.books.length}</span></div>${d.books.map(bookCard).join('')}</div>`:''};
+  const reviewsBlock=()=>{const d=AUT.data;if(!d||!d.reviews||!d.reviews.length)return '';
+    return `<div class="sec"><div class="sec-h"><h2>${tr('Отзывы читателей','O‘quvchilar sharhlari')}</h2></div><div class="list">${d.reviews.map(r=>`<button class="li" data-a="openBook" data-id="${esc(r.bookId)}" style="align-items:flex-start;text-align:left"><div class="grow" style="min-width:0"><div class="row" style="justify-content:space-between;gap:8px"><b style="font-size:13.5px">${esc(r.user)}</b><span class="mute" style="font-size:12px">${'⭐'.repeat(Math.max(0,Math.min(5,r.rating||0)))}</span></div><div class="mute" style="font-size:12px;margin:2px 0 4px">${esc(r.book)} · ${esc(r.date)}</div><div style="font-size:13.5px;line-height:1.45">${esc(r.text)}</div></div></button>`).join('')}</div></div>`};
   function homeScreen(){
     const dr=draftLoad();
     const draft=dr?`<button class="card wz-draft" data-a="wzResume"><span class="wz-di">${ico('pen',20)}</span><span class="grow" style="text-align:left"><b>${tr('Продолжить черновик','Qoralamani davom ettirish')}</b><span class="mute" style="display:block;font-size:13px;margin-top:2px">${esc(dr.title||dr.fileName||tr('Без названия','Nomsiz'))}</span></span>${ico('chev',18)}</button>`:'';
-    const hasBooks=AUT.data&&AUT.data.books.length;
-    return `<div class="sec" style="margin-top:8px">${draft}
+    return `<div class="sec" style="margin-top:8px">${cabinetBlock()}</div>
+      <div class="sec">${draft}
       <button class="btn block" data-a="wzNew">${ico('plus',18)} ${tr('Добавить книгу','Kitob qo‘shish')}</button>
       <button class="wz-link" data-a="wzTip">${ico('info',16)} ${tr('Как подготовить рукопись','Qo‘lyozmani qanday tayyorlash')}</button></div>
-      <div class="sec"><div class="sec-h"><h2>${t('my_subs')}</h2></div>${subsBlock()}</div>${booksBlock()}
+      ${booksBlock()}${reviewsBlock()}
+      <div class="sec"><div class="sec-h"><h2>${t('my_subs')}</h2></div>${subsBlock()}</div>
       <div class="sec"><div class="list">
         ${x.ACT.openAch?`<button class="li" data-a="openAch"><span class="grow"><b>${tr('Достижения','Yutuqlar')}</b><span class="mute" style="display:block;font-size:12.5px">${tr('Награды читателя и автора','O‘quvchi va muallif mukofotlari')}</span></span>${ico('chev',18)}</button>`:''}
-        ${hasBooks?`<button class="li" data-a="wzProfile"><span class="grow"><b>${tr('Профиль автора','Muallif profili')}</b><span class="mute" style="display:block;font-size:12.5px">${tr('Город и несколько слов о себе','Shahar va o‘zingiz haqida bir necha so‘z')}</span></span>${ico('chev',18)}</button>`:''}
       </div></div>`;
   }
 
   SCREENS.studio=()=>{
-    const head=`<header class="topbar px"><button class="iconbtn" data-a="${W.mode==='form'&&!W.sent?'wzHome':'back'}" aria-label="${t('back')}">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">${t('studio')}</h2></div></header>`;
+    const head=`<header class="topbar px"><button class="iconbtn" data-a="${W.mode==='form'&&!W.sent?'wzHome':'back'}" aria-label="${t('back')}">${ico('back')}</button><div class="grow"><h2 class="display" style="font-size:22px">${W.mode==='form'?t('studio'):tr('Кабинет автора','Muallif kabineti')}</h2></div></header>`;
     return `${head}<div class="px wz">${W.mode==='form'?formScreen():homeScreen()}</div>`;
   };
 
@@ -316,8 +328,9 @@ export function initStudio(x){
       const {author:a}=await api('/api/author/profile');
       if(!a){setSheet(`<h2>${tr('Профиль автора','Muallif profili')}</h2><p class="mute">${tr('Профиль появится после первой опубликованной книги.','Profil birinchi nashr etilgan kitobdan so‘ng paydo bo‘ladi.')}</p>`);return}
       const uz=S().lang==='uz';
-      MODEL.aut.cityRu=uz?a.cityUz:a.cityRu;MODEL.aut.bioRu=uz?a.bioUz:a.bioRu;
+      MODEL.aut.cityRu=uz?a.cityUz:a.cityRu;MODEL.aut.bioRu=uz?a.bioUz:a.bioRu;MODEL.aut.name=a.name;
       setSheet(`<h2>${tr('Профиль автора','Muallif profili')}</h2>
+        <div class="field"><label for="apName">${tr('Имя автора','Muallif ismi')}</label><input id="apName" class="in" data-m="aut:name" value="${esc(MODEL.aut.name)}" maxlength="60" autocomplete="off"></div>
         <div class="field"><label for="apCity">${tr('Город','Shahar')}</label><input id="apCity" class="in" data-m="aut:cityRu" value="${esc(MODEL.aut.cityRu)}" maxlength="60" autocomplete="off"></div>
         <div class="field"><label for="apBio">${tr('О себе','O‘zingiz haqingizda')}</label><textarea id="apBio" class="in" data-m="aut:bioRu" maxlength="600" style="min-height:120px">${esc(MODEL.aut.bioRu)}</textarea></div>
         <button class="btn block" data-a="wzProfileSave">${tr('Сохранить','Saqlash')}</button>`);
@@ -325,8 +338,8 @@ export function initStudio(x){
   };
   ACT.wzProfileSave=async()=>{
     const uz=S().lang==='uz',m=MODEL.aut;
-    try{await api('/api/author/profile','POST',uz?{cityUz:m.cityRu,bioUz:m.bioRu}:{cityRu:m.cityRu,bioRu:m.bioRu});closeSheet();toast(tr('Сохранено','Saqlandi'));loadBoot()}
-    catch(e){toast(tr('Не удалось сохранить','Saqlab bo‘lmadi'))}
+    try{await api('/api/author/profile','POST',{name:m.name,...(uz?{cityUz:m.cityRu,bioUz:m.bioRu}:{cityRu:m.cityRu,bioRu:m.bioRu})});closeSheet();toast(tr('Сохранено','Saqlandi'));loadBoot().then(()=>loadAuthor()).catch(()=>{})}
+    catch(e){const c=e.body&&e.body.error;toast(c==='name_taken'?tr('Такое имя уже занято','Bu ism band'):c==='name'?tr('Укажите имя (от 2 букв)','Ismni kiriting (kamida 2 harf)'):tr('Не удалось сохранить','Saqlab bo‘lmadi'))}
   };
 
   /* ---------- editing a published book ---------- */

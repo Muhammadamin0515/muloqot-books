@@ -75,6 +75,25 @@ const mine=(await api('author1','/api/bootstrap')).j.subs.find(x=>x.id===sub.id)
 ok(mine&&(await api('author2',`/api/author/books/${mine}/edit`,'POST',{title:'Взлом',desc:'x'.repeat(30)})).s===404,'another user cannot edit my book');
 ok((await api('author2',`/api/author/books/${mine}/update`,'POST',{body:txt})).s===404,'another user cannot replace my text');
 const approved=(await api('r1','/api/bootstrap')).j.books.find(x=>x.id===mine);ok(approved.rights.status==='author'&&approved.fullText,'author-approved book records the author basis');
+/* the author's cabinet */
+{const cab0=(await api('author1','/api/author/cabinet')).j;
+ok(cab0.author&&cab0.author.name&&cab0.totals.books===1&&cab0.books.length===1&&cab0.books[0].id===mine&&cab0.totals.reviews===0&&cab0.totals.rating===0,'an author sees their profile, one book and empty totals');
+ok((await api('author2','/api/author/cabinet')).j.author===null,'someone without a published book has no author profile yet');
+const aid=cab0.author.id;
+await api('r1','/api/books/'+mine+'/rate','POST',{value:4});await api('r2','/api/books/'+mine+'/rate','POST',{value:5});
+await api('r1','/api/reviews','POST',{bookId:mine,rating:4,text:'Хорошая книга, дочитал за вечер и захотел продолжения.'});
+await api('r2','/api/authors/'+aid+'/follow','POST',{on:true});
+const cab1=(await api('author1','/api/author/cabinet')).j;
+ok(cab1.totals.ratings===2&&cab1.totals.rating===4.5&&cab1.totals.reviews===1&&cab1.totals.followers>=1,'ratings, reviews and followers are counted ('+JSON.stringify(cab1.totals)+')');
+ok(cab1.reviews.length===1&&cab1.reviews[0].bookId===mine&&cab1.reviews[0].book&&cab1.reviews[0].text.startsWith('Хорошая книга'),'the latest reader reviews of the author books are listed');
+ok((await api('author2','/api/author/cabinet')).j.reviews.length===0,'another user sees none of it');
+const pr=await api('author1','/api/author/profile','POST',{name:'Автор Тестовый',cityRu:'Бухара',bioRu:'Пишу о старых дворах.'});
+const cab2=(await api('author1','/api/author/cabinet')).j;
+ok(pr.s===200&&cab2.author.name==='Автор Тестовый'&&cab2.author.cityRu==='Бухара'&&cab2.author.bioRu.startsWith('Пишу'),'the author changes the name, city and bio');
+const bs=(await api('r1','/api/bootstrap')).j;ok(bs.authors.find(a=>a.id===aid).name==='Автор Тестовый','readers see the new name at once');
+ok((await api('author1','/api/author/profile','POST',{name:'Ирина Вальцева'})).j.error==='name_taken'&&(await api('author1','/api/author/profile','POST',{name:'А'})).j.error==='name','a taken or too short name is refused');
+ok((await api('author2','/api/author/profile','POST',{name:'Чужое Имя'})).s===404,'someone else cannot change an author profile');
+ok((await api('author1','/api/author/profile','POST',{cityUz:'Buxoro',bioUz:'Eski hovlilar haqida yozaman.'})).s===200&&(await api('author1','/api/author/cabinet')).j.author.cityRu==='Бухара'&&(await api('author1','/api/author/cabinet')).j.author.cityUz==='Buxoro','each language keeps its own text');}
 /* upload checks */
 const big=await api('author1','/api/submissions','POST',{title:'Огромная',desc:'Описание достаточно длинное.',genre:'novel',lang:'ru',rights:true,body:'Глава 1\n\n'+'я'.repeat(800000)});
 ok(big.s===413&&big.j.error==='toolarge','oversized text is refused');
