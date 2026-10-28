@@ -15,7 +15,7 @@ const words=t=>(String(t).match(/\S+/g)||[]).length;
 export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
-  Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
+  Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:'',as_revise:''});
   const S={jobs:null,cfg:null,keys:null,models:{},form:{onFail:'accept',paid:false,lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
   const errOf=e=>{const b=e&&e.body||{};if(b.error==='limit_too_low')return `Лимит уже исчерпан (использовано ${b.used.calls} запросов, серверный максимум ${b.cap.maxCalls}). Чтобы продолжить, увеличьте переменную AI_MAX_CALLS в Cloudflare (до 1000), нажмите Deploy и снова «Продолжить».`;if(b.error==='chapter_limit')return `Число глав должно быть от ${b.min} до ${b.max}${b.got?` (в плане указано ${b.got})`:''}. Измените число в плане или в настройках.`;const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
@@ -56,6 +56,13 @@ export function initAiStudio(x,adm){
   /* ---------- plan ---------- */
   const syncPlan=()=>{const p=S.d.plan;return{...p,title:M.as_ptitle.trim()||p.title,synopsis:M.as_psyn.trim()||p.synopsis,chapters:p.chapters.map((c,i)=>({title:(M['asp_t'+i]??c.title).trim()||c.title,summary:(M['asp_s'+i]??c.summary).trim()||c.summary}))}};
   ACT.asPlanSave=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(r){toast('План сохранён');await reloadJob()}};
+  ACT.asRevise=async()=>{
+    const text=(M.as_revise||'').trim();if(text.length<5){toast('Опишите, что изменить в плане');return}
+    const r0=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(!r0)return;
+    const r=await call(`/api/admin/ai/jobs/${S.cur}/revise-plan`,'POST',{instruction:text});if(!r)return;
+    M.as_revise='';M.as_ptitle='';M.as_psyn='';for(const k of Object.keys(M))if(/^asp_[ts]\d+$/.test(k))delete M[k];
+    S.d=null;S.err='';await reloadJob();runLoop()
+  };
   ACT.asApprove=async()=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/plan`,'PUT',syncPlan());if(!r)return;const a=await call(`/api/admin/ai/jobs/${S.cur}/approve-plan`,'POST',{confirm:true});if(a){await reloadJob();runLoop()}};
 
   /* ---------- running ---------- */
@@ -186,6 +193,7 @@ export function initAiStudio(x,adm){
       ${p.style&&(p.style.voice||p.style.tone)?`<p class="hint">Стиль: ${esc([p.style.voice,p.style.pov,p.style.tense,p.style.tone].filter(Boolean).join(' · '))}</p>`:''}
       ${(p.characters||[]).length?`<details class="dgroup"><summary><b>Персонажи (${p.characters.length})</b></summary><div class="dbody">${p.characters.map(c=>`<p><b>${esc(c.name)}</b> ${esc(c.role)}<br><span class="mute">${esc(c.traits)}</span></p>`).join('')}</div></details>`:''}
       ${p.chapters.map((c,i)=>`<div class="card" style="margin:10px 0;padding:12px"><div class="mute" style="font-size:12px">Глава ${i+1}</div><input class="in" data-m="adm:asp_t${i}" value="${esc(M['asp_t'+i]??c.title)}" maxlength="100" aria-label="Название главы ${i+1}" style="margin:6px 0"><textarea class="in" data-m="adm:asp_s${i}" style="min-height:64px" aria-label="Содержание главы ${i+1}">${esc(M['asp_s'+i]??c.summary)}</textarea></div>`).join('')}
+      <div class="card" style="margin:14px 0 0;padding:12px"><b style="font-size:14px">Попросить ИИ изменить план</b><p class="hint" style="margin:4px 0 8px">Напишите, что поменять: например «добавь две главы про детство героя» или «сделай концовку печальной». ИИ перепишет план, остальное оставит. Ваши правки выше сохранятся.</p><textarea class="in" data-m="adm:as_revise" maxlength="2000" style="min-height:72px" aria-label="Что изменить в плане" placeholder="Что изменить в плане?">${esc(M.as_revise||'')}</textarea><button class="btn block" style="margin-top:8px" data-a="asRevise">Изменить план с помощью ИИ</button></div>
       ${err()}<div class="row" style="gap:10px;margin-top:12px"><button class="btn ghost" data-a="asPlanSave">Сохранить правки</button><button class="btn grow" data-a="asApprove">Утвердить и писать</button></div>
       <button class="btn block ghost" style="margin-top:10px" data-a="asCancel">Отменить задание</button></div>`;
   }

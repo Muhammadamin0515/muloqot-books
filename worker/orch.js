@@ -83,12 +83,14 @@ export function registerOrch(d){
   async function doStep(c,job){
     const lim=job.config.limits;
     if(job.status==='draft'){
-      const r=await callRole(c,job,'plan',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.planPrompt(job),max:3500,temperature:.8,json:true,parse:t=>parsePlan(t,{chapters:job.config.auto?0:job.config.chapters})});
+      const r=await callRole(c,job,'plan',{system:PR.SYS_EDITOR(job.config.lang),prompt:PR.planPrompt(job)+(job.config.revision?PR.revisePlanSuffix(job.config.revision):''),max:3500,temperature:.8,json:true,parse:t=>{const p=parsePlan(t,{chapters:job.config.auto||job.config.revision?0:job.config.chapters});if(p.chapters.length<MIN_CH)throw new Error('bad_format');return p}});
       const plan=r.value;
       if(job.config.auto){ /* the author model chose the genre, the number of chapters and their size */
         job.config.chapters=plan.chapters.length;job.config.genre=plan.genre||'novel';job.config.words=plan.wordsPerChapter||900;
         await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id);
-      }if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
+      }else if(job.config.revision){job.config.chapters=plan.chapters.length;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
+      if(job.config.revision){delete job.config.revision;await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),job.id)}
+      if(job.config.title)plan.title=job.config.title;if(!plan.title)plan.title='Без названия';
       job.plan=plan;job.title=plan.title;job.status='plan_ready';job.pause_reason='';
       await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=? WHERE id=?',job.title,job.id)]);return;
     }
@@ -281,6 +283,15 @@ export function registerOrch(d){
     job.plan={...job.plan,...np};job.title=job.plan.title;
     if(job.config.auto){job.config.chapters=job.plan.chapters.length;job.config.genre=np.genre;job.config.words=np.wordsPerChapter}
     await batch(c,[saveJob(c,job),stmt(c,'UPDATE ai_jobs SET title=?,config=? WHERE id=?',job.title,J(job.config),id)]);return json({job:view(job),plan:job.plan});
+  });
+  /* "change the plan": the editor model rewrites the current plan following the administrator's request */
+  A('POST','/api/admin/ai/jobs/:id/revise-plan',async(c,id)=>{
+    const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');
+    const instruction=String(c.body.instruction||'').trim().slice(0,2000);if(instruction.length<5)return bad(400,'instruction');
+    const p=job.plan;job.config.revision={instruction,previous:{title:p.title,synopsis:p.synopsis,genre:p.genre,style:p.style,characters:p.characters,facts:p.facts,chapters:p.chapters}};
+    job.status='draft';job.pause_reason='';job.state={phase:'plan'};
+    await batch(c,[stmt(c,'UPDATE ai_jobs SET status=?,pause_reason=?,config=?,state=?,updated=? WHERE id=?','draft','',J(job.config),J(job.state),Date.now(),id)]);await ensureWorkflow(c,id);
+    await audit(c,'ai_job_plan_revise',id,{});return json({job:view(job)});
   });
   A('POST','/api/admin/ai/jobs/:id/approve-plan',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='plan_ready')return bad(409,'not_plan_ready');

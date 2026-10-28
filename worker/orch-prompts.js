@@ -34,6 +34,16 @@ ${c.title?`Название: ${c.title}\n`:''}Язык названий и оп�
 Верни ТОЛЬКО JSON такого вида:
 {"title":"название","genre":"${auto?'novel|detective|historical|adventure|drama|stories|modern|prose':c.genre}","wordsPerChapter":${auto?'900':c.words},"synopsis":"описание книги, 2-3 предложения","style":{"voice":"...","pov":"от какого лица","tense":"время","tone":"тон","rules":["правило стиля"]},"characters":[{"name":"имя","role":"роль","traits":"черты и речь"}],"facts":["исходный факт мира или сюжета"],"chapters":[{"title":"название главы","summary":"что происходит, 2-3 предложения"}]}`;
 };
+/** Added to the plan prompt when the administrator asks the editor to change an existing plan. */
+export const revisePlanSuffix=rev=>`
+
+ЭТО ПРАВКА УЖЕ СОСТАВЛЕННОГО ПЛАНА. Вот текущий план:
+${JSON.stringify(rev.previous)}
+
+Просьба заказчика:
+${rev.instruction}
+
+Внеси в план именно эти изменения. Всё, о чём заказчик не просил, сохрани как есть (названия глав, персонажей, факты, стиль). Число глав можно менять, только если об этом попросили. Верни полный обновлённый план в том же JSON-формате.`;
 export const draftPrompt=(job,i,chapters)=>`[task:chapter_draft]
 ${context(job,i,chapters)}
 

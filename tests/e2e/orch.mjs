@@ -37,6 +37,10 @@ r=await create();ok(r.s===200&&r.j.job.status==='draft'&&r.j.job.config.roles.dr
 const J1=r.j.job.id;
 r=await drive(J1);ok(r.j.waiting==='plan_ready'&&r.j.job.title==='Письмо из Бухары','the architect (Gemini) made a plan and the job waits for approval');
 ok((await A(`/jobs/${J1}/step`,'POST',{})).j.waiting==='plan_ready'&&(await mcalls()).length===1,'no model is called while the plan waits for the administrator');
+ok((await A(`/jobs/${J1}/revise-plan`,'POST',{instruction:'x'})).s===400,'a plan revision needs a real request');
+r=await A(`/jobs/${J1}/revise-plan`,'POST',{instruction:'Сделай концовку печальной'});ok(r.s===200&&r.j.job.status==='draft','the administrator can ask the editor to change the plan');
+r=await drive(J1);ok(r.j.waiting==='plan_ready'&&(await mcalls()).some(c=>c.task==='plan'&&/Сделай концовку печальной/.test(c.prompt||'')&&/Письмо из Бухары/.test(c.prompt||'')),'the editor gets the current plan and the request, and the job waits for approval again');
+ok((await A(`/jobs/${J1}/revise-plan`,'POST',{instruction:'ещё раз'})).s===200&&(await drive(J1)).j.waiting==='plan_ready','the plan can be revised more than once');
 ok((await A(`/jobs/${J1}/approve-plan`,'POST',{})).s===400,'the plan needs an explicit confirmation');
 ok((await A(`/jobs/${J1}/plan`,'PUT',{title:'Письмо из Бухары. Правка',synopsis:'Торговец находит письмо.',chapters:[{title:'Один',summary:'a'},{title:'Два',summary:'b'}]})).s===422,'a plan with the wrong number of chapters is refused');
 const pl=(await detail(J1)).plan;ok((await A(`/jobs/${J1}/plan`,'PUT',{...pl,title:'Письмо из Бухары. Правка'})).s===200,'the administrator edits the plan');
@@ -44,7 +48,7 @@ ok((await A(`/jobs/${J1}/approve-plan`,'POST',{confirm:true})).j.job.status==='r
 r=await drive(J1);ok(r.j.waiting==='awaiting_publish'&&r.j.job.state.final.ok===true,'all chapters passed, final review done, the job waits for publication');
 let d=await detail(J1);
 const T=(t,p)=>callsBy(d,x=>x.task===t&&(!p||x.provider===p)&&x.status==='ok').length;
-ok(T('plan','gemini')===1&&T('chapter_draft','groq')===3&&T('chapter_fix','groq')===1&&T('chapter_review','gemini')===4&&T('analyze','gemini')===3&&T('final_review','gemini')===1&&T('final_second','openrouter')===1&&T('annotation','groq')===1,'routing: Groq drafts and fixes, Gemini plans/reviews/analyses, OpenRouter gives the second opinion');
+ok(T('plan','gemini')===3&&T('chapter_draft','groq')===3&&T('chapter_fix','groq')===1&&T('chapter_review','gemini')===4&&T('analyze','gemini')===3&&T('final_review','gemini')===1&&T('final_second','openrouter')===1&&T('annotation','groq')===1,'routing: Groq drafts and fixes, Gemini plans/reviews/analyses, OpenRouter gives the second opinion');
 ok(callsBy(d,x=>x.task==='chapter_expert').length===0,'the expert is not called for chapters that pass');
 const mc=await mcalls();ok(mc.length===d.calls.length&&d.job.usage.calls===mc.length,'the journal matches every call the providers received ('+mc.length+')');
 ok(d.calls.every(x=>x.via==='override'&&x.model&&x.latency>=0&&x.tokens_in>0&&x.tokens_out>0&&x.status),'journal: provider, model, latency, tokens, result; mock calls are marked as override, not as real');
