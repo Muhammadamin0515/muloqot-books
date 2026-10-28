@@ -18,7 +18,7 @@ export function initAiStudio(x,adm){
   Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
   const S={jobs:null,cfg:null,keys:null,models:{},form:{onFail:'accept',paid:false,lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
-  const errOf=e=>{const b=e&&e.body||{};if(b.error==='limit_too_low')return `Лимит уже исчерпан (использовано ${b.used.calls} запросов, серверный максимум ${b.cap.maxCalls}). Чтобы продолжить, увеличьте переменную AI_MAX_CALLS в Cloudflare (до 1000), нажмите Deploy и снова «Продолжить».`;const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
+  const errOf=e=>{const b=e&&e.body||{};if(b.error==='limit_too_low')return `Лимит уже исчерпан (использовано ${b.used.calls} запросов, серверный максимум ${b.cap.maxCalls}). Чтобы продолжить, увеличьте переменную AI_MAX_CALLS в Cloudflare (до 1000), нажмите Deploy и снова «Продолжить».`;if(b.error==='chapter_limit')return `Число глав должно быть от ${b.min} до ${b.max}${b.got?` (в плане указано ${b.got})`:''}. Измените число в плане или в настройках.`;const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
   async function loadKeys(){try{S.keys=await api('/api/admin/ai/config')}catch(e){S.keys={providers:{},canSetKeys:false}}}
   async function loadList(){loadKeys().then(refresh);try{const [j,c]=await Promise.all([api('/api/admin/ai/jobs'),S.cfg?S.cfg:api('/api/admin/ai/jobs-config')]);S.jobs=j.jobs;S.cfg=c;if(!M.as_draft&&c.roles.draft)M.as_draft=c.roles.draft.model;if(!M.as_editor&&c.roles.editor)M.as_editor=c.roles.editor.model;if(!M.as_expert&&c.roles.expert)M.as_expert=c.roles.expert.model}catch(e){S.jobs=[];S.err='Не удалось загрузить: '+errOf(e)}refresh()}
@@ -142,7 +142,7 @@ export function initAiStudio(x,adm){
       <div class="lbl" style="margin:16px 0 6px">Жанр, число глав и размер</div>
       ${seg('auto',[['1','Подберёт ИИ'],['0','Задам сам']],f.auto?'1':'0')}
       ${f.auto?'':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
-      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
+      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}<p class="hint">От 2 до 60 глав. Если число глав названо в самом плане («10 глав»), берётся оно.</p>
       <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
       <div class="lbl" style="margin:16px 0 6px">Если глава не проходит проверку</div>
       ${seg('onFail',[['accept','Принять лучший вариант'],['ask','Остановиться и спросить']],f.onFail)}
