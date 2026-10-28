@@ -99,7 +99,9 @@ await api('ghost','/api/state','PUT',{finished:['b1','b2','b3','gone1'],saved:['
 const before=(await api('admin','/api/admin/stats')).j,r=await api('admin','/api/admin/demo/purge','POST',{confirm:true});
 const after=(await api('admin','/api/admin/stats')).j;
 ok(r.s===200&&r.j.deleted>=12&&after.demoBooks===0&&after.books===before.books,'purge removes the demo books and keeps real ones ('+r.j.deleted+' deleted)');
-const bs=(await api('admin','/api/bootstrap')).j;ok(bs.books.every(b=>!b.demo)&&bs.books.length===before.books,'catalog after purge has only real books');}
+ok(r.j.counts.reviews>=10&&r.j.counts.threads>=4&&r.j.counts.comments>=6&&r.j.counts.quotes>=5&&r.j.counts.collections>=1&&r.j.counts.weekly===1,'the sample reviews, discussions, comments, quotes, collections and the weekly question go too ('+JSON.stringify(r.j.counts)+')');
+const bs=(await api('admin','/api/bootstrap')).j;ok(bs.books.every(b=>!b.demo)&&bs.books.length===before.books,'catalog after purge has only real books');
+ok(bs.reviews.every(r=>r.id.length>3)&&bs.threads.every(x=>x.id.length>3)&&bs.quotes.every(q=>q.id.length>3)&&bs.collections.every(c=>c.id.length>3)&&!bs.weekly,'no sample review, thread, quote, collection or weekly question is left');}
 
 /* the shared catalog: built once, personal marks added per reader, cleared when something changes */
 {const raw=async who=>{const r=await fetch(B+'/api/bootstrap',{headers:{'x-dev-user':who}});return{h:r.headers.get('x-catalog-cache'),j:await r.json()}};

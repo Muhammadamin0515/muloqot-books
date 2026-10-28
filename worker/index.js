@@ -605,17 +605,30 @@ route('POST','/api/admin/demo/purge',async c=>{
   if(c.body.confirm!==true)return bad(400,'confirm');
   const real=(await get(c,`SELECT COUNT(*) n FROM books WHERE ${PUB_REAL}`)).n;
   if(real<1)return bad(409,'no_real_books');
-  const D="(SELECT id FROM books WHERE json_extract(data,'$.demo')=1)",n=(await get(c,`SELECT COUNT(*) n FROM books WHERE id IN ${D}`)).n;
-  const T=`(SELECT id FROM threads WHERE book_id IN ${D} OR demo=1)`;
+  const D="(SELECT id FROM books WHERE json_extract(data,'$.demo')=1)";
+  const T=`(SELECT id FROM threads WHERE book_id IN ${D} OR demo=1)`,R=`(SELECT id FROM reviews WHERE book_id IN ${D} OR demo=1)`;
+  const cnt=await get(c,`SELECT (SELECT COUNT(*) FROM books WHERE id IN ${D}) books,(SELECT COUNT(*) FROM reviews WHERE id IN ${R}) reviews,(SELECT COUNT(*) FROM threads WHERE id IN ${T}) threads,(SELECT COUNT(*) FROM comments WHERE thread_id IN ${T}) comments,(SELECT COUNT(*) FROM quotes WHERE book_id IN ${D} OR demo=1) quotes`);
   await batch(c,[
     stmt(c,`DELETE FROM comments WHERE thread_id IN ${T}`),stmt(c,`DELETE FROM threads WHERE id IN ${T}`),
-    stmt(c,`DELETE FROM reviews WHERE book_id IN ${D} OR demo=1`),stmt(c,`DELETE FROM quotes WHERE book_id IN ${D} OR demo=1`),
+    stmt(c,`DELETE FROM review_replies WHERE review_id IN ${R}`),stmt(c,`DELETE FROM reviews WHERE id IN ${R}`),stmt(c,`DELETE FROM quotes WHERE book_id IN ${D} OR demo=1`),
     stmt(c,`DELETE FROM ratings WHERE book_id IN ${D}`),stmt(c,`DELETE FROM book_stats WHERE book_id IN ${D}`),stmt(c,`DELETE FROM book_seen WHERE book_id IN ${D}`),
     stmt(c,`DELETE FROM book_versions WHERE book_id IN ${D}`),stmt(c,`DELETE FROM audio_tracks WHERE book_id IN ${D}`),
     stmt(c,`DELETE FROM reading_progress WHERE book_id IN ${D}`),stmt(c,`DELETE FROM bookmarks WHERE book_id IN ${D}`),
     stmt(c,"DELETE FROM books WHERE json_extract(data,'$.demo')=1"),
     stmt(c,"DELETE FROM authors WHERE json_extract(data,'$.demo')=1 AND id NOT IN (SELECT json_extract(data,'$.a') FROM books WHERE json_extract(data,'$.a') IS NOT NULL)")]);
-  await audit(c,'demo_purge',null,{books:n});return json({ok:true,deleted:n});
+  /* what pointed at the removed things: reactions, follows, reports, and the sample collections and weekly question */
+  await batch(c,[
+    stmt(c,"DELETE FROM reacts WHERE (target LIKE 'r:%' AND substr(target,3) NOT IN (SELECT id FROM reviews)) OR (target LIKE 'q:%' AND substr(target,3) NOT IN (SELECT id FROM quotes))"),
+    stmt(c,'DELETE FROM follows WHERE author_id NOT IN (SELECT id FROM authors)'),
+    stmt(c,"DELETE FROM reports WHERE (kind='review' AND target NOT IN (SELECT id FROM reviews)) OR (kind='thread' AND target NOT IN (SELECT id FROM threads))")]);
+  const have=new Set((await all(c,'SELECT id FROM books')).map(x=>x.id));let collections=0;
+  const col=await get(c,"SELECT value FROM meta WHERE key='collections'");
+  if(col){const list=P(col.value),keep=list.map(x=>({...x,ids:(x.ids||[]).filter(i=>have.has(i))})).filter(x=>x.ids.length);collections=list.length-keep.length;
+    if(collections||keep.some((x,i)=>x.ids.length!==(list[i]?.ids||[]).length))await run(c,"INSERT INTO meta(key,value) VALUES('collections',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",J(keep))}
+  const wk=await get(c,"SELECT value FROM meta WHERE key='weekly'");let weekly=0;
+  if(wk&&!have.has(P(wk.value).bookId)){await run(c,"DELETE FROM meta WHERE key='weekly'");weekly=1}
+  await audit(c,'demo_purge',null,{...cnt,collections,weekly});
+  return json({ok:true,deleted:cnt.books,counts:{...cnt,collections,weekly}});
 },true);
 route('GET','/api/admin/demo',async c=>{const r=await get(c,"SELECT value FROM meta WHERE key='showDemo'");return json({show:r?P(r.value):'auto',visible:await demoVisible(c),
   counts:await get(c,"SELECT SUM(CASE WHEN json_extract(data,'$.demo')=1 THEN 1 ELSE 0 END) demo,SUM(CASE WHEN json_extract(data,'$.demo') IS NOT 1 THEN 1 ELSE 0 END) real FROM books")})},true);
