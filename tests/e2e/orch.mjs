@@ -127,6 +127,7 @@ await reset();await mctl({reviewAlways:[1],openrouterMode:'429'});
 r=await create({title:'Эксперт недоступен'});const JX=r.j.job.id;await drive(JX);await A(`/jobs/${JX}/approve-plan`,'POST',{confirm:true});
 r=await drive(JX);d=await detail(JX);
 ok(r.j.waiting==='paused'&&/^all_failed:chapter_expert:rate_limit/.test(r.j.job.pauseReason)&&d.calls.some(x=>x.provider==='openrouter'&&x.status==='rate_limit'),'a rate-limited expert pauses the job with a clear reason');
+ok(d.job.usage.calls<d.calls.length&&d.calls.filter(x=>x.status==='rate_limit').length>0,'rate-limited attempts are journaled but do not use up the call limit');
 ok((await A(`/jobs/${JX}/resume`,'POST',{skipExpert:true})).j.job.status==='needs_admin','"continue without the expert" hands the chapter to the administrator');
 ok((await A(`/jobs/${JX}/chapters/0/resolve`,'POST',{action:'accept'})).j.job.status==='running','the administrator can accept the chapter and the job goes on');
 await A(`/jobs/${JX}/cancel`,'POST',{});
@@ -160,6 +161,7 @@ r=await create({title:'Бюджет',limits:{maxCalls:5}});const J7=r.j.job.id;a
 r=await drive(J7);d=await detail(J7);
 ok(r.j.waiting==='paused'&&r.j.job.pauseReason==='budget:calls'&&d.job.usage.calls===5&&(await mcalls()).length===5,'the call limit stops the job; not a single extra call was made');
 ok((await A(`/jobs/${J7}/step`,'POST',{})).j.waiting==='paused'&&(await mcalls()).length===5,'a paused job stays paused');
+r=await A(`/jobs/${J7}/resume`,'POST',{limits:{maxCalls:5}});ok(r.s===409&&r.j.error==='limit_too_low'&&r.j.cap.maxCalls===60,'resuming without raising an exhausted limit is refused, with the server cap reported');
 r=await A(`/jobs/${J7}/resume`,'POST',{limits:{maxCalls:9999}});ok(r.s===200&&r.j.job.config.limits.maxCalls<=300,'limits can be raised on resume, but never above the server cap');
 await A(`/jobs/${J7}/cancel`,'POST',{});
 r=await drive((await create({title:'Нет провайдера'})).j.job.id,()=>false,3);void r;

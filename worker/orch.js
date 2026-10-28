@@ -47,7 +47,9 @@ export function registerOrch(d){
           const k=e instanceof AiError?e.kind:'provider';status=k;error=String(e.message||k).slice(0,200);latency=e.latency||0;lastKind=k;
         }
         const cost=costOf(usage,price);
-        job.calls++;job.tokens_in+=usage.in;job.tokens_out+=usage.out;if(cost!=null)job.cost=Math.round((job.cost+cost)*1e6)/1e6;else if(usage.in+usage.out>0)job.cost_unknown=1;
+        /* a request that never reached a model (rate limit, timeout, network, rejected key) is journaled but does not use up the call limit */
+        const counted=status==='ok'||status==='bad_format'||usage.in+usage.out>0;
+        if(counted)job.calls++;job.tokens_in+=usage.in;job.tokens_out+=usage.out;if(cost!=null)job.cost=Math.round((job.cost+cost)*1e6)/1e6;else if(usage.in+usage.out>0)job.cost_unknown=1;
         await batch(c,[
           stmt(c,'INSERT INTO ai_calls(job_id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',job.id,chapter,task,cand.provider,served?`${cand.model} → ${served}`:cand.model,via,latency,usage.in,usage.out,usage.estimated?1:0,cost,status,error,Date.now()),
           stmt(c,'UPDATE ai_jobs SET calls=?,tokens_in=?,tokens_out=?,cost=?,cost_unknown=? WHERE id=?',job.calls,job.tokens_in,job.tokens_out,job.cost,job.cost_unknown?1:0,job.id)]);
@@ -238,7 +240,7 @@ export function registerOrch(d){
   A('GET','/api/admin/ai/jobs/:id',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);
     const chs=await chaptersOf(c,id),checks=await all(c,'SELECT id,chapter,kind,ok,issues,provider,model,created FROM ai_checks WHERE job_id=? ORDER BY id DESC LIMIT 40',id),calls=await all(c,'SELECT id,chapter,task,provider,model,via,latency,tokens_in,tokens_out,estimated,cost,status,error,created FROM ai_calls WHERE job_id=? ORDER BY id DESC LIMIT 60',id);
-    return json({job:view(job),plan:job.plan,chapters:chs.map(x=>({idx:x.idx,status:x.status,words:words(x.text),summary:x.summary})),checks:checks.map(x=>({...x,ok:!!x.ok,issues:P(x.issues||'[]')})),calls:calls.map(x=>({...x,estimated:!!x.estimated}))});
+    return json({job:view(job),caps:limitsFrom(c.env,{}),plan:job.plan,chapters:chs.map(x=>({idx:x.idx,status:x.status,words:words(x.text),summary:x.summary})),checks:checks.map(x=>({...x,ok:!!x.ok,issues:P(x.issues||'[]')})),calls:calls.map(x=>({...x,estimated:!!x.estimated}))});
   });
   A('GET','/api/admin/ai/jobs/:id/chapters/:i',async(c,id,i)=>{
     const ch=await get(c,'SELECT idx,status,text,summary FROM ai_chapters WHERE job_id=? AND idx=?',id,+i);if(!ch)return bad(404);
@@ -266,6 +268,8 @@ export function registerOrch(d){
   A('POST','/api/admin/ai/jobs/:id/resume',async(c,id)=>{
     const job=await loadJob(c,id);if(!job)return bad(404);if(job.status!=='paused')return bad(409,'not_paused');
     if(c.body.limits){job.config.limits=limitsFrom(c.env,{...job.config.limits,...c.body.limits});await run(c,'UPDATE ai_jobs SET config=? WHERE id=?',J(job.config),id)}
+    if(/^budget:/.test(job.pause_reason)&&budgetCheck(job,job.config.limits)) /* the limit is still used up: the server cap is the ceiling */
+      return json({error:'limit_too_low',reason:budgetCheck(job,job.config.limits),cap:limitsFrom(c.env,{}),limits:job.config.limits,used:{calls:job.calls,tokens:job.tokens_in+job.tokens_out}},409);
     if(c.body.skipExpert===true&&/^all_failed:chapter_expert/.test(job.pause_reason)){ /* the expert is unavailable: the administrator decides about the chapter */
       job.state={...job.state,expert:1,phase:'needs_admin'};job.status='needs_admin';job.pause_reason='';
       await run(c,'UPDATE ai_jobs SET status=?,pause_reason=?,state=?,updated=? WHERE id=?','needs_admin','',J(job.state),Date.now(),id);return json({job:view(job)});
