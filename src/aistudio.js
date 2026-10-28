@@ -15,7 +15,7 @@ export function initAiStudio(x,adm){
   const {ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go}=x;
   const {A,M,T,bodies,loaders,loading,here}=adm;
   Object.assign(M,{ai_key_groq:'',ai_key_gemini:'',ai_key_openrouter:'',as_idea:'',as_title:'',as_draft:'',as_editor:'',as_expert:'',as_maxCalls:'',as_maxCost:'',as_ptitle:'',as_psyn:'',as_edit:'',as_pub_title:'',as_pub_author:'Muloqot Books',as_pub_desc:''});
-  const S={jobs:null,cfg:null,keys:null,models:{},form:{lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
+  const S={jobs:null,cfg:null,keys:null,models:{},form:{paid:false,lang:'auto',genre:'novel',chapters:6,words:900,second:true,auto:true},cur:null,d:null,loop:false,err:'',chText:null,showLog:false};
   const refresh=()=>{if(here('admin'))x.refresh()};
   const errOf=e=>{const b=e&&e.body||{};const t=CREATE_ERR[b.error];if(!t)return b.error||'ошибка запроса';return t+(b.detail||(b.models?b.models.map(m=>m.provider+':'+m.model).join(', '):''))};
 
@@ -42,13 +42,13 @@ export function initAiStudio(x,adm){
   ACT.asNew=()=>{S.cur='new';S.d=null;S.err='';S.chText=null;S.showLog=false;refresh()};
   ACT.asBack=()=>{S.cur=null;S.d=null;S.err='';S.loop=false;loadList()};
   ACT.asOpen=el=>openJob(el.dataset.id);
-  ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'||el.dataset.k==='auto'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
+  ACT.asSet=el=>{S.form[el.dataset.k]=el.dataset.k==='lang'||el.dataset.k==='second'||el.dataset.k==='auto'||el.dataset.k==='paid'?(el.dataset.v==='1'?true:el.dataset.v==='0'?false:el.dataset.v):+el.dataset.v;refresh()};
   CHG.asSel=el=>{S.form[el.dataset.k]=el.value;refresh()};
   ACT.asModels=async el=>{const p=el.dataset.p;try{S.models[p]=(await api('/api/admin/ai/models?provider='+p)).models.map(m=>m.id);toast(`${p}: моделей в списке сервиса — ${S.models[p].length}`)}catch(e){toast(e.body&&e.body.error==='no_key'?'Сначала добавьте ключ сервиса (кнопка «Ключи сервисов» выше)':'Не удалось получить список: '+errOf(e))}refresh()};
   ACT.asCreate=async()=>{
     const f=S.form,roles=M.as_draft.trim()&&M.as_editor.trim()?{draft:{model:M.as_draft.trim()},editor:{model:M.as_editor.trim()},expert:M.as_expert.trim()?{model:M.as_expert.trim()}:null}:undefined;
-    const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
-    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,noSecondOpinion:!f.second});
+    const limits={...(+M.as_maxCalls?{maxCalls:+M.as_maxCalls}:{}),...(f.paid&&+M.as_maxCost?{maxCostUsd:+M.as_maxCost}:{})};
+    const r=await call('/api/admin/ai/jobs','POST',{idea:M.as_idea,title:M.as_title,...(f.lang==='auto'?{}:{lang:f.lang}),...(f.auto?{auto:true}:{auto:false,genre:f.genre,chapters:f.chapters,words:f.words}),roles,limits,freeOnly:!f.paid,noSecondOpinion:!f.second});
     if(r){S.cur=r.job.id;S.d=null;S.chText=null;S.showLog=false;await reloadJob();runLoop()}
   };
 
@@ -99,7 +99,7 @@ export function initAiStudio(x,adm){
   /* ---------- views ---------- */
   const tag=(t,cls='')=>`<span class="tag ${cls}">${esc(t)}</span>`;
   const money=u=>u.cost>0||!u.costUnknown?`$${(u.cost||0).toFixed(4)}${u.costUnknown?' + неизвестно':''}`:'цена неизвестна';
-  const usageLine=u=>`Вызовов: ${u.calls} · токенов: ${u.tokensIn+u.tokensOut} · стоимость: ${money(u)}`;
+  const usageLine=(u,free)=>`Вызовов: ${u.calls} · токенов: ${u.tokensIn+u.tokensOut} · ${free?'расходы: бесплатно (платные модели не используются)':'стоимость: '+money(u)}`;
   const issueList=l=>(l||[]).length?`<ul class="issues">${l.map(i=>`<li><b class="${i.severity==='major'?'bad':''}">${i.severity==='major'?'Серьёзно':'Замечание'}</b> ${esc(i.note)}${i.where?` <span class="mute">(${esc(i.where)})</span>`:''}${i.fix?`<br><span class="mute">Как исправить: ${esc(i.fix)}</span>`:''}</li>`).join('')}</ul>`:'<p class="mute">Замечаний нет.</p>';
   const err=()=>S.err?`<div class="demo-banner" style="margin:12px 0"><b>${esc(S.err)}</b></div>`:'';
   const seg=(k,list,cur)=>`<div class="seg">${list.map(([v,n])=>`<button class="${String(cur)===String(v)?'on':''}" data-a="asSet" data-k="${k}" data-v="${v}">${n}</button>`).join('')}</div>`;
@@ -122,7 +122,7 @@ export function initAiStudio(x,adm){
     return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
     <div class="card">
       <b style="font-size:16px">Ваш план книги</b>
-      <p class="hint" style="margin:6px 0 10px">Вставьте готовый план по главам или просто идею. Всё остальное ИИ сделает сам: определит язык, жанр, число глав и длину, подберёт модели, напишет и проверит главы. Опубликуется книга только по вашей кнопке.</p>
+      <p class="hint" style="margin:6px 0 10px">Вставьте готовый план по главам или просто идею. Всё остальное ИИ сделает сам: определит язык, жанр, число глав и длину, подберёт модели, напишет и проверит главы. Работает только на бесплатных моделях. Опубликуется книга только по вашей кнопке.</p>
       <textarea class="in" data-m="adm:as_idea" maxlength="8000" style="min-height:230px" aria-label="План или идея книги" placeholder="Например: детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека. Или вставьте весь план по главам.">${esc(M.as_idea)}</textarea>
       <div class="counter"><span>${M.as_idea.length} / 8000</span></div>
       ${S.keys&&!anyKey?`<div class="demo-banner" style="margin:10px 0;flex-direction:column;align-items:flex-start"><b>Сначала добавьте ключи ИИ-сервисов</b><button class="btn sm" data-a="aiKeys">Добавить ключи</button></div>`:''}
@@ -139,6 +139,9 @@ export function initAiStudio(x,adm){
       ${f.auto?'':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
       <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
       <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
+      <div class="lbl" style="margin:16px 0 6px">Платные модели</div>
+      ${seg('paid',[['0','Не использовать'],['1','Разрешить']],f.paid?'1':'0')}
+      <p class="hint">${f.paid?'Платные модели OpenRouter будут разрешены; расходы считаются по ценам из списка сервиса.':'Используются только бесплатные модели OpenRouter. Groq и Gemini бесплатны, если ключ из бесплатного аккаунта без привязанной карты.'}</p>
       <div class="lbl" style="margin:16px 0 6px">Проверить готовую книгу ещё и экспертом</div>
       ${seg('second',[['1','Да'],['0','Нет']],f.second?'1':'0')}
       <div class="lbl" style="margin:16px 0 6px">Модели ИИ</div>
@@ -149,13 +152,13 @@ export function initAiStudio(x,adm){
       ${roleCard('asMx','as_expert','🎓','Эксперт','OpenRouter (по желанию)','Вызывается, только когда писатель и редактор не справились с главой. Даёт независимую оценку.','openrouter','Подберётся сам',true)}
       <div class="lbl" style="margin:16px 0 6px">Ограничить расходы <span class="mute">(необязательно)</span></div>
       <div class="field"><label for="asLc">Не больше запросов к ИИ на всю книгу</label><input id="asLc" class="in" type="number" inputmode="numeric" min="5" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${S.cfg?'по умолчанию '+esc(S.cfg.limits.maxCalls):'по умолчанию'}"></div>
-      <div class="field"><label for="asLm">Не больше потратить, $ <span class="mute">(только для платных моделей)</span></label><input id="asLm" class="in" type="number" inputmode="decimal" min="0" step="0.1" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без ограничения"></div>
+      ${f.paid?`<div class="field"><label for="asLm">Не больше потратить, $</label><input id="asLm" class="in" type="number" inputmode="decimal" min="0" step="0.1" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без ограничения"></div>`:''}
       <p class="hint">При достижении лимита работа встаёт на паузу, написанное сохраняется.</p>
     </div></details>`;
   }
-  const modelsLine=c=>{const r=c.roles||{},m=x=>x?esc(x.primary.model):'нет';return `<div class="mute" style="font-size:12px;margin-top:6px">Писатель: ${m(r.draft)} · Редактор: ${m(r.editor)} · Эксперт: ${m(r.expert)}${c.autoModels?' (подобраны автоматически)':''}</div>${(c.dropped||[]).length?`<div class="mute" style="font-size:12px;margin-top:4px">Не используются, этих моделей нет в списке сервиса: ${c.dropped.map(x=>esc(x.provider+':'+x.model)).join(', ')}</div>`:''}`};
+  const modelsLine=c=>{const r=c.roles||{},m=x=>x?esc(x.primary.model):'нет';return `<div class="mute" style="font-size:12px;margin-top:6px">Писатель: ${m(r.draft)} · Редактор: ${m(r.editor)} · Эксперт: ${m(r.expert)}${c.autoModels?' (подобраны автоматически)':''}</div>${(c.dropped||[]).length?`<div class="mute" style="font-size:12px;margin-top:4px">Не используются: ${c.dropped.map(x=>esc(x.provider+':'+x.model)+(x.reason==='not_free'?' (платная)':' (нет в списке сервиса)')).join(', ')}</div>`:''}`};
   const head=d=>`<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
-    <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage)}</div>${modelsLine(d.job.config)}</div>`;
+    <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage,d.job.config.freeOnly)}</div>${modelsLine(d.job.config)}</div>`;
   function planView(d){
     const p=d.plan;
     return `${head(d)}<div class="card">${step(1,'План книги: проверьте и утвердите')}

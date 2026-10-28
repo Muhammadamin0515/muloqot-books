@@ -134,3 +134,14 @@ test('automatic model choice uses only real list entries',()=>{
   assert.equal(pickModels({openrouter:['x/some-70b-chat:free']}).expert,'x/some-70b-chat:free');assert.equal(pickModels({openrouter:['x/paid-70b']}).expert,null,'the expert is free or none');
 });
 test('language is detected by script',()=>{assert.equal(detectLang('Детектив в Бухаре'),'ru');assert.equal(detectLang('Buxoro savdogari xat topadi'),'uz');assert.equal(detectLang('Роман и Mening'),'ru')});
+
+import {freeOnly} from '../worker/orch-route.js';
+test('free-only drops paid OpenRouter models and keeps the rest',()=>{
+  const roles=mergeRoles(rolesFromEnv({AI_DRAFT_MODEL:'d-m',AI_EDITOR_MODEL:'e-m',AI_EXPERT_MODEL:'x/paid',AI_DRAFT_FALLBACK:'openrouter:y/free:free,openrouter:y/paid2'}),{}).roles;
+  const prices={'openrouter:x/paid':[1,2],'openrouter:y/free:free':[0,0],'openrouter:y/paid2':[0.1,0.1]};
+  const dropped=freeOnly(roles,prices);
+  assert.equal(roles.expert,null);assert.deepEqual(roles.draft.fallbacks.map(x=>x.model),['y/free:free']);assert.equal(dropped.length,2);assert.ok(dropped.every(x=>x.reason==='not_free'));
+  assert.equal(roles.draft.primary.model,'d-m','Groq and Gemini are kept');
+  const r2=mergeRoles(rolesFromEnv({AI_DRAFT_MODEL:'dd',AI_EDITOR_MODEL:'ee',AI_EXPERT_MODEL:'unlisted/model'}),{}).roles;
+  freeOnly(r2,{});assert.equal(r2.expert,null,'a model without a known price is not treated as free');
+});

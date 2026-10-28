@@ -79,3 +79,15 @@ export function pickModels(lists){
   if(!expert)expert=all('openrouter').filter(id=>/:free$/.test(id)&&/(70b|120b|31b|gemma|llama)/i.test(id)).sort()[0]||null;
   return{draft,editor,expert};
 }
+
+/** "Free only": OpenRouter models must be priced 0/0 in the provider's own list; others are dropped. Groq and Gemini have no per-model price to check
+    (they are free when the key belongs to a free account), so they stay. Returns the dropped entries. */
+export function freeOnly(roles,prices){
+  const dropped=[],isFree=x=>x.provider!=='openrouter'||(Array.isArray(prices[x.provider+':'+x.model])&&prices[x.provider+':'+x.model][0]===0&&prices[x.provider+':'+x.model][1]===0);
+  for(const role of Object.keys(roles)){
+    const r=roles[role];if(!r)continue;
+    if(!isFree(r.primary)){dropped.push({role,reason:'not_free',...r.primary});roles[role]=null;continue}
+    r.fallbacks=r.fallbacks.filter(x=>{if(isFree(x))return true;dropped.push({role,reason:'not_free',...x});return false});
+  }
+  return dropped;
+}

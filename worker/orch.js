@@ -2,7 +2,7 @@
    Each POST /api/admin/ai/jobs/:id/step performs exactly one unit of work (one model call or one programmatic check) and saves the result,
    so a job can be stopped and resumed at any time without losing chapters or repeating successful calls. */
 import {PROVIDERS,AiError,callModel,listModels} from './ai.js';
-import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,pickModels,ROLE_PROVIDER} from './orch-route.js';
+import {candidatesFor,rolesFromEnv,mergeRoles,limitsFrom,priceOf,costOf,pricesFromEnv,budgetCheck,unknownModels,pickModels,freeOnly,ROLE_PROVIDER} from './orch-route.js';
 import {checkChapter,checkBook,cleanText,parseReview,parsePlan,parseAnalysis,words,detectLang} from './orch-checks.js';
 import * as PR from './orch-prompts.js';
 
@@ -24,7 +24,7 @@ export function registerOrch(d){
   const addVersion=(c,job,chapter,kind,text,who,note='')=>stmt(c,'INSERT INTO ai_versions(job_id,chapter,kind,text,provider,model,note,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,text,who?.provider||'',who?.model||'',note,Date.now());
   const addCheck=(c,job,chapter,kind,ok,issues,who)=>stmt(c,'INSERT INTO ai_checks(job_id,chapter,kind,ok,issues,provider,model,created) VALUES(?,?,?,?,?,?,?,?)',job.id,chapter,kind,ok?1:0,J(issues),who?.provider||'',who?.model||'',Date.now());
 
-  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
+  const view=job=>({id:job.id,title:job.title,status:job.status,pauseReason:job.pause_reason,created:job.created,updated:job.updated,config:{freeOnly:!!job.config.freeOnly,auto:!!job.config.auto,autoModels:!!job.config.autoModels,dropped:job.config.dropped||[],lang:job.config.lang,genre:job.config.genre,chapters:job.config.chapters,words:job.config.words,roles:job.config.roles,limits:job.config.limits,idea:job.config.idea},
     state:job.state,usage:{calls:job.calls,tokensIn:job.tokens_in,tokensOut:job.tokens_out,cost:job.cost,costUnknown:!!job.cost_unknown},bookId:job.book_id||null});
 
   /* ---------- calling a role: fallbacks, retries, limits, journal ---------- */
@@ -37,7 +37,7 @@ export function registerOrch(d){
     for(const cand of cands){
       for(let attempt=0;attempt<=RETRIES;attempt++){
         const b=budgetCheck(job,job.config.limits);if(b)throw new Halt('budget:'+b);
-        const price=priceOf(job.config.prices,cand.provider,cand.model);
+        const price=job.config.freeOnly?[0,0]:priceOf(job.config.prices,cand.provider,cand.model); /* free-only jobs use free models and free-tier keys only */
         let status='ok',error='',usage={in:0,out:0,estimated:false},latency=0,via='api',value=null,text='',served='';
         try{
           const r=await callModel(c.env,keys[cand.provider],{provider:cand.provider,model:cand.model,system,prompt,max:Math.min(8000,max+1500),temperature,json:wantJson&&cand.provider==='gemini'}); /* headroom for models that think before answering */
@@ -205,12 +205,15 @@ export function registerOrch(d){
     const bad_=unknownModels(roles,available),dropped=[];
     if(bad_.some(x=>(roles.draft&&x===roles.draft.primary)||(roles.editor&&x===roles.editor.primary)))return json({error:'unknown_model',models:bad_.filter(x=>x===roles.draft.primary||x===roles.editor.primary)},422);
     for(const x of bad_){
-      if(roles.expert&&x===roles.expert.primary){roles.expert=null;dropped.push({role:'expert',...x})}
-      else for(const role of Object.keys(roles)){const r=roles[role];if(!r)continue;const k=r.fallbacks.indexOf(x);if(k>=0){r.fallbacks.splice(k,1);dropped.push({role,...x})}}
+      if(roles.expert&&x===roles.expert.primary){roles.expert=null;dropped.push({role:'expert',reason:'unknown',...x})}
+      else for(const role of Object.keys(roles)){const r=roles[role];if(!r)continue;const k=r.fallbacks.indexOf(x);if(k>=0){r.fallbacks.splice(k,1);dropped.push({role,reason:'unknown',...x})}}
     }
-    if(limits.maxCostUsd!=null){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
+    const free=b.freeOnly!==false;
+    if(free)dropped.push(...freeOnly(roles,prices));
+    if(!roles.draft||!roles.editor)return json({error:'no_models',detail:'нет бесплатных моделей'},422);
+    if(limits.maxCostUsd!=null&&!free){const miss=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]).filter(x=>!priceOf(prices,x.provider,x.model));if(miss.length)return json({error:'price_unknown',models:miss},422)}
     const used2=Object.values(roles).filter(Boolean).flatMap(r=>[r.primary,...r.fallbacks]);
-    const cfg={auto,autoModels:!!picked,dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
+    const cfg={auto,autoModels:!!picked,freeOnly:free,dropped,idea,title:String(b.title||'').trim().slice(0,100),lang,genre,chapters,words:wordsN,roles,limits,prices:Object.fromEntries(used2.map(x=>[x.provider+':'+x.model,priceOf(prices,x.provider,x.model)]).filter(([,v])=>v)),noSecondOpinion:!!b.noSecondOpinion};
     const id='j'+id8(),now=Date.now();
     await run(c,"INSERT INTO ai_jobs(id,created,updated,created_by,status,title,config,state) VALUES(?,?,?,?,?,?,?,?)",id,now,now,c.user.id,'draft',cfg.title||'Новая книга',J(cfg),J({phase:'plan'}));
     await audit(c,'ai_job_create',id,{lang,genre,chapters,roles:Object.fromEntries(Object.entries(roles).map(([k,r])=>[k,r&&r.primary.model]))});

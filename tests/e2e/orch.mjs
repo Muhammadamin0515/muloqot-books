@@ -10,7 +10,7 @@ const {mock,mctl,mcalls,reset}=startMock(MOCK);
 const init=(id,name='User')=>{const p=new URLSearchParams({auth_date:String(Math.floor(Date.now()/1000)),user:JSON.stringify({id,first_name:name})});const str=[...p.entries()].map(([k,v])=>`${k}=${v}`).sort().join('\n');const sk=createHmac('sha256','WebAppData').update(TOKEN).digest();p.set('hash',createHmac('sha256',sk).update(str).digest('hex'));return p.toString()};
 const api=async(uid,path,method='GET',body)=>{const r=await fetch(B+path,{method,headers:{'content-type':'application/json',authorization:'tma '+init(uid)},body:body&&JSON.stringify(body)});return{s:r.status,j:await r.json().catch(()=>null)}};
 const A=(path,method,body)=>api(1,'/api/admin/ai'+path,method,body);
-const create=async(o={})=>(await A('/jobs','POST',{idea:'Детектив в старой Бухаре: торговец находит письмо.',lang:'ru',genre:'detective',chapters:3,words:300,...o}));
+const create=async(o={})=>(await A('/jobs','POST',{idea:'Детектив в старой Бухаре: торговец находит письмо.',lang:'ru',genre:'detective',chapters:3,words:300,freeOnly:false,...o}));
 /** steps until the job waits (plan_ready, needs_admin, paused, awaiting_publish, published) or `stopWhen` says so */
 async function drive(id,stopWhen=()=>false,max=80){let last;for(let i=0;i<max;i++){const r=await A(`/jobs/${id}/step`,'POST',{});if(r.s!==200){return{...r,stopped:'http'}}last=r.j;if(r.j.waiting||stopWhen(r.j.job))return{s:200,j:last};}return{s:200,j:last,stopped:'max'}}
 const detail=async id=>(await A('/jobs/'+id)).j;
@@ -141,6 +141,18 @@ ok(r.j.job.config.lang==='ru','the language was detected from the plan');
 const JU=r.j.job.id;r=await drive(JU);ok(r.j.waiting==='plan_ready'&&(await mcalls()).some(x=>x.task==='plan'&&x.model==='gemini-3.5-flash-lite'),'the planning call went to the automatically chosen editor model');
 await A(`/jobs/${JU}/cancel`,'POST',{});
 r=await A('/jobs','POST',{idea:'Mening rejam: Buxoro savdogari xat topadi va izga tushadi.',autoModels:true});ok(r.j.job.config.lang==='uz','a Latin-script plan is detected as Uzbek');await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
+
+
+/* ---------- free only (the default): no paid model, no cost ---------- */
+await reset();
+r=await A('/jobs','POST',{idea:'Мой план: письмо, погоня, развязка. Только бесплатно.',lang:'ru',roles:{draft:{fallbacks:['openrouter:expert-model','openrouter:free-model']}}});
+const JF=r.j.job.id;
+ok(r.s===200&&r.j.job.config.freeOnly===true&&r.j.job.config.roles.expert===null&&r.j.job.config.dropped.some(x=>x.model==='expert-model'&&x.reason==='not_free'),'by default a paid OpenRouter model is not used (it is dropped and reported)');
+ok(r.j.job.config.roles.draft.fallbacks.map(x=>x.model).join()==='free-model','a free OpenRouter fallback is kept, a paid one is dropped');
+r=await create({freeOnly:true,roles:{expert:{model:'free-model'}}});ok(r.j.job.config.roles.expert.primary.model==='free-model','a free expert model is accepted');await A(`/jobs/${r.j.job.id}/cancel`,'POST',{});
+r=await drive(JF);d=await detail(JF);
+ok(r.j.waiting==='plan_ready'&&d.job.usage.cost===0&&d.job.usage.costUnknown===false&&d.calls.every(x=>x.cost===0),'a free-only job reports no cost, even if AI_PRICES exist');
+await A(`/jobs/${JF}/cancel`,'POST',{});
 
 /* ---------- the author model chooses genre, chapters and size ---------- */
 await reset();
