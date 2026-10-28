@@ -814,11 +814,14 @@ function bookCard(b,{base,link,lang}){
   const desc=clipWords(b.d,b.jpeg?420:300);if(desc)text+=`\n\n<blockquote>${hesc(desc)}</blockquote>`;
   text+=`\n\n${meta?`🏷 ${hesc(meta)}`:''}${rt?`${meta?'\n':''}⭐ ${rt.v} · ${rt.n} ${uz?'baho':'оценок'}`:''}`;
   text=text.trim();
-  const reply={...(link?{reply_markup:{inline_keyboard:[[{text:uz?'📖 Ilovada o‘qish':'📖 Читать в приложении',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
+  const reply={...(link?{reply_markup:{inline_keyboard:[[{text:uz?'📖 Muloqot Books’da o‘qish':'📖 Читать в Muloqot Books',url:`${link}?startapp=book_${b.id}`}]]}}:{})};
   const listLine=[b.an,genre,b.y,rt?`⭐ ${rt.v}`:''].filter(Boolean).join(' · ');
-  if(b.jpeg&&base)return{type:'photo',id:b.id,photo_url:`${base}/api/cover/${b.id}`,thumbnail_url:`${base}/api/cover/${b.id}`,photo_width:600,photo_height:900,title:b.t,description:listLine,caption:text.slice(0,1000),parse_mode:'HTML',...reply};
+  /* The card is Telegram's link preview of /b/<id> (site name, cover on the left, title, author, facts); the message itself stays one line. */
+  const page=base?`${base}/b/${b.id}`:'';
+  if(page)return{type:'article',id:b.id,title:b.t,description:listLine,
+    ...(b.img?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
+    input_message_content:{message_text:`📖 <a href="${page}">${hesc(b.t)}</a>`,parse_mode:'HTML',link_preview_options:{url:page,prefer_small_media:true,show_above_text:true}},...reply};
   return{type:'article',id:b.id,title:b.t,description:listLine,
-    ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
     input_message_content:{message_text:text,parse_mode:'HTML',link_preview_options:{is_disabled:true}},...reply};
 }
 const getAppLink=async c=>{const al=await get(c,"SELECT value FROM meta WHERE key='applink'");return al?P(al.value):''};
@@ -1028,6 +1031,16 @@ export default {
       const row=await env.DB.prepare('SELECT mime,data FROM broadcast_media WHERE id=?').bind(bm[1]).first();
       if(!row)return new Response('not found',{status:404});
       return new Response(Uint8Array.from(atob(row.data),ch=>ch.charCodeAt(0)),{headers:{'content-type':row.mime,'cache-control':'public, max-age=86400','x-content-type-options':'nosniff'}});
+    }
+    const bp=/^\/b\/([\w-]+)$/.exec(pathname);
+    if(bp&&request.method==='GET'){
+      const c={env},row=await all(c,BOOK_ROW_SQL+' AND b.id=?',bp[1]).then(r=>r[0]).catch(()=>null);
+      if(!row)return new Response('not found',{status:404});
+      const lang=(request.headers.get('accept-language')||'').startsWith('uz')?'uz':'ru',gi=lang==='uz'?1:0,rt=cardRating(row),genre=(GENRE_NAME[row.g]||[])[gi]||'';
+      const line1=[row.an,row.y].filter(Boolean).join(' · '),line2=[genre,String(row.lg||'').toUpperCase(),rt?`⭐ ${rt.v}`:''].filter(Boolean).join(' · ');
+      const link=await getAppLink(c),go=link?`${link}?startapp=book_${row.id}`:origin,at=x=>hesc(x).replace(/"/g,'&quot;');
+      const html=`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${hesc(row.t)}</title><meta name="viewport" content="width=device-width,initial-scale=1"><meta property="og:type" content="book"><meta property="og:site_name" content="Muloqot Books"><meta property="og:title" content="${at(row.t)}"><meta property="og:description" content="${at(line1+'\n'+line2)}">${row.img?`<meta property="og:image" content="${origin}/api/cover/${row.id}">`:''}<meta http-equiv="refresh" content="0;url=${at(go)}"></head><body style="font-family:sans-serif;background:#111;color:#eee;padding:24px"><h1>${hesc(row.t)}</h1><p>${hesc(line1)}</p><p><a style="color:#8ab4ff" href="${at(go)}">Muloqot Books</a></p></body></html>`;
+      return new Response(html,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'public, max-age=300'}});
     }
     const cv=/^\/api\/cover\/([\w-]+)$/.exec(pathname);
     if(cv&&request.method==='GET'){

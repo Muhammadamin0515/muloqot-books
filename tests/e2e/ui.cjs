@@ -41,7 +41,7 @@ const rc=await br.newContext({viewport:{width:410,height:880}});
 p=await page('reader2',rc);await p.goto(B+'/?as=reader2&open=catalog');await p.waitForTimeout(1300);
 ok(await p.locator('.cardbk').count()===2,'demo content is hidden once real books exist ('+await p.locator('.cardbk').count()+' books)');
 await p.click('.cardbk:has-text("Старый двор")');await p.waitForTimeout(600);
-const det=await p.textContent('.kv');ok(det.includes('Дворовые истории')&&det.includes('Общественное достояние'),'book card shows series and rights');
+const det=await p.textContent('.kv');ok(det.includes('Дворовые истории')&&!det.includes('Общественное достояние'),'book card shows series, no rights row');
 ok(await p.locator('[data-a=read]').count()>0,'readable book has a Read button');
 await p.click('[data-a=read]');await p.waitForTimeout(900);
 ok(await p.locator('.rp').count()>=20,'reader shows chapter text');

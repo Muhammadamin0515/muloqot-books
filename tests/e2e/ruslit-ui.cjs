@@ -24,7 +24,7 @@ ok(await p.locator('.cardbk').count()===2,'catalog shows only the 2 published bo
 await p.fill('#q','повести');await p.waitForTimeout(700);ok(await p.locator('.cardbk').count()===1,'search by title finds the prose book');
 await p.fill('#q','Тестов');await p.waitForTimeout(700);ok(await p.locator('.cardbk').count()===2,'search by author finds both');
 await p.click(`.cardbk:has-text("${prose.title}")`);await p.waitForTimeout(600);
-const kv=await p.textContent('.kv');ok(kv.includes('Иван Тестов')===false&&kv.includes('4')&&/Права/.test(kv)&&/RusLit/.test(kv),'card shows chapters, rights and the source collection');
+const kv=await p.textContent('.kv');ok(kv.includes('Иван Тестов')===false&&kv.includes('4')&&!/Права|Источник|RusLit/.test(kv),'card shows chapters and hides rights and source rows');
 ok(await p.locator('[data-a=read]').count()===1,'card has the Read button');
 reqs.length=0;
 /* reading: chapter by chapter */
