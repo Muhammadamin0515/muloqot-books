@@ -83,7 +83,7 @@ export function initAiBook(x,adm){
   ACT.aiSet=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.dataset.v:el.dataset.v;if(el.dataset.k==='provider')M.ai_model='';refresh()};
   CHG.aiSel=el=>{AI[el.dataset.k]=el.dataset.k==='chapters'||el.dataset.k==='words'?+el.value:el.value;if(el.dataset.k==='provider')M.ai_model='';refresh()};
 
-  ACT.aiPublish=()=>openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей с пометкой «Создано с помощью ИИ». Это оригинальный вымышленный текст.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="aiPublishGo">Опубликовать</button></div>`);
+  ACT.aiPublish=()=>openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей без пометки об ИИ, с автором, которого вы укажете. Это оригинальный вымышленный текст.</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="aiPublishGo">Опубликовать</button></div>`);
   ACT.aiPublishGo=async()=>{
     closeSheet();AI.busy=true;AI.error='';refresh();
     try{
@@ -166,7 +166,7 @@ export function initAiBook(x,adm){
       <div class="field"><label for="aiDesc">Описание для читателей</label><textarea id="aiDesc" class="in" data-m="adm:ai_desc" style="min-height:90px">${esc(M.ai_desc)}</textarea></div>
       ${p.chapters.map((c,i)=>`<details class="dgroup"><summary><b>${i+1}. ${esc(c.title)}</b><span>${words(M['ait_'+i]??AI.texts[i])} слов</span></summary><div class="dbody"><textarea class="in" data-m="adm:ait_${i}" style="min-height:260px;line-height:1.55" aria-label="Текст главы ${i+1}">${esc(M['ait_'+i]??AI.texts[i])}</textarea><button class="btn sm ghost" style="margin-top:8px" data-a="aiRewrite" data-i="${i}" ${AI.busy?'disabled':''}>Переписать главу заново</button></div></details>`).join('')}
       ${err()}
-      <p class="hint">Книга появится в каталоге с пометкой «Создано с помощью ИИ», со своей обложкой и сразу доступна для чтения.</p>
+      <p class="hint">Книга появится в каталоге с указанным автором, со своей обложкой и сразу доступна для чтения.</p>
       <div class="row" style="gap:10px;margin-top:12px"><button class="btn ghost" data-a="aiBack">К плану</button><button class="btn grow" data-a="aiPublish" ${AI.busy?'disabled':''}>${AI.busy?'Публикую…':'Опубликовать в каталог'}</button></div></div>`;
   }
   const doneView=()=>`<div class="card" style="text-align:center"><div style="font-size:40px">📚</div><b style="font-size:17px">Книга опубликована</b><p class="mute" style="margin:8px 0 14px">«${esc(M.ai_ptitle||AI.plan.title)}» уже в каталоге и доступна читателям.</p><button class="btn block" data-a="aiOpenBook">Открыть книгу</button><button class="btn block ghost" style="margin-top:10px" data-a="aiReset">Создать ещё одну</button></div>`;

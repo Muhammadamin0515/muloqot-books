@@ -71,7 +71,7 @@ export function initAiStudio(x,adm){
   ACT.asSaveEdit=async el=>{const r=await call(`/api/admin/ai/jobs/${S.cur}/chapters/${el.dataset.i}/text`,'PUT',{text:M.as_edit});if(r){toast('Правка сохранена. Итоговая проверка книги устарела');await reloadJob()}};
 
   /* ---------- publishing ---------- */
-  ACT.asPublish=()=>{const fin=S.d.job.state.final;openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей с пометкой «Создано с помощью ИИ». ${fin&&!fin.ok?'<b>Итоговая проверка нашла серьёзные замечания. Вы публикуете вопреки им.</b>':''}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="asPublishGo">Опубликовать</button></div>`)};
+  ACT.asPublish=()=>{const fin=S.d.job.state.final;openSheet(`<h2>Опубликовать книгу в каталоге?</h2><p class="mute" style="font-size:13.5px;margin-bottom:14px">Книга сразу появится у всех читателей, автором будет указан тот, кого вы впишете. ${fin&&!fin.ok?'<b>Итоговая проверка нашла серьёзные замечания. Вы публикуете вопреки им.</b>':''}</p><div class="row" style="gap:10px"><button class="btn ghost grow" data-a="closeSheet">Отмена</button><button class="btn grow" data-a="asPublishGo">Опубликовать</button></div>`)};
   ACT.asPublishGo=async()=>{
     closeSheet();const d=S.d,fin=d.job.state.final,title=(M.as_pub_title||d.plan.title).trim(),author=(M.as_pub_author||'').trim()||'Muloqot Books';
     const h=[...title].reduce((s,ch)=>s+ch.charCodeAt(0),0),st=COVER_STYLES[h%COVER_STYLES.length];

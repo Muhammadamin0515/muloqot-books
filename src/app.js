@@ -266,7 +266,7 @@ function detailRows(b){
   if(b.nch>1)r.push([t('d_chapters'),b.nch]);
   if(b.publisher)r.push([tr('Издатель','Nashriyot'),esc(b.publisher)]);
   if(b.isbn)r.push(['ISBN',esc(b.isbn)]);
-  if(b.ai)r.push([tr('Создание','Yaratilishi'),tr('Создано с помощью ИИ','Sun’iy intellekt yordamida yaratilgan')]);
+  if(b.ai)r.push([tr('Автор','Muallif'),esc(authorOf(b).name||'Muloqot Books')]);
   r.push([tr('Формат','Format'),[b.fullText?tr('Текст','Matn'):tr('Только описание','Faqat tavsif'),b.audio?tr('Аудио','Audio'):''].filter(Boolean).join(' + ')]);
   return r;
 }
