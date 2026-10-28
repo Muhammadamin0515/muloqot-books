@@ -818,10 +818,10 @@ function bookCard(b,{base,link,lang}){
   const listLine=[b.an,genre,b.y,rt?`⭐ ${rt.v}`:''].filter(Boolean).join(' · ');
   /* The text alone is a complete card. When Telegram can fetch /b/<id> it also draws the cover preview above it (hidden link). */
   const page=base?`${base}/b/${b.id}`:'';
-  const hidden=page&&b.img?`<a href="${page}">&#8203;</a>`:'';
+  const hidden=page?`<a href="${page}">&#8203;</a>`:'';
   return{type:'article',id:b.id,title:b.t,description:listLine,
     ...(b.img&&base?{thumbnail_url:`${base}/api/cover/${b.id}`,thumbnail_width:200,thumbnail_height:300}:{}),
-    input_message_content:{message_text:hidden+text,parse_mode:'HTML',link_preview_options:page&&b.img?{url:page,prefer_small_media:true,show_above_text:true}:{is_disabled:true}},...reply};
+    input_message_content:{message_text:hidden+text,parse_mode:'HTML',link_preview_options:page?{url:page,prefer_small_media:true,show_above_text:true}:{is_disabled:true}},...reply};
 }
 const getAppLink=async c=>{const al=await get(c,"SELECT value FROM meta WHERE key='applink'");return al?P(al.value):''};
 async function onInline(c,q){
