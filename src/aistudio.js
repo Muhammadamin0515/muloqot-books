@@ -104,7 +104,6 @@ export function initAiStudio(x,adm){
   const err=()=>S.err?`<div class="demo-banner" style="margin:12px 0"><b>${esc(S.err)}</b></div>`:'';
   const seg=(k,list,cur)=>`<div class="seg">${list.map(([v,n])=>`<button class="${String(cur)===String(v)?'on':''}" data-a="asSet" data-k="${k}" data-v="${v}">${n}</button>`).join('')}</div>`;
   const step=(n,t)=>`<div class="step"><i>${n}</i><b>${t}</b></div>`;
-  const modelField=(id,key,label,provider,ph,optional)=>`<div class="field"><label for="${id}">${label}${optional?' (необязательно)':''}</label><div class="row" style="gap:8px"><input id="${id}" class="in grow" data-m="adm:${key}" list="l_${id}" value="${esc(M[key])}" placeholder="${esc(ph)}" autocomplete="off"><button class="btn sm ghost" data-a="asModels" data-p="${provider}">Список</button></div><datalist id="l_${id}">${(S.models[provider]||[]).map(m=>`<option value="${esc(m)}">`).join('')}</datalist></div>`;
 
   function listView(){
     if(!S.jobs)return loading();
@@ -113,33 +112,43 @@ export function initAiStudio(x,adm){
       ${keyLine()}${err()}
       <div class="sec"><div class="sec-h"><h2>Задания</h2></div>${S.jobs.length?`<div class="list">${S.jobs.map(j=>`<button class="li" style="text-align:left" data-a="asOpen" data-id="${esc(j.id)}"><div class="grow" style="min-width:0"><b>${esc(j.title)}</b><div class="mute" style="font-size:12.5px">${esc(STATUS[j.status]||j.status)} · ${j.chapters} гл. · вызовов ${j.calls}</div></div>${ico('chev',18)}</button>`).join('')}</div>`:'<p class="mute">Заданий пока нет.</p>'}</div>`;
   }
+  const OPEN={};document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.dataset.asg)OPEN[d.dataset.asg]=d.open},true);
+  const roleCard=(id,key,icon,title,who,what,provider,ph,optional)=>`<div class="rolecard"><div class="rolehead"><span class="roleico">${icon}</span><div class="grow"><b>${title}</b><small>${who}</small></div></div>
+    <p class="hint" style="margin:6px 0 8px">${what}</p>
+    <input id="${id}" class="in" data-m="adm:${key}" list="l_${id}" value="${esc(M[key])}" placeholder="${esc(ph)}" autocomplete="off" aria-label="${esc(title)}: модель" style="width:100%"><button class="btn sm ghost" style="margin-top:8px" data-a="asModels" data-p="${provider}">Выбрать из списка моделей</button>
+    <datalist id="l_${id}">${(S.models[provider]||[]).map(m=>`<option value="${esc(m)}">`).join('')}</datalist>${optional?'<p class="hint" style="margin:6px 0 0">Можно оставить пустым: тогда сложные главы вы будете дорабатывать сами.</p>':''}</div>`;
   function createView(){
-    const f=S.form;
-    return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button><div class="card">
-      ${step(1,'Ваш план или идея')}
-      <p class="hint" style="margin:0 0 8px">Вставьте готовый план книги или просто идею. ИИ-автор сам определит жанр, число глав и объём. Если ваш план уже разбит на главы, он сохранит ваше деление.</p>
-      <textarea class="in" data-m="adm:as_idea" maxlength="8000" style="min-height:200px" placeholder="Например: Детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека. Или вставьте весь ваш план по главам.">${esc(M.as_idea)}</textarea>
+    const f=S.form,noModels=!M.as_draft.trim()||!M.as_editor.trim();
+    return `<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
+    <div class="card howto2"><b>Как это работает</b><ol><li>Вы даёте план или идею.</li><li>ИИ составляет план книги, вы проверяете его.</li><li>ИИ пишет и проверяет главы по очереди.</li><li>Вы читаете и сами нажимаете «Опубликовать».</li></ol></div>
+    <div class="card" style="margin-top:12px">
+      ${step(1,'Что писать')}
+      <textarea class="in" data-m="adm:as_idea" maxlength="8000" style="min-height:190px" aria-label="План или идея книги" placeholder="Вставьте готовый план по главам или напишите идею. Например: детектив в старой Бухаре 1920-х: торговец находит в караван-сарае письмо, из-за которого пропали три человека.">${esc(M.as_idea)}</textarea>
       <div class="counter"><span>${M.as_idea.length} / 8000</span></div>
-      <div class="field" style="margin-top:12px"><label for="asT">Название (если пусто, придумает ИИ)</label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
-      <div class="step" style="margin-top:16px"><i>2</i><b>Язык книги</b></div>
+      <div class="field"><label for="asT">Название книги <span class="mute">(необязательно, иначе придумает ИИ)</span></label><input id="asT" class="in" data-m="adm:as_title" value="${esc(M.as_title)}" maxlength="100" autocomplete="off"></div>
+      ${step(2,'Язык книги').replace('class="step"','class="step" style="margin-top:20px"')}
       ${seg('lang',[['ru','Русский'],['uz','Oʻzbekcha']],f.lang)}
-      <div class="lbl" style="margin:14px 0 6px">Жанр, число глав и объём</div>
-      ${seg('auto',[['1','Подберёт ИИ-автор'],['0','Задам сам']],f.auto?'1':'0')}
-      ${f.auto?'<p class="hint">Подбор увидите в плане и сможете поправить его до начала работы.</p>':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
-      <div class="lbl" style="margin:12px 0 6px">Глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
-      <div class="lbl" style="margin:12px 0 6px">Слов в главе</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}`}
-      <div class="step" style="margin-top:18px"><i>3</i><b>Ключи и модели</b></div>
+      ${step(3,'Жанр, число глав и размер').replace('class="step"','class="step" style="margin-top:20px"')}
+      ${seg('auto',[['1','Подберёт ИИ'],['0','Задам сам']],f.auto?'1':'0')}
+      ${f.auto?'<p class="hint">ИИ-автор сам выберет жанр, число глав и длину главы. Вы увидите выбор в плане и сможете его поправить до начала работы.</p>':`<select class="in" style="margin-top:10px" data-chg="asSel" data-k="genre" aria-label="Жанр">${GENRES.map(([v,n])=>`<option value="${v}" ${f.genre===v?'selected':''}>${n}</option>`).join('')}</select>
+      <div class="lbl" style="margin:12px 0 6px">Сколько глав</div>${seg('chapters',[3,5,6,8,10,12].map(n=>[n,n]),f.chapters)}
+      <div class="lbl" style="margin:12px 0 6px">Длина главы, слов</div>${seg('words',[[600,'600'],[900,'900'],[1200,'1200'],[1500,'1500']],f.words)}
+      <p class="hint">Около ${Math.round(f.chapters*f.words/250)} страниц.</p>`}
+      ${step(4,'Кто будет работать').replace('class="step"','class="step" style="margin-top:20px"')}
       ${keyLine()}
-      <p class="hint" style="margin:0 0 8px">Названия моделей берутся только из списка самого сервиса: нажмите «Список». Неизвестная модель будет отклонена.</p>
-      ${modelField('asMd','as_draft','Groq: черновики и правки','groq','id модели Groq')}
-      ${modelField('asMe','as_editor','Gemini: план и редактор','gemini','id модели Gemini')}
-      ${modelField('asMx','as_expert','OpenRouter: эксперт для сложных глав','openrouter','id модели OpenRouter',true)}
-      ${seg('second',[['1','Вторая оценка книги экспертом'],['0','Без второй оценки']],f.second?'1':'0')}
-      <div class="step" style="margin-top:18px"><i>4</i><b>Лимиты</b></div>
-      <div class="row" style="gap:10px"><div class="field grow"><label for="asLc">Вызовов (макс.)</label><input id="asLc" class="in" type="number" inputmode="numeric" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${esc(S.cfg&&S.cfg.limits.maxCalls)}"></div><div class="field grow"><label for="asLm">Стоимость, $ (макс.)</label><input id="asLm" class="in" type="number" inputmode="decimal" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без лимита"></div></div>
-      <p class="hint">Лимит стоимости работает, когда известны цены моделей (список OpenRouter даёт цены; для Groq и Gemini задайте AI_PRICES). Серверные лимиты нельзя превысить.</p>
+      <p class="hint" style="margin:0 0 10px">${noModels?'Модели ещё не выбраны: нажмите «Выбрать из списка» у каждой. ':'Модели уже выбраны. '}В списке только модели, доступные с вашими ключами.</p>
+      ${roleCard('asMd','as_draft','✍️','Писатель','Groq','Быстро пишет черновик каждой главы и исправляет текст по замечаниям редактора.','groq','Модель Groq')}
+      ${roleCard('asMe','as_editor','🔎','Редактор','Gemini','Составляет план, проверяет главы на ошибки и противоречия, ведёт краткое содержание и факты.','gemini','Модель Gemini')}
+      ${roleCard('asMx','as_expert','🎓','Эксперт','OpenRouter (по желанию)','Вызывается, только когда писатель и редактор не справились с главой. Даёт независимую оценку.','openrouter','Модель OpenRouter',true)}
+      <div class="lbl" style="margin:14px 0 6px">Проверить готовую книгу ещё и экспертом</div>
+      ${seg('second',[['1','Да'],['0','Нет']],f.second?'1':'0')}
+      <details class="dgroup" data-asg="lim" ${OPEN.lim?'open':''} style="margin-top:18px"><summary><b>Ограничить расходы</b><span>необязательно: по умолчанию действуют лимиты сервера</span></summary><div class="dbody">
+        <div class="field"><label for="asLc">Не больше запросов к ИИ на всю книгу</label><input id="asLc" class="in" type="number" inputmode="numeric" min="5" data-m="adm:as_maxCalls" value="${esc(M.as_maxCalls)}" placeholder="${S.cfg?'по умолчанию '+esc(S.cfg.limits.maxCalls):'по умолчанию'}"></div>
+        <div class="field"><label for="asLm">Не больше потратить, $ <span class="mute">(только для платных моделей)</span></label><input id="asLm" class="in" type="number" inputmode="decimal" min="0" step="0.1" data-m="adm:as_maxCost" value="${esc(M.as_maxCost)}" placeholder="без ограничения"></div>
+        <p class="hint">Когда лимит будет достигнут, работа встанет на паузу, и вы решите, продолжать ли. Всё написанное сохранится. Стоимость считается, когда известна цена модели; для бесплатных моделей ограничивайте число запросов.</p></div></details>
       ${err()}
-      <button class="btn block" style="margin-top:14px" data-a="asCreate">Составить план</button></div>`;
+      <button class="btn block" style="margin-top:16px" data-a="asCreate">Составить план книги</button>
+      <p class="hint" style="text-align:center">Пока вы не утвердите план, ни одна глава не пишется.</p></div>`;
   }
   const head=d=>`<button class="btn sm ghost" data-a="asBack" style="margin-bottom:10px">← К заданиям</button>
     <div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><b style="font-size:16px">${esc(d.job.title)}</b>${tag(STATUS[d.job.status]||d.job.status,d.job.status==='needs_admin'?'acc':'')}</div><div class="mute" style="font-size:12.5px;margin-top:6px">${usageLine(d.job.usage)}</div></div>`;
