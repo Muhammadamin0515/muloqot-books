@@ -23,6 +23,7 @@ const DDL=[
   'CREATE TABLE IF NOT EXISTS bookmarks(user_id TEXT,id TEXT,book_id TEXT,ver TEXT,ch INTEGER,para INTEGER,snippet TEXT,created INTEGER,PRIMARY KEY(user_id,id))',
   'CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id,created)',
   'CREATE TABLE IF NOT EXISTS survey_votes(broadcast_id TEXT,user_id TEXT,opt INTEGER,ts INTEGER,PRIMARY KEY(broadcast_id,user_id))',
+  'CREATE TABLE IF NOT EXISTS broadcast_media(id TEXT PRIMARY KEY,mime TEXT,data TEXT,created INTEGER)',
   'CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts INTEGER,user_id TEXT,action TEXT,target TEXT,detail TEXT)',
   'CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,text TEXT,audience TEXT,status TEXT,total INTEGER DEFAULT 0,sent INTEGER DEFAULT 0,failed INTEGER DEFAULT 0,cursor TEXT DEFAULT \'\',created INTEGER,created_by TEXT)'
 ];

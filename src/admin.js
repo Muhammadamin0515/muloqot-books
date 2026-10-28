@@ -1,9 +1,10 @@
 import {search as fuzzy} from './search.js';
+import {compressPhoto} from './image.js';
 /* Admin panel + support chat. Wired into the app through initAdmin(ctx); all data comes from /api/admin/*. */
 export function initAdmin(x){
   const {SCREENS,ACT,CHG,FORMS,AFTER,MODEL,go,api,toast,esc,ico,openSheet,closeSheet,setSheet,empty,avatar,NAV,$,BOOKS,COLLECTIONS,WEEKLY,loadBoot,tr}=x;
   const AUTH=id=>(x.AUTHORS||[]).find(a=>a.id===id)||{name:''};
-  const M=MODEL.adm={nf:{support:'off',submissions:'silent',reports:'silent',donations:'silent'},bcText:'',bc_kind:'message',bc_photo:'',bc_btn:'app',bc_btnText:'',bc_url:'',bc_book:'',bc_opts:'',bc_lang:'all',bp_wq_book:'',bp_bc_book:'',col_q:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
+  const M=MODEL.adm={nf:{support:'off',submissions:'silent',reports:'silent',donations:'silent'},bcText:'',bc_kind:'message',bc_photo:'',bc_photoData:'',bc_photoInfo:'',bc_btn:'app',bc_btnText:'',bc_url:'',bc_book:'',bc_opts:'',bc_lang:'all',bp_wq_book:'',bp_bc_book:'',col_q:'',uq:'',chatText:'',supText:'',wq_book:'',wq_ru:'',wq_uz:'',eb_title:'',eb_desc:'',col_ru:'',col_uz:'',admId:'',rejNote:'',stopwords:'',appLinkSaved:'',welcome:'',welcomeUz:'',appLink:''};
   const A={tab:'overview',fresh:{},stats:null,bc:null,run:null,subs:null,inbox:null,users:null,adbooks:null,chat:{uid:null,name:'',msgs:[]},sup:{msgs:[]},col:null,editId:null};
   const here=n=>NAV.cur.name===n;
   const bg=p=>p.catch(()=>toast('Ошибка запроса'));
@@ -93,7 +94,7 @@ export function initAdmin(x){
     else if(M.bc_btn==='app')btns=['📖 Открыть приложение'];
     else if(M.bc_btn==='link')btns=[M.bc_btnText||'Текст кнопки'];
     else if(M.bc_btn==='book')btns=[M.bc_btnText||'📖 Читать'];
-    return `${M.bc_photo?`<div class="bcphoto">${ico('upload',22)} картинка по ссылке</div>`:''}<div>${esc(M.bcText)||'Здесь появится ваше сообщение'}</div>${btns.map(b=>`<div class="bcbtn">${esc(b)}</div>`).join('')}`;
+    return `${M.bc_photoData?`<img src="${M.bc_photoData}" alt="" style="width:100%;border-radius:12px;margin-bottom:8px;display:block">`:M.bc_photo?`<div class="bcphoto">${ico('upload',22)} картинка по ссылке</div>`:''}<div>${esc(M.bcText)||'Здесь появится ваше сообщение'}</div>${btns.map(b=>`<div class="bcbtn">${esc(b)}</div>`).join('')}`;
   }
   function tabBroadcast(){
     if(!A.bc)return loading();
@@ -109,10 +110,14 @@ export function initAdmin(x){
       <div class="step"><i>1</i><b>Что отправляем</b></div>
       ${seg('bc_kind',[['message','Сообщение'],['poll','Опрос (кнопки-ответы)']])}
       <div class="step" style="margin-top:18px"><i>2</i><b>${poll?'Вопрос':'Текст сообщения'}</b></div>
-      <textarea id="bcText" class="in" data-m="adm:bcText" maxlength="${M.bc_photo?1000:3500}" placeholder="${poll?'Например: Какие книги вам добавить?':'Что хотите сообщить читателям?'}" style="min-height:120px">${esc(M.bcText)}</textarea>
-      <div class="counter"><span id="bcCount">${M.bcText.length} / ${M.bc_photo?1000:3500}</span></div>
+      <textarea id="bcText" class="in" data-m="adm:bcText" maxlength="${M.bc_photo||M.bc_photoData?1000:3500}" placeholder="${poll?'Например: Какие книги вам добавить?':'Что хотите сообщить читателям?'}" style="min-height:120px">${esc(M.bcText)}</textarea>
+      <div class="counter"><span id="bcCount">${M.bcText.length} / ${M.bc_photo||M.bc_photoData?1000:3500}</span></div>
       ${poll?`<div class="field" style="margin-top:12px"><label for="bcOpts">Варианты ответа (каждый с новой строки, от 2 до 6)</label><textarea id="bcOpts" class="in" data-m="adm:bc_opts" style="min-height:96px" placeholder="Узбекская классика&#10;Современные романы&#10;Детективы">${esc(M.bc_opts)}</textarea></div>`:''}
-      <div class="field" style="margin-top:12px"><label for="bcPhoto">Картинка (ссылка https://…, необязательно)</label><input id="bcPhoto" class="in" data-m="adm:bc_photo" value="${esc(M.bc_photo)}" placeholder="https://…/banner.jpg" autocomplete="off"><p class="hint">С картинкой текст до 1000 знаков. Ссылка должна вести прямо на изображение.</p></div>
+      <div class="field" style="margin-top:12px"><label>Картинка (необязательно)</label>
+        ${M.bc_photoData?`<div class="bchosen"><img src="${M.bc_photoData}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:10px"><div class="grow" style="min-width:0"><b>Картинка загружена</b><small>${esc(M.bc_photoInfo)}</small></div><button class="btn sm ghost" data-a="bcPhotoClear">Убрать</button></div>`
+        :`<label class="drop" for="bcFile">${ico('upload',24)}<div class="grow"><b>Загрузить с телефона</b><div class="mute" style="font-size:12.5px;font-weight:500">Любое фото: размер подгоним сами</div></div></label><input id="bcFile" type="file" accept="image/*" data-chg="bcPhotoFile" style="position:absolute;opacity:0;width:1px;height:1px">
+        <input id="bcPhoto" class="in" data-m="adm:bc_photo" value="${esc(M.bc_photo)}" placeholder="или ссылка https://…/banner.jpg" autocomplete="off" style="margin-top:10px">`}
+        <p class="hint">С картинкой текст до 1000 знаков.</p></div>
       <div class="step" style="margin-top:18px"><i>3</i><b>Кому</b></div>
       ${seg('bc_lang',[['all','Всем'],['ru','Русский язык'],['uz','Узбекский язык']])}
       ${btnFields}
@@ -127,8 +132,12 @@ export function initAdmin(x){
     <div class="sec"><div class="sec-h"><h2>История рассылок</h2></div>${A.bc.list.length?`<div class="list">${A.bc.list.map(b=>`<div class="li" style="align-items:flex-start;flex-direction:column;gap:4px"><div class="row" style="width:100%;justify-content:space-between"><b style="font-size:13px">${hm(b.created)}</b><span class="status ${b.status==='done'?'m':''}">${{done:'Отправлена',running:'Идёт',cancelled:'Отменена'}[b.status]||b.status}${b.audience==='test'?' · тест':''}${b.kind==='poll'?' · опрос':''}</span></div><span style="font-size:13.5px">${esc(b.text.slice(0,140))}</span><span class="mute" style="font-size:12px">${b.sent} доставлено · ${b.failed} ошибок${b.lang&&b.lang!=='all'?' · '+b.lang.toUpperCase():''}</span>
         ${b.kind==='poll'&&b.votes?`<div style="width:100%;margin-top:6px">${b.options.map((o,i)=>{const tot=b.votes.reduce((n,y)=>n+y,0)||1;return `<div class="vrow"><span>${esc(o)}</span><div class="bar"><i style="width:${Math.round(b.votes[i]/tot*100)}%"></i></div><b>${b.votes[i]}</b></div>`}).join('')}<span class="mute" style="font-size:12px">Всего ответов: ${b.votes.reduce((n,y)=>n+y,0)}</span></div>`:''}</div>`).join('')}</div>`:'<p class="mute">Рассылок пока не было</p>'}</div>`;
   }
-  const bcRefreshPrev=()=>{const p=$('#bcPrev'),c=$('#bcCount');if(p)p.innerHTML=bcPreview();if(c)c.textContent=M.bcText.length+' / '+(M.bc_photo?1000:3500)};
+  const bcRefreshPrev=()=>{const p=$('#bcPrev'),c=$('#bcCount');if(p)p.innerHTML=bcPreview();if(c)c.textContent=M.bcText.length+' / '+(M.bc_photo||M.bc_photoData?1000:3500)};
   ['bcText','bc_opts','bc_photo','bc_btnText','bc_url'].forEach(k=>{x.ONINPUT['adm:'+k]=bcRefreshPrev});
+  CHG.bcPhotoFile=async el=>{const f=el.files&&el.files[0];el.value='';if(!f)return;
+    try{const r=await compressPhoto(f);M.bc_photoData=r.dataUrl;M.bc_photo='';M.bc_photoInfo=`${r.w}×${r.h}, ${Math.round(r.bytes/1024)} КБ`;x.refresh()}
+    catch(e){toast('Не удалось открыть картинку: выберите JPG или PNG')}};
+  ACT.bcPhotoClear=()=>{M.bc_photoData='';M.bc_photoInfo='';x.refresh()};
   ACT.bcSet=el=>{M[el.dataset.k]=el.dataset.v;x.refresh()};
   CHG.bcSel=el=>{M[el.dataset.k]=el.value;x.refresh()};
   const paintProg=()=>{const r=A.run;if(!r)return;const b=$('#bcBar'),t=$('#bcTxt');if(b)b.style.width=(r.total?Math.round((r.sent+r.failed)/r.total*100):0)+'%';if(t)t.textContent=`Отправлено ${r.sent} из ${r.total}, ошибок ${r.failed}`};
@@ -137,8 +146,8 @@ export function initAdmin(x){
     while(A.run&&A.run.status==='running'){try{A.run=(await api(`/api/admin/broadcasts/${b.id}/step`,'POST',{})).broadcast}catch(e){toast('Сбой отправки, нажмите ещё раз');break}paintProg()}
     const d=A.run;A.run=null;if(d)toast(`Готово: ${d.sent} доставлено, ${d.failed} ошибок`);A.fresh.stats=false;A.fresh.broadcast=false;if(here('admin'))x.refresh();
   }
-  const BCERR={text:'Введите текст (от 2 знаков)',caption_long:'С картинкой текст не длиннее 1000 знаков',options:'Для опроса нужно от 2 до 6 вариантов ответа',button:'Для кнопки-ссылки нужны текст и адрес https://…',book:'Выберите книгу из каталога'};
-  const bcBody=audience=>({text:M.bcText,audience,kind:M.bc_kind,photo:M.bc_photo.trim(),lang:M.bc_lang,options:M.bc_opts.split('\n'),button:{type:M.bc_btn,text:M.bc_btnText,url:M.bc_url.trim(),bookId:M.bc_book}});
+  const BCERR={text:'Введите текст (от 2 знаков)',caption_long:'С картинкой текст не длиннее 1000 знаков',options:'Для опроса нужно от 2 до 6 вариантов ответа',button:'Для кнопки-ссылки нужны текст и адрес https://…',photo:'Картинка не подошла: выберите другую',book:'Выберите книгу из каталога'};
+  const bcBody=audience=>({text:M.bcText,audience,kind:M.bc_kind,photo:M.bc_photo.trim(),photoData:M.bc_photoData,lang:M.bc_lang,options:M.bc_opts.split('\n'),button:{type:M.bc_btn,text:M.bc_btnText,url:M.bc_url.trim(),bookId:M.bc_book}});
   const bcValid=()=>{if(M.bcText.trim().length<2){toast(BCERR.text);return false}
     if(M.bc_kind==='poll'&&M.bc_opts.split('\n').map(o=>o.trim()).filter(Boolean).length<2){toast(BCERR.options);return false}
     if(M.bc_kind==='message'&&M.bc_btn==='link'&&(!/^https:\/\//i.test(M.bc_url.trim())||!M.bc_btnText.trim())){toast(BCERR.button);return false}

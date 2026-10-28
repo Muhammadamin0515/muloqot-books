@@ -374,7 +374,7 @@ route('GET','/api/admin/stats',async c=>{
 },true);
 
 /* ---------- admin: broadcasts ---------- */
-const bcOut=(b,votes)=>({id:b.id,text:b.text,audience:b.audience,status:b.status,total:b.total,sent:b.sent,failed:b.failed,created:b.created,kind:b.kind||'message',photo:b.photo||'',button:b.button?P(b.button):{type:'app'},options:b.options?P(b.options):[],lang:b.lang||'all',...(votes?{votes}:{})});
+const bcOut=(b,votes)=>({id:b.id,text:b.text,audience:b.audience,status:b.status,total:b.total,sent:b.sent,failed:b.failed,created:b.created,kind:b.kind||'message',photo:b.photo&&b.photo.startsWith('bcm:')?'uploaded':b.photo||'',button:b.button?P(b.button):{type:'app'},options:b.options?P(b.options):[],lang:b.lang||'all',...(votes?{votes}:{})});
 const recipientsSql="id GLOB '[0-9]*' AND banned=0 AND blocked=0";
 /** Audience filter: everybody, or only readers whose app language is Russian or Uzbek. */
 const audSql=lang=>lang==='ru'||lang==='uz'?` AND json_extract(state,'$.lang')='${lang}'`:'';
@@ -382,7 +382,15 @@ const voteCounts=async(c,id,n)=>{const rows=await all(c,'SELECT opt,COUNT(*) n F
 route('GET','/api/admin/broadcasts',async c=>json({list:await Promise.all((await all(c,'SELECT * FROM broadcasts ORDER BY created DESC LIMIT 20')).map(async b=>bcOut(b,b.kind==='poll'?await voteCounts(c,b.id,(b.options?P(b.options):[]).length):null))),bot:!!c.env.BOT_TOKEN}),true);
 route('POST','/api/admin/broadcasts',async c=>{
   if(!c.env.BOT_TOKEN)return bad(400,'no bot token');
-  const kind=c.body.kind==='poll'?'poll':'message',photo=httpsUrl(c.body.photo)||'';
+  const kind=c.body.kind==='poll'?'poll':'message';
+  let photo=httpsUrl(c.body.photo)||'',media=null;
+  /* An uploaded picture is stored in broadcast_media and served at /api/bcmedia/<id>; Telegram downloads it from that address. */
+  if(typeof c.body.photoData==='string'&&c.body.photoData){
+    const m=/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(c.body.photoData);
+    if(!m||c.body.photoData.length>MAX_COVER_CHARS)return bad(422,'photo');
+    try{atob(m[2])}catch{return bad(422,'photo')}
+    media={id:crypto.randomUUID().replace(/-/g,'').slice(0,20),mime:m[1],data:m[2]};photo='bcm:'+media.id;
+  }
   if(photo&&String(c.body.text||'').trim().length>1000)return bad(422,'caption_long');
   const text=clip(c.body.text,photo?1000:3500);if(text.length<2)return bad(422,'text');
   const lang=c.body.lang==='ru'||c.body.lang==='uz'?c.body.lang:'all';
@@ -396,6 +404,7 @@ route('POST','/api/admin/broadcasts',async c=>{
   }else button={type:'none'};
   const test=c.body.audience==='test',id='bc'+id8();
   const total=test?1:(await get(c,`SELECT COUNT(*) n FROM users WHERE ${recipientsSql}${audSql(lang)}`)).n;
+  if(media)await run(c,'INSERT INTO broadcast_media(id,mime,data,created) VALUES(?,?,?,?)',media.id,media.mime,media.data,Date.now());
   await run(c,'INSERT INTO broadcasts(id,text,audience,status,total,sent,failed,cursor,created,created_by,kind,photo,button,options,lang) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,text,test?'test':'all','running',total,0,0,test?c.user.id:'',Date.now(),c.user.id,kind,photo,J(button),J(options),lang);
   return json({broadcast:bcOut(await get(c,'SELECT * FROM broadcasts WHERE id=?',id))});
 },true);
@@ -407,7 +416,8 @@ function bcPayload(c,b,chatId){
   else if(btn.type==='app')markup=openBtn(c.env);
   else if(btn.type==='link')markup={reply_markup:{inline_keyboard:[[{text:btn.text,url:btn.url}]]}};
   else if(btn.type==='book'&&base)markup={reply_markup:{inline_keyboard:[[{text:btn.text,web_app:{url:`${base}/?open=book_${btn.bookId}`}}]]}};
-  return b.photo?['sendPhoto',{chat_id:chatId,photo:b.photo,caption:b.text,...markup}]:['sendMessage',{chat_id:chatId,text:b.text,...markup}];
+  const photo=b.photo&&b.photo.startsWith('bcm:')?`${base}/api/bcmedia/${b.photo.slice(4)}`:b.photo;
+  return photo?['sendPhoto',{chat_id:chatId,photo,caption:b.text,...markup}]:['sendMessage',{chat_id:chatId,text:b.text,...markup}];
 }
 /* One step sends to a small batch (stays under per-request subrequest limits); the admin UI calls it until done. */
 route('POST','/api/admin/broadcasts/:id/step',async(c,id)=>{
@@ -997,6 +1007,12 @@ export default {
   async fetch(request,env0,ctx){
     const env=clean(env0);
     const {pathname,origin}=new URL(request.url);ORIGIN=origin;
+    const bm=/^\/api\/bcmedia\/([a-f0-9]{20})$/.exec(pathname);
+    if(bm&&request.method==='GET'){
+      const row=await env.DB.prepare('SELECT mime,data FROM broadcast_media WHERE id=?').bind(bm[1]).first();
+      if(!row)return new Response('not found',{status:404});
+      return new Response(Uint8Array.from(atob(row.data),ch=>ch.charCodeAt(0)),{headers:{'content-type':row.mime,'cache-control':'public, max-age=86400','x-content-type-options':'nosniff'}});
+    }
     const cv=/^\/api\/cover\/([\w-]+)$/.exec(pathname);
     if(cv&&request.method==='GET'){
       const row=await env.DB.prepare("SELECT data FROM books WHERE id=? AND json_extract(data,'$.publish') IS NOT 'draft' AND (hidden=0 OR hidden IS NULL)").bind(cv[1]).first();const img=row&&P(row.data).img;

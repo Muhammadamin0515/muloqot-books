@@ -14,3 +14,13 @@ export async function compressImage(file,{mode='fill',w=600,h=900,maxBytes=200*1
   while(url.length*.75>maxBytes&&q>.45){q-=.07;url=cv.toDataURL('image/jpeg',q)}
   return{dataUrl:url,bytes:Math.round(url.length*.75)};
 }
+
+/** A picture for a broadcast: keeps its proportions, longest side at most `max` px, JPEG of at most `maxBytes`. */
+export async function compressPhoto(file,{max=1280,maxBytes=300*1024}={}){
+  const bmp=await loadBitmap(file),iw=bmp.width||bmp.naturalWidth,ih=bmp.height||bmp.naturalHeight,k=Math.min(1,max/Math.max(iw,ih));
+  const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(iw*k));cv.height=Math.max(1,Math.round(ih*k));
+  const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);ctx.imageSmoothingQuality='high';ctx.drawImage(bmp,0,0,cv.width,cv.height);
+  let q=.9,url=cv.toDataURL('image/jpeg',q);
+  while(url.length*.75>maxBytes&&q>.4){q-=.08;url=cv.toDataURL('image/jpeg',q)}
+  return{dataUrl:url,bytes:Math.round(url.length*.75),w:cv.width,h:cv.height};
+}

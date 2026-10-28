@@ -28,6 +28,16 @@ ok(r.sent.every(c=>c.method==='sendPhoto'&&c.body.photo==='https://example.com/b
 r=await send({text:'Только русскоязычным',audience:'all',lang:'ru'});ok(r.b.sent===3&&!r.sent.some(c=>c.body.chat_id===12),'language filter: the Uzbek reader is skipped ('+r.b.sent+' recipients)');
 r=await send({text:'Тест себе',audience:'test'});ok(r.b.sent===1&&String(r.sent[0].body.chat_id)==='1','test goes to the admin only');
 
+/* uploaded picture */
+const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+{const n=since();const x=await send({text:'Реклама с картинкой',audience:'all',photoData:PNG,button:{type:'link',text:'Открыть',url:'https://example.com'}});
+ const url=x.sent[0].body.photo;ok(x.b.sent===4&&x.sent.every(c=>c.method==='sendPhoto'&&c.body.photo===url)&&/\/api\/bcmedia\/[a-f0-9]{20}$/.test(url),'uploaded picture: sent as a photo by the address of this app');
+ const img=await fetch(B+new URL(url).pathname);ok(img.status===200&&img.headers.get('content-type')==='image/png'&&(await img.arrayBuffer()).byteLength>20,'the picture is served publicly (Telegram must be able to download it)');
+ ok((await fetch(B+'/api/bcmedia/00000000000000000000')).status===404,'an unknown picture id is 404');
+ ok((await api(1,'/api/admin/broadcasts')).j.list[0].photo==='uploaded','history shows an uploaded picture without its data');}
+for(const [why,bodyPhoto] of [['html',"data:text/html;base64,PHNjcmlwdD4="],['svg','data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='],['junk base64','data:image/png;base64,@@@'],['too large','data:image/png;base64,'+'A'.repeat(500000)]]){
+  const x=await api(1,'/api/admin/broadcasts','POST',{text:'Картинка '+why,audience:'test',photoData:bodyPhoto});ok(x.s===422&&x.j.error==='photo','a picture upload of kind "'+why+'" is refused');}
+ok((await api(1,'/api/admin/broadcasts','POST',{text:'a'.repeat(1001),audience:'test',photoData:PNG})).j.error==='caption_long','the 1000-character caption limit applies to uploads too');
 /* validation */
 const bad=async(b,code)=>{const x=await api(1,'/api/admin/broadcasts','POST',{audience:'test',...b});return x.s===422&&x.j.error===code};
 ok(await bad({text:'x'},'text'),'text too short is refused');
