@@ -38,6 +38,23 @@ const bk=(await api('admin','/api/bootstrap')).j.books.find(b=>b.title==='Пис
 ok(bk&&bk.ai&&bk.fullText&&bk.nch===3,'published after the confirmation: in the catalog, readable, marked as AI-made');
 await a.screenshot({path:'/tmp/ui_studio_done.png'});
 
+/* audio retelling: the administrator generates and publishes it from the catalog, a reader opens it on the book page */
+{const ad=await ctx.newPage();ad.on('pageerror',e=>errs.push('retell admin: '+e.message));
+await ad.goto(B+'/?as=admin&open=profile');await ad.waitForTimeout(900);await ad.click('[data-a=openAdmin]');await ad.waitForTimeout(400);
+await ad.click('[data-a=admGroup][data-v=books]');await ad.click('[data-a=admTab][data-v=catalog]');await ad.waitForTimeout(1200);
+await ad.click(`[data-a=ciRetell][data-id="${bk.id}"]`);await ad.waitForSelector('[data-a=rtGen][data-l=ru]',{timeout:8000});
+ok((await ad.textContent('#sheet')).includes('Создать пересказ с помощью ИИ'),'retelling: the book has a Пересказ sheet with a create button per language');
+await ad.click('[data-a=rtGen][data-l=ru]');await ad.waitForSelector('#rt_ru',{timeout:60000});
+ok((await ad.inputValue('#rt_ru')).includes('торговце из Бухары'),'retelling: the generated text appears for editing');
+await ad.click('[data-a=rtSave][data-l=ru][data-st=published]');await ad.waitForTimeout(1500);
+ok((await ad.textContent('#sheet')).includes('опубликован'),'retelling: published from the sheet');
+const rd=await (await br.newContext({viewport:{width:410,height:880}})).newPage();rd.on('pageerror',e=>errs.push('retell reader: '+e.message));
+await rd.goto(B+`/?as=reader&open=book_${bk.id}`);await rd.waitForSelector('[data-a=retellOpen]',{timeout:10000});await rd.click('[data-a=retellOpen]');await rd.waitForTimeout(900);
+ok(await rd.locator('.rt-p').count()===3&&await rd.locator('#rtPlay').count()===1,'retelling: the reader sees the text in paragraphs with a player');
+await rd.click('[data-a=rtPara][data-rp="1"]');await rd.waitForTimeout(300);
+ok(await rd.locator('.rt-p.on').getAttribute('data-rp')==='1','retelling: tapping a paragraph moves the reading there');
+await rd.screenshot({path:'/tmp/ui_retell.png'});await rd.close();await ad.close()}
+
 /* fully automatic: only a plan is typed */
 await a.click('[data-a=asBack]');await a.waitForTimeout(600);await a.click('[data-a=asNew]');await a.waitForTimeout(300);
 await a.fill('.card textarea','План: 1. Письмо. 2. Погоня. 3. Развязка. Историческая драма о торговце из Бухары.');
