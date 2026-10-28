@@ -12,6 +12,7 @@ import {initAchievements} from './achievements.js';
 import {search as fuzzySearch,suggest as suggestWord,key as skey} from './search.js';
 import {recommend} from './reco.js';
 import {initAudio} from './audio.js';
+import {initPodcasts} from './podcasts.js';
 
 const KEY='muloqot.proto.v1';
 const $=(s,el=document)=>el.querySelector(s);
@@ -218,7 +219,7 @@ function updateCatalog(keep){
 SCREENS.catalog=()=>{const l=catList();
   const seg=[['all',t('all')],['ru','Русский'],['uz','Oʻzbekcha']];
   return `<header class="topbar px"><h2 class="display" style="font-size:26px">${t('catalog')}</h2></header>
-  <div class="px"><div class="searchbox">${ico('search',20)}<input id="q" class="in" type="search" data-m="cat:q" value="${esc(CAT.q)}" placeholder="${t('search_ph')}" autocomplete="off" enterkeyhint="search" aria-label="${t('search_ph')}"><button class="iconbtn flat x" data-a="clearQ" aria-label="${t('close')}" ${CAT.q?'':'hidden'}>${ico('x',18)}</button></div>
+  <div class="px">${ctx2.podcastSwitch?ctx2.podcastSwitch():''}<div class="searchbox" style="margin-top:12px">${ico('search',20)}<input id="q" class="in" type="search" data-m="cat:q" value="${esc(CAT.q)}" placeholder="${t('search_ph')}" autocomplete="off" enterkeyhint="search" aria-label="${t('search_ph')}"><button class="iconbtn flat x" data-a="clearQ" aria-label="${t('close')}" ${CAT.q?'':'hidden'}>${ico('x',18)}</button></div>
   ${CAT.coll?`<div style="margin-top:12px"><button class="chip on" data-a="clearColl">${esc(L(COLLECTIONS.find(c=>c.id===CAT.coll).t))} ${ico('x',14)}</button></div>`:''}
   <div class="seg" style="margin-top:14px" role="group" aria-label="${t('language')}">${seg.map(([k,n])=>`<button class="${CAT.lang===k?'on':''}" data-a="catLang" data-v="${k}">${n}</button>`).join('')}</div></div>
   <div class="hs px" style="margin-top:14px">${BOOKS.some(b=>b.own)?`<button class="chip ${CAT.only==='own'?'on':''}" data-a="catOnly" data-v="own">Muloqot Books</button>`:''}<button class="chip ${CAT.only==='text'?'on':''}" data-a="catOnly" data-v="text">${ico('text',15)} ${tr('Читать целиком','To‘liq o‘qish')}</button>${BOOKS.some(b=>b.audio>0)?`<button class="chip ${CAT.only==='audio'?'on':''}" data-a="catOnly" data-v="audio">${ico('headphones',15)} ${tr('Аудио','Audio')}</button>`:''}${GENRES.filter(g=>BOOKS.some(b=>b.genre===g)).map(g=>`<button class="chip ${CAT.genres.includes(g)?'on':''}" data-a="catGenre" data-id="${g}" aria-pressed="${CAT.genres.includes(g)}">${gl(g)}</button>`).join('')}</div>
@@ -789,6 +790,7 @@ initAiStudio({ACT,CHG,api,toast,esc,ico,openSheet,closeSheet,loadBoot,go,refresh
 const ctx2={SCREENS,ACT,CHG,FORMS,MODEL,ONINPUT,go,api,net,toast,esc,ico,openSheet,closeSheet,setSheet,empty,NAV,$,tr,t,L,gl,GENRES,book,bg,save,refresh,loadBoot,tg,get S(){return S}};
 initAchievements(ctx2);
 initAudio(ctx2);
+initPodcasts(ctx2,admApi);
 initStudio(ctx2);
 /* things that can unlock an achievement ask the server to re-check shortly after they happen */
 ['toggleSave','revSubmit','follow','rQuote','rFinish'].forEach(n=>{const f=ACT[n];if(f)ACT[n]=function(){const r=f.apply(this,arguments);ctx2.checkAch();return r}});

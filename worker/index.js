@@ -5,6 +5,7 @@ import {GENRES,RIGHTS_OK,RIGHTS_ALL,MAX_TEXT_BYTES,MAX_COVER_CHARS,canRead,right
 import {registerLibrary,tokenCheck} from './library.js';
 import {registerAi} from './ai.js';
 import {registerOrch} from './orch.js';
+import {registerPodcasts} from './podcasts.js';
 import {WorkflowEntrypoint} from 'cloudflare:workers';
 
 const J=JSON.stringify,P=s=>JSON.parse(s);
@@ -1185,7 +1186,7 @@ async function reminders(env,ctx){
 /** A token pasted into the dashboard often carries a trailing space or newline; normalise it once. */
 const clean=env=>Object.assign(Object.create(env),{BOT_TOKEN:String(env.BOT_TOKEN||'').trim().replace(/^bot/i,''),WEBHOOK_SECRET:String(env.WEBHOOK_SECRET||'').trim()});
 LIB=registerLibrary({route,stmt,get,all,run,batch,json,bad,P,J,audit,id8});
-const AID={route,get,run,json,bad,P,J,audit};registerAi(AID);
+const AID={route,get,run,json,bad,P,J,audit};registerAi(AID);registerPodcasts({route,get,all,run,batch,stmt,json,bad,audit,clip,httpsUrl,id8});
 const ORCH=registerOrch({...AID,stmt,all,batch,id8,importOne,aiKey:AID.aiKey});
 export class AiBookWorkflow extends WorkflowEntrypoint{
   async run(event,step){
